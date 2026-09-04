@@ -146,6 +146,21 @@ sequenceDiagram
 
 ## Quick start
 
+**One line**, if you don't have a copy of the repo yet — downloads it (via `git clone` if you have git, otherwise a plain zip, no dependencies either way), then runs setup and connects every AI CLI it finds, using the default paths (`%USERPROFILE%\ai-memory-hub` and `%USERPROFILE%\Documents\Obsidian\AI-Memory`):
+
+```powershell
+irm https://raw.githubusercontent.com/vib28/ai-memory-hub/master/install.ps1 | iex
+```
+
+Want a custom install/vault path instead of the defaults? `| iex` alone can't take parameters — build a scriptblock from the downloaded script and invoke that instead:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/vib28/ai-memory-hub/master/install.ps1))) `
+    -InstallPath "C:\Tools\ai-memory-hub" -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
+```
+
+Or clone it yourself and run each step by hand:
+
 ```powershell
 # 1. Clone
 git clone https://github.com/vib28/ai-memory-hub.git
@@ -161,7 +176,9 @@ cd ai-memory-hub
 .\start-dashboard.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 ```
 
-That's it — start a new conversation in Claude Code, Codex, Qwen Code, or Kimi Code and mention a durable fact about yourself. It'll show up in the dashboard's review queue.
+Either way, that's it — start a new conversation in Claude Code, Codex, Qwen Code, or Kimi Code and mention a durable fact about yourself. It'll show up in the dashboard's review queue.
+
+Already have a copy and just want the latest version? Re-run the one-liner (or `& ([scriptblock]::Create(...))` form) with the same `-InstallPath` — it updates a git-based install in place instead of re-downloading.
 
 Want the click-by-click version, including installing Python and Obsidian from scratch? See [`INSTALLATION_GUIDE.md`](INSTALLATION_GUIDE.md) or the 5-minute [`QUICK_START.md`](QUICK_START.md).
 
@@ -453,6 +470,7 @@ ai-memory-hub/
 ├─ client-prompts/          # per-tool behavioral instructions (claude, codex, qwen, gemini, kimi, chatgpt, generic)
 ├─ examples/                # sample transcript + generic MCP host config
 ├─ tests/                   # unit tests (unittest)
+├─ install.ps1              # one-line irm | iex bootstrap: download + setup + connect
 ├─ setup.ps1 / setup.sh     # create venv, install deps, initialize the vault
 ├─ connect-ai-tools.ps1     # detect installed AI CLIs and wire them all up at once
 ├─ connect-chatgpt-tunnel.ps1 # bridge to ChatGPT via OpenAI's Secure MCP Tunnel

@@ -33,7 +33,9 @@
     irm https://raw.githubusercontent.com/vib28/ai-memory-hub/master/install.ps1 | iex
 
 .EXAMPLE
-    &{ $(irm https://raw.githubusercontent.com/vib28/ai-memory-hub/master/install.ps1) } `
+    # `| iex` alone can't pass parameters — build a scriptblock from the
+    # downloaded text instead, then invoke that with normal arguments.
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/vib28/ai-memory-hub/master/install.ps1))) `
         -InstallPath "C:\Tools\ai-memory-hub" -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 #>
 
