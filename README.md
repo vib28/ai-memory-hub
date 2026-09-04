@@ -184,22 +184,22 @@ flowchart LR
 #### One-time account setup (do this in your browser)
 
 1. **Create a Runtime API key** — [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys), with the Tunnels **Read** + **Use** permissions.
-2. **Create a tunnel ID** — [platform.openai.com/settings/organization/tunnels](https://platform.openai.com/settings/organization/tunnels).
-3. **Install `tunnel-client`** for Windows from the [openai/tunnel-client releases](https://github.com/openai/tunnel-client/releases) page and make sure it's on `PATH`.
+2. **Create a tunnel ID** — [platform.openai.com/settings/organization/tunnels](https://platform.openai.com/settings/organization/tunnels). It looks like `tunnel_` followed by 32 lowercase letters/digits — copy it exactly.
+3. **Install `tunnel-client`** for Windows from the [openai/tunnel-client releases](https://github.com/openai/tunnel-client/releases) page (grab `tunnel-client-<version>-windows-amd64.zip`, or `-arm64` on ARM) and add its folder to `PATH`.
 
 #### Connect it
 
 ```powershell
 .\connect-chatgpt-tunnel.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
-    -TunnelId "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" `
+    -TunnelId "tunnel_0123456789abcdef0123456789abcd12" `
     -ApiKey "sk-..."
 ```
 
-This configures a `tunnel-client` profile that launches `memory_hub.mcp_server` as a stdio subprocess (the same way the other tools do it) and starts the tunnel. Leave the window open — closing it disconnects ChatGPT. Then in ChatGPT: **Settings → Connectors → Advanced → Developer mode → + → Connection: Tunnel →** select `ai-memory-hub`.
+This configures a `tunnel-client` profile that launches `memory_hub.mcp_server` as a stdio subprocess (the same way the other tools do it), runs `doctor` to validate it, and starts the tunnel. Leave the window open — closing it disconnects ChatGPT. Re-running the script updates the same profile (`--force`), so it's safe to use again after changing your vault path or write mode. Then in ChatGPT: **Settings → Connectors → Advanced → Developer mode → + → Connection: Tunnel →** select `ai-memory-hub`.
 
 Give it the behavior prompt the same way as any other tool: [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md), pasted into ChatGPT's custom instructions.
 
-> `connect-chatgpt-tunnel.ps1` is written directly from `tunnel-client`'s documented CLI — verify the exact flags against `tunnel-client --help` if OpenAI changes them.
+> Verified against `tunnel-client` v0.0.14 on Windows. If OpenAI changes the CLI, re-check the flags with `tunnel-client init --help` / `doctor --help` / `run --help`.
 
 #### No account access, or don't want a live connection?
 
