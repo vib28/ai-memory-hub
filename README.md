@@ -18,6 +18,8 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Connect your AI tools](#connect-your-ai-tools)
+- [Connect any other MCP tool](#connect-any-other-mcp-tool)
+- [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
@@ -41,26 +43,62 @@ Every AI tool you use today remembers you differently — or not at all. Tell Cl
 
 ## How it works
 
-```text
-Claude Code · Codex · Gemini CLI · Qwen Code · Kimi Code · ChatGPT · Cursor
-                                    │
-                                    │  MCP (stdio)
-                                    ▼
-                       ┌─────────────────────────┐
-                       │      AI Memory Hub       │
-                       │─────────────────────────│
-                       │  validation              │
-                       │  secret rejection         │
-                       │  deduplication            │
-                       │  per-file locking         │
-                       │  SQLite search index      │
-                       └────────────┬────────────┘
-                                    ▼
-                          Your Obsidian Vault
-                     (plain Markdown, fully yours)
+```mermaid
+flowchart TD
+    subgraph Clients["Your AI tools"]
+        direction LR
+        C1["Claude Code"]
+        C2["Codex"]
+        C3["Gemini / Qwen CLI"]
+        C4["Kimi Code"]
+        C5["ChatGPT / Cursor / other"]
+    end
+
+    Clients -->|MCP over stdio| Hub
+
+    subgraph Hub["AI Memory Hub"]
+        direction TB
+        V["validation"] --> S["secret rejection"]
+        S --> D["deduplication"]
+        D --> L["per-file locking"]
+        L --> I["SQLite search index"]
+    end
+
+    Hub --> Vault[("Obsidian Vault<br/>plain Markdown, fully yours")]
+
+    style Vault fill:#2e7d32,color:#fff,stroke:#1b5e20
+    style Hub fill:#1565c0,color:#fff,stroke:#0d47a1
 ```
 
 The Obsidian vault is always the source of truth. The SQLite index is disposable — delete `.memory_index.sqlite3` any time and rebuild it from the Markdown with one command.
+
+A typical turn — an AI checking memory before answering, then proposing a new fact afterward — looks like this:
+
+```mermaid
+sequenceDiagram
+    actor U as You
+    participant AI as AI Tool
+    participant Hub as AI Memory Hub
+    participant Vault as Obsidian Vault
+
+    U->>AI: Ask a question
+    AI->>Hub: memory_search(query)
+    Hub->>Vault: read matching files
+    Vault-->>Hub: relevant facts
+    Hub-->>AI: search results
+    AI-->>U: Answer, informed by memory
+
+    Note over AI,Hub: Later in the conversation
+    AI->>Hub: memory_propose(fact)
+    Hub->>Hub: validate + reject secrets + dedupe
+    alt write mode = auto
+        Hub->>Vault: write immediately
+    else write mode = review
+        Hub->>Hub: queue for your approval
+        U->>Hub: approve in dashboard
+        Hub->>Vault: write on approval
+    end
+```
 
 ## Features
 
@@ -128,23 +166,92 @@ Want the click-by-click version, including installing Python and Obsidian from s
 | **ChatGPT** (desktop app) | ❌ manual — no CLI to script against | Use [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md) |
 | **Cursor** and anything else MCP-capable | ❌ manual | Use [`client-prompts/generic.md`](client-prompts/generic.md) and [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json) |
 
-Every tool the script skips is one you either don't have installed or that only exposes MCP configuration through its own GUI. For those, add an MCP server pointing at:
+Every tool the script skips is one you either don't have installed or that only exposes MCP configuration through its own GUI — see the next two sections for those.
 
-```text
-command: <this-repo>\.venv\Scripts\python.exe
-args:    -m memory_hub.mcp_server
-env:     AI_MEMORY_VAULT=<absolute path to your vault>
-         MEMORY_WRITER=<a short id for this tool, e.g. cursor>
-         MEMORY_WRITE_MODE=review
+## Connect any other MCP tool
+
+Anything that can launch an MCP server over stdio can join the same shared memory — Cursor, Windsurf, VS Code extensions, JetBrains AI Assistant, your own agent, whatever comes next. There's no CLI automation for these (each has its own settings UI/file), but the setup is always the same three steps:
+
+1. **Point it at the server.** In that tool's MCP settings, add a server with:
+
+   ```json
+   {
+     "mcpServers": {
+       "ai-memory-hub": {
+         "command": "<this-repo>\\.venv\\Scripts\\python.exe",
+         "args": ["-m", "memory_hub.mcp_server"],
+         "env": {
+           "AI_MEMORY_VAULT": "<absolute path to your vault>",
+           "MEMORY_WRITER": "<a short id for this tool, e.g. cursor>",
+           "MEMORY_WRITE_MODE": "review"
+         }
+       }
+     }
+   }
+   ```
+
+   A ready-to-copy version of this is at [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json).
+
+2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi, ChatGPT), use its dedicated file instead — it's identical except for the writer identity.
+
+3. **Restart the tool** so it picks up the new MCP server, then ask it something a durable memory would help with.
+
+## Connect Ollama or LM Studio
+
+Ollama and LM Studio aren't AI *agents* — they're local model servers, so they don't call MCP tools on their own. What they're for here is powering the **optional transcript extractor**, which lets a tool that can't call MCP directly (a chat UI you just copy/paste from, for example) still get memories out of a conversation — entirely on your machine, with nothing sent anywhere.
+
+The extractor talks to any OpenAI-compatible `/chat/completions` endpoint, which both Ollama and LM Studio expose locally:
+
+```mermaid
+flowchart LR
+    T["conversation.txt<br/>(any saved transcript)"] --> CLI["memory_hub.cli ingest"]
+    CLI -->|"chat/completions"| Local["Local model server<br/>(Ollama or LM Studio)"]
+    Local -->|"durable memory candidates"| CLI
+    CLI --> V["validate + reject secrets<br/>+ dedupe (same as MCP path)"]
+    V --> Vault[("Obsidian Vault")]
 ```
 
-then paste the matching file from `client-prompts/` into that tool's system/custom-instructions field.
+**Ollama:**
+
+```powershell
+$env:MEMORY_LLM_BASE_URL = "http://localhost:11434/v1"
+$env:MEMORY_LLM_MODEL    = "llama3.1"          # any model you've pulled with `ollama pull`
+$env:MEMORY_LLM_API_KEY  = ""                   # Ollama ignores this; leave it blank
+
+python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
+```
+
+**LM Studio:**
+
+```powershell
+$env:MEMORY_LLM_BASE_URL = "http://localhost:1234/v1"
+$env:MEMORY_LLM_MODEL    = "<the model name shown in LM Studio's local server tab>"
+$env:MEMORY_LLM_API_KEY  = "lm-studio"          # any non-empty string works
+
+python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
+```
+
+Make sure the server is actually running first — Ollama via `ollama serve` (or it's already running if you've used `ollama run`), LM Studio via its "Local Server" tab. The extractor asks the model to return only durable-memory candidates; those still pass through the same validation, secret-rejection, and deduplication as anything proposed over MCP — a local model gets no more trust than a remote one.
+
+**Local models are recommended here specifically when privacy matters** — the transcript never leaves your machine.
 
 ## Write modes: review vs. auto
 
 **`review`** (recommended to start): AI-proposed memories wait in the dashboard's review queue. You approve or reject with one click. Nothing reaches your vault without your say-so.
 
 **`auto`**: valid proposals are written to the vault immediately.
+
+```mermaid
+flowchart LR
+    P["memory_propose(...)"] --> OK{"passes validation,<br/>secret check, dedupe?"}
+    OK -- no --> R["rejected, nothing written"]
+    OK -- yes --> Mode{"MEMORY_WRITE_MODE"}
+    Mode -- auto --> W["written to vault immediately"]
+    Mode -- review --> Q["queued in dashboard"]
+    Q --> A{"you approve?"}
+    A -- yes --> W
+    A -- no --> X["discarded"]
+```
 
 Run with `review` for a week or two, watch what each AI actually tries to remember, then flip to `auto` once you trust the pattern:
 
