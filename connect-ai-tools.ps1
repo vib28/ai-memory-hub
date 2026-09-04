@@ -273,6 +273,17 @@ Write-Host "one-time OpenAI account setup first — see README.md)."
 Write-Host "Any other MCP-capable tool without a CLI must be connected manually."
 Write-Host "See client-prompts/ and README.md."
 Write-Host ""
+Write-Host "IMPORTANT: each tool reads its MCP server list once, at session start."
+Write-Host "If you already had a Claude Code / Gemini CLI / Qwen Code / Codex CLI /"
+Write-Host "Kimi Code window open, close that session and start a new one — it won't"
+Write-Host "see ai-memory-hub until it does. New sessions pick it up automatically."
+if ($results | Where-Object { $_ -like "*Gemini CLI*" -and $_ -like "*connected*" }) {
+    Write-Host ""
+    Write-Host "Gemini CLI note: it disables ALL MCP servers in a folder it doesn't yet"
+    Write-Host "trust. Answer its workspace-trust prompt on first launch there, then"
+    Write-Host "check with: gemini mcp list"
+}
+Write-Host ""
 Write-Host "Open the dashboard any time with:"
 Write-Host "  .\start-dashboard.ps1 -VaultPath `"$VaultPath`""
 

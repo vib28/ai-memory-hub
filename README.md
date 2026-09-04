@@ -37,6 +37,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Quick start](#quick-start)
 - [Connect your AI tools](#connect-your-ai-tools)
   - [Connected automatically by `connect-ai-tools.ps1`](#connected-automatically-by-connect-ai-toolsps1)
+  - [Already have a session open?](#already-have-a-session-open)
   - [ChatGPT (desktop app)](#chatgpt-desktop-app)
 - [Connect any other MCP tool](#connect-any-other-mcp-tool)
 - [Transcript ingestion (no live MCP connection needed)](#transcript-ingestion-no-live-mcp-connection-needed)
@@ -186,10 +187,16 @@ Want the click-by-click version, including installing Python and Obsidian from s
 | **Claude Code** | ✅ | `~/.claude/CLAUDE.md` |
 | **Codex CLI** | ✅ | `~/.codex/AGENTS.md` |
 | **Qwen Code** | ✅ | `~/.qwen/QWEN.md` |
-| **Gemini CLI** | ✅ (if installed) | `~/.gemini/GEMINI.md` |
+| **Gemini CLI** | ✅ (if installed) — see the workspace-trust note below | `~/.gemini/GEMINI.md` |
 | **Kimi Code** | ✅ (edits `~/.kimi-code/mcp.json` directly — Kimi has no `mcp add` CLI command yet) | `~/.kimi-code/AGENTS.md` |
 
 These are all developer CLIs that launch the server themselves as a **local stdio subprocess** — the script just tells each one what command to run. ChatGPT's desktop app works differently; see below.
+
+> **Gemini CLI only:** it disables *all* MCP servers — including user-level ones like this one — in any folder it doesn't yet trust, to prevent an untrusted project from silently running tools. The first time you launch `gemini` in a given folder, answer its workspace-trust prompt (or pass `--skip-trust` for a one-off session). Run `gemini mcp list` any time to check whether `ai-memory-hub` shows as enabled or disabled for the folder you're in.
+
+### Already have a session open?
+
+Every tool above reads its MCP server list once, when that session starts — none of them watch their config file for changes mid-session. So after running `connect-ai-tools.ps1` (or `connect-chatgpt-tunnel.ps1`), **any Claude Code, Gemini CLI, Qwen Code, Codex CLI, or Kimi Code window you already had open needs a new session** before it can see `ai-memory-hub` — close that chat and run the same command again to start a fresh one. This isn't reinstalling or restarting an application, just starting a new conversation; a session you open *after* running the script picks it up immediately, no action needed. ChatGPT is the exception — there's no "session" to restart, just enable the connector once in Settings as described above and the running tunnel stays connected.
 
 ### ChatGPT (desktop app)
 
