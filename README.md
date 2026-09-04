@@ -18,6 +18,8 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Connect your AI tools](#connect-your-ai-tools)
+  - [Connected automatically by `connect-ai-tools.ps1`](#connected-automatically-by-connect-ai-toolsps1)
+  - [ChatGPT (desktop app)](#chatgpt-desktop-app)
 - [Connect any other MCP tool](#connect-any-other-mcp-tool)
 - [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
@@ -143,6 +145,8 @@ Want the click-by-click version, including installing Python and Obsidian from s
 
 ## Connect your AI tools
 
+### Connected automatically by `connect-ai-tools.ps1`
+
 `connect-ai-tools.ps1` is the one-shot setup script. Run it after `setup.ps1` and it will:
 
 1. **Detect** which supported AI CLIs are installed on the machine.
@@ -163,14 +167,44 @@ Want the click-by-click version, including installing Python and Obsidian from s
 | **Qwen Code** | ✅ | `~/.qwen/QWEN.md` |
 | **Gemini CLI** | ✅ (if installed) | `~/.gemini/GEMINI.md` |
 | **Kimi Code** | ✅ (edits `~/.kimi-code/mcp.json` directly — Kimi has no `mcp add` CLI command yet) | `~/.kimi-code/AGENTS.md` |
-| **ChatGPT** (desktop app) | ❌ manual — no CLI to script against | Use [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md) |
-| **Cursor** and anything else MCP-capable | ❌ manual | Use [`client-prompts/generic.md`](client-prompts/generic.md) and [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json) |
 
-Every tool the script skips is one you either don't have installed or that only exposes MCP configuration through its own GUI — see the next two sections for those.
+These are all developer CLIs that launch the server themselves as a **local stdio subprocess** — the script just tells each one what command to run. ChatGPT's desktop app works differently; see below.
+
+### ChatGPT (desktop app)
+
+#### Why it can't be auto-connected
+
+ChatGPT's [Developer Mode connectors](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) only accept a **remote HTTPS MCP server URL**. It cannot launch a local command the way Claude Code, Codex, or the other CLIs above do — so `connect-ai-tools.ps1` has nothing to register even if ChatGPT is installed, and no local settings file exists to write to (the Windows app stores its state entirely against your OpenAI account, not on disk).
+
+```mermaid
+flowchart LR
+    G["ChatGPT desktop app"] -->|Developer Mode connector| Need{"needs a publicly<br/>reachable https:// URL"}
+    Need -.->|"cannot reach"| Local["memory_hub.mcp_server<br/>(local stdio process)"]
+```
+
+#### Recommended: transcript ingestion (fully local)
+
+This is already built into the project and needs nothing beyond what `setup.ps1` installed. Copy a conversation out of ChatGPT, save it as a `.txt` file, and run:
+
+```powershell
+python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
+```
+
+Point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below) and the transcript never leaves your machine. Candidates still pass through the same validation, secret-rejection, and dedup as anything proposed over MCP.
+
+Once a fact is in the vault, hand ChatGPT the context by hand — paste the relevant bit from `profile.md`/`preferences.md` into a conversation, or read [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md) for the exact retrieval/storage rules it should be told to follow.
+
+#### Advanced (optional): bridging to a remote connector
+
+If you specifically want ChatGPT calling `memory_search`/`memory_propose` live, you'd need to front the local stdio server with a remote-MCP bridge (e.g. [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)) and a tunnel (e.g. `ngrok`) so it has an `https://` URL to call, then add authentication in front of it. **This isn't wired up by this project on purpose** — it means your memory vault becomes reachable from the internet, which cuts against the local-first, nothing-leaves-your-machine design this whole tool is built around. Only do this if you understand and accept that trade-off.
+
+### Any other MCP-capable tool
+
+Cursor, Windsurf, VS Code extensions, JetBrains AI Assistant, your own agent, whatever comes next — see [Connect any other MCP tool](#connect-any-other-mcp-tool) below.
 
 ## Connect any other MCP tool
 
-Anything that can launch an MCP server over stdio can join the same shared memory — Cursor, Windsurf, VS Code extensions, JetBrains AI Assistant, your own agent, whatever comes next. There's no CLI automation for these (each has its own settings UI/file), but the setup is always the same three steps:
+Anything that can launch an MCP server over stdio can join the same shared memory. There's no CLI automation for these (each has its own settings UI/file), but the setup is always the same three steps:
 
 1. **Point it at the server.** In that tool's MCP settings, add a server with:
 
@@ -192,7 +226,7 @@ Anything that can launch an MCP server over stdio can join the same shared memor
 
    A ready-to-copy version of this is at [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json).
 
-2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi, ChatGPT), use its dedicated file instead — it's identical except for the writer identity.
+2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi), use its dedicated file instead — it's identical except for the writer identity.
 
 3. **Restart the tool** so it picks up the new MCP server, then ask it something a durable memory would help with.
 
