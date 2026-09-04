@@ -1,0 +1,3 @@
+USER: I use Windows for my development machine and prefer Python for small automation tools.
+ASSISTANT: We can build the utility in Python.
+USER: Yes. For this project, let's use SQLite rather than Postgres so it stays portable.

@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import re
+import shutil
+from datetime import date
+from pathlib import Path
+from typing import Iterable
+
+from .models import MemoryRecord
+from .utils import atomic_write, file_lock, safe_join, slugify
+
+FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+ENTRY_RE = re.compile(
+    r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
+    r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+) date:(?P<date>\d{4}-\d{2}-\d{2}) -->\s*$"
+)
+
+def today() -> str:
+    return date.today().isoformat()
+
+def parse_frontmatter(content: str) -> tuple[dict, str]:
+    m = FRONTMATTER_RE.match(content)
+    if not m:
+        return {}, content
+    raw = m.group(1).splitlines()
+    data: dict = {}
+    current_list = None
+    for line in raw:
+        if line.startswith("  - ") and current_list:
+            data.setdefault(current_list, []).append(line[4:].strip())
+            continue
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            if not value:
+                data[key] = []
+                current_list = key
+            elif value.startswith("[") and value.endswith("]"):
+                body = value[1:-1].strip()
+                data[key] = [x.strip() for x in body.split(",") if x.strip()]
+                current_list = None
+            else:
+                data[key] = value
+                current_list = None
+    return data, content[m.end():]
+
+def dump_frontmatter(meta: dict) -> str:
+    preferred = ["type", "aliases", "status", "created", "updated", "sources"]
+    keys = preferred + [k for k in meta if k not in preferred]
+    lines = ["---"]
+    for key in keys:
+        if key not in meta:
+            continue
+        value = meta[key]
+        if isinstance(value, list):
+            lines.append(f"{key}:")
+            for item in value:
+                lines.append(f"  - {item}")
+        else:
+            lines.append(f"{key}: {value}")
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+def ensure_metadata(content: str, *, kind: str, writer: str) -> str:
+    meta, body = parse_frontmatter(content)
+    now = today()
+    if not meta:
+        meta = {
+            "type": kind,
+            "aliases": [],
+            "status": "active",
+            "created": now,
+            "updated": now,
+            "sources": [writer],
+        }
+    else:
+        meta["updated"] = now
+        sources = meta.get("sources") or []
+        if not isinstance(sources, list):
+            sources = [str(sources)]
+        if writer not in sources:
+            sources.append(writer)
+        meta["sources"] = sources
+        meta.setdefault("created", now)
+        meta.setdefault("status", "active")
+        meta.setdefault("aliases", [])
+        meta.setdefault("type", kind)
+    return dump_frontmatter(meta) + body.lstrip("\n")
+
+def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
+    if not path.exists() or path.suffix.lower() != ".md":
+        return []
+    relative = "/" + path.relative_to(vault_root).as_posix()
+    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+    kind = str(meta.get("type", "topic"))
+    records = []
+    for line in body.splitlines():
+        m = ENTRY_RE.match(line)
+        if m:
+            records.append(
+                MemoryRecord(
+                    memory_id=m.group("id"),
+                    path=relative,
+                    text=m.group("text"),
+                    kind=kind,
+                    tag=m.group("tag"),
+                    subject=path.stem,
+                    writer=m.group("source"),
+                    date=m.group("date"),
+                )
+            )
+    return records
+
+class Vault:
+    def __init__(self, root: Path):
+        self.root = Path(root).expanduser().resolve()
+
+    def initialize(self, template_root: Path) -> list[str]:
+        self.root.mkdir(parents=True, exist_ok=True)
+        created = []
+        for src in template_root.rglob("*"):
+            rel = src.relative_to(template_root)
+            dst = self.root / rel
+            if src.is_dir():
+                dst.mkdir(parents=True, exist_ok=True)
+            elif not dst.exists():
+                if src.suffix.lower() == ".md":
+                    content = src.read_text(encoding="utf-8").replace("YYYY-MM-DD", today())
+                    dst.write_text(content, encoding="utf-8")
+                else:
+                    shutil.copy2(src, dst)
+                created.append("/" + rel.as_posix())
+        return created
+
+    def resolve(self, relative: str) -> Path:
+        return safe_join(self.root, relative)
+
+    def read(self, relative: str) -> str:
+        p = self.resolve(relative)
+        if not p.exists():
+            raise FileNotFoundError(relative)
+        return p.read_text(encoding="utf-8")
+
+    def all_memory_files(self) -> Iterable[Path]:
+        for p in self.root.rglob("*.md"):
+            if ".obsidian" in p.parts:
+                continue
+            yield p
+
+    def canonical_path(self, kind: str, subject: str) -> str:
+        subject_slug = slugify(subject)
+        if kind == "profile":
+            return "/profile.md"
+        if kind == "preference":
+            return "/preferences.md"
+        if kind == "person":
+            return f"/people/{subject_slug}.md"
+        if kind == "project":
+            return f"/projects/{subject_slug}.md"
+        if kind == "decision":
+            return f"/decisions/{subject_slug}.md"
+        return f"/topics/{subject_slug}.md"
+
+    def ensure_file(self, relative: str, kind: str, writer: str) -> Path:
+        p = self.resolve(relative)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if not p.exists():
+            title = p.stem.replace("-", " ").title()
+            initial = ensure_metadata(f"\n# {title}\n", kind=kind, writer=writer)
+            atomic_write(p, initial)
+        return p
+
+    def append_entry(self, relative: str, line: str, *, kind: str, writer: str) -> None:
+        p = self.ensure_file(relative, kind, writer)
+        with file_lock(p):
+            current = p.read_text(encoding="utf-8")
+            current = ensure_metadata(current, kind=kind, writer=writer).rstrip() + "\n"
+            if line not in current:
+                if not current.endswith("\n\n"):
+                    current += "\n"
+                current += line.rstrip() + "\n"
+            atomic_write(p, current)
+
+    def replace_entry_line(self, relative: str, memory_id: str, transform) -> bool:
+        p = self.resolve(relative)
+        if not p.exists():
+            return False
+        with file_lock(p):
+            content = p.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            changed = False
+            for i, line in enumerate(lines):
+                m = ENTRY_RE.match(line)
+                if m and m.group("id") == memory_id:
+                    lines[i] = transform(line)
+                    changed = True
+                    break
+            if changed:
+                atomic_write(p, "\n".join(lines) + "\n")
+            return changed
+
+    def delete_entry(self, relative: str, memory_id: str) -> bool:
+        p = self.resolve(relative)
+        if not p.exists():
+            return False
+        with file_lock(p):
+            content = p.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            out = []
+            changed = False
+            for line in lines:
+                m = ENTRY_RE.match(line)
+                if m and m.group("id") == memory_id:
+                    changed = True
+                    continue
+                out.append(line)
+            if changed:
+                atomic_write(p, "\n".join(out) + "\n")
+            return changed
+
+    def ensure_index_entry(self, relative: str, kind: str, covers: str) -> None:
+        idx = self.resolve("/MEMORY.md")
+        if not idx.exists():
+            idx.write_text("# Memory Index\n\n| Path | Type | Updated | Covers |\n|---|---|---|---|\n", encoding="utf-8")
+        link = relative.lstrip("/")
+        if link.endswith(".md"):
+            link = link[:-3]
+        row_prefix = f"| [[{link}]] |"
+        with file_lock(idx):
+            content = idx.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            now = today()
+            found = False
+            for i, line in enumerate(lines):
+                if line.startswith(row_prefix):
+                    lines[i] = f"| [[{link}]] | {kind} | {now} | {covers} |"
+                    found = True
+                    break
+            if not found:
+                if lines and lines[-1].strip():
+                    lines.append(f"| [[{link}]] | {kind} | {now} | {covers} |")
+                else:
+                    lines[-1] = f"| [[{link}]] | {kind} | {now} | {covers} |"
+            atomic_write(idx, "\n".join(lines) + "\n")

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ai-memory": {
+      "command": "C:\\ABSOLUTE\\PATH\\TO\\ai-memory-hub\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "memory_hub.mcp_server"],
+      "env": {
+        "AI_MEMORY_VAULT": "C:\\ABSOLUTE\\PATH\\TO\\YOUR\\OBSIDIAN\\AI-Memory",
+        "MEMORY_WRITER": "claude"
+      }
+    }
+  }
+}

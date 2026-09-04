@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-memory-hub"
+version = "0.2.0"
+description = "Local-first shared persistent memory for multiple AI tools using Obsidian + MCP"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+  "mcp>=2,<3",
+  "pystray>=0.19,<1",
+  "Pillow>=10,<13",
+]
+
+[project.urls]
+Homepage = "https://github.com/vib28/ai-memory-hub"
+Repository = "https://github.com/vib28/ai-memory-hub"
+
+[project.scripts]
+ai-memory = "memory_hub.cli:main"
+ai-memory-mcp = "memory_hub.mcp_server:main"
+ai-memory-dashboard = "memory_hub.dashboard:main"
+ai-memory-tray = "memory_hub.tray:main"
+
+[tool.setuptools]
+packages = ["memory_hub"]
