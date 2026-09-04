@@ -7,11 +7,29 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
+![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
+![Tests: 7 passing](https://img.shields.io/badge/tests-7%20passing-brightgreen.svg)
+
+---
+
+## Supported AI tools at a glance
+
+| Tool | Transport | Connected by | Notes |
+|---|---|---|---|
+| Claude Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
+| Codex CLI | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
+| Qwen Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
+| Gemini CLI | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | if installed |
+| Kimi Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | edits `mcp.json` directly — no CLI command for this yet |
+| ChatGPT (desktop app) | Streamable HTTP, via OpenAI's Secure MCP Tunnel | [`connect-chatgpt-tunnel.ps1`](#chatgpt-desktop-app) | needs a one-time OpenAI account setup first |
+| Cursor, Windsurf, JetBrains AI, or anything else MCP-capable | stdio | [manual, 3 steps](#connect-any-other-mcp-tool) | |
+| ChatGPT, or any tool without MCP access at all | — | [transcript ingestion](#connect-ollama-or-lm-studio) | fully local fallback, works with any tool |
 
 ---
 
 ## Contents
 
+- [Supported AI tools at a glance](#supported-ai-tools-at-a-glance)
 - [Why this exists](#why-this-exists)
 - [How it works](#how-it-works)
 - [Features](#features)
@@ -29,6 +47,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Safety](#safety)
 - [CLI reference](#cli-reference)
 - [Project layout](#project-layout)
+- [Reliability: what happens when something goes wrong](#reliability-what-happens-when-something-goes-wrong)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -118,9 +137,10 @@ sequenceDiagram
 
 - Windows 10/11 (macOS/Linux work via `setup.sh`, but the automation scripts here target Windows)
 - Python 3.10+ (3.12 recommended)
-- PowerShell
+- PowerShell — either the Windows PowerShell 5.1 that ships with Windows, or PowerShell 7+; every `.ps1` script here is written to run on both
 - An Obsidian vault, or any plain folder you're willing to treat as one
 - The official Python MCP SDK v2 (`mcp>=2,<3`, installed automatically)
+- For ChatGPT specifically: [`tunnel-client`](#chatgpt-desktop-app) and an OpenAI account with API access — optional, only needed for a live connection
 
 ## Quick start
 
@@ -429,6 +449,45 @@ ai-memory-hub/
 ├─ INSTALLATION_GUIDE.md    # full guided walkthrough
 └─ QUICK_START.md           # 5-minute version
 ```
+
+## Reliability: what happens when something goes wrong
+
+The setup scripts are written so a failure is loud and specific, never silent — and so one tool's problem doesn't take the rest of the run down with it.
+
+```mermaid
+flowchart TD
+    Start(["connect-ai-tools.ps1"]) --> Claude["Try: Claude Code"]
+    Start --> Gemini["Try: Gemini CLI"]
+    Start --> Qwen["Try: Qwen Code"]
+    Start --> Codex["Try: Codex CLI"]
+    Start --> Kimi["Try: Kimi Code"]
+
+    Claude -->|"exit code checked"| R1{"ok?"}
+    R1 -- yes --> C1["[connected]"]
+    R1 -- no --> F1["[failed] — reason captured, others unaffected"]
+
+    Kimi --> K1{"mcp.json valid?"}
+    K1 -- yes --> C2["[connected]"]
+    K1 -- no --> K2["back up the bad file,<br/>rebuild fresh, continue"]
+    K2 --> C2
+
+    C1 --> Summary["Summary printed for every tool"]
+    F1 --> Summary
+    C2 --> Summary
+    Summary --> Exit{"any [failed]?"}
+    Exit -- yes --> E1["exit code 1"]
+    Exit -- no --> E0["exit code 0"]
+```
+
+What that means in practice:
+
+- **A failed native command is never mistaken for success.** `$ErrorActionPreference = "Stop"` only catches PowerShell's own errors — it does nothing for a `.exe`/`.cmd` that exits non-zero. Every script checks the actual exit code after calling Python, pip, or an AI tool's CLI, rather than assuming the next line means everything worked.
+- **One tool's failure doesn't block the rest.** `connect-ai-tools.ps1` tries Claude, Gemini, Qwen, Codex, and Kimi independently. If one genuinely fails, it's reported as `[failed]` with the reason, and the others still get attempted.
+- **"Already connected" isn't treated as an error.** Some CLIs (Claude Code, for one) exit non-zero when the server is already registered. That's recognized and reported as `[connected]`, not `[failed]`.
+- **A corrupted config gets backed up, not blown away.** If Kimi's `mcp.json` isn't valid JSON (hand-edited and broken, for instance), the script copies it to a timestamped `.bak` file next to it and rebuilds a fresh config, rather than crashing or silently overwriting something you might have wanted to recover.
+- **Scripts are safe to run again.** Re-running `connect-ai-tools.ps1` after changing your vault path or write mode just re-registers everything. `connect-chatgpt-tunnel.ps1` passes `--force` to `tunnel-client init` for the same reason — without it, a second run fails outright with "profile already exists".
+- **`connect-ai-tools.ps1` exits with code `1` if anything failed**, `0` if everything succeeded — safe to check in a script or CI job, not just by reading the summary.
+- **Every fix here was verified against the real thing, not just written to look right** — including deliberately corrupting a config file to confirm the recovery path actually recovers, and running the ChatGPT tunnel script against the real `tunnel-client` binary, which caught a genuine bug: it parses `--mcp-command` with shell-word rules where `\` is an escape character, silently eating a Windows-style path. Fixed by passing that path with forward slashes instead, which Windows accepts natively.
 
 ## Troubleshooting
 
