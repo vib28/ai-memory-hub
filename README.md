@@ -23,7 +23,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 | Kimi Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | edits `mcp.json` directly — no CLI command for this yet |
 | ChatGPT (desktop app) | Streamable HTTP, via OpenAI's Secure MCP Tunnel | [`connect-chatgpt-tunnel.ps1`](#chatgpt-desktop-app) | needs a one-time OpenAI account setup first |
 | Cursor, Windsurf, JetBrains AI, or anything else MCP-capable | stdio | [manual, 3 steps](#connect-any-other-mcp-tool) | |
-| ChatGPT, or any tool without MCP access at all | — | [transcript ingestion](#connect-ollama-or-lm-studio) | fully local fallback, works with any tool |
+| ChatGPT, or any tool without MCP access at all | — | [transcript ingestion](#transcript-ingestion-no-live-mcp-connection-needed) | fully local fallback, works with any tool |
 
 ---
 
@@ -39,6 +39,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
   - [Connected automatically by `connect-ai-tools.ps1`](#connected-automatically-by-connect-ai-toolsps1)
   - [ChatGPT (desktop app)](#chatgpt-desktop-app)
 - [Connect any other MCP tool](#connect-any-other-mcp-tool)
+- [Transcript ingestion (no live MCP connection needed)](#transcript-ingestion-no-live-mcp-connection-needed)
 - [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
 - [The dashboard](#the-dashboard)
@@ -221,15 +222,7 @@ Give it the behavior prompt the same way as any other tool: [`client-prompts/cha
 
 > Verified against `tunnel-client` v0.0.14 on Windows. If OpenAI changes the CLI, re-check the flags with `tunnel-client init --help` / `doctor --help` / `run --help`.
 
-#### No account access, or don't want a live connection?
-
-Transcript ingestion works with zero extra setup — it's already built into the CLI and stays fully local:
-
-```powershell
-python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
-```
-
-Copy a ChatGPT conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below), and candidates get extracted and validated exactly like anything proposed over MCP — nothing leaves your machine.
+No account access, or don't want a live connection? See [Transcript ingestion](#transcript-ingestion-no-live-mcp-connection-needed) below — it needs zero extra setup and stays fully local.
 
 ### Any other MCP-capable tool
 
@@ -262,6 +255,18 @@ Anything that can launch an MCP server over stdio can join the same shared memor
 2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi), use its dedicated file instead — it's identical except for the writer identity.
 
 3. **Restart the tool** so it picks up the new MCP server, then ask it something a durable memory would help with.
+
+## Transcript ingestion (no live MCP connection needed)
+
+For any tool that can't call MCP directly — ChatGPT without the tunnel set up, a chat UI you only ever copy/paste from, an old export you're archiving — transcript ingestion gets memories out of a conversation with zero extra setup. It's already built into the CLI and stays fully local.
+
+```powershell
+python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
+```
+
+Copy a conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below), and candidates get extracted and validated exactly like anything proposed over MCP — nothing leaves your machine.
+
+`--writer` accepts any short id, not just `chatgpt` (`gemini`, `cursor`, whatever the transcript came from) — it's a free-form string used purely for provenance, so the stored memory's `source:` tag stays accurate.
 
 ## Connect Ollama or LM Studio
 
