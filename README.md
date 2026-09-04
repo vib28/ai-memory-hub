@@ -172,31 +172,44 @@ These are all developer CLIs that launch the server themselves as a **local stdi
 
 ### ChatGPT (desktop app)
 
-#### Why it can't be auto-connected
-
-ChatGPT's [Developer Mode connectors](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) only accept a **remote HTTPS MCP server URL**. It cannot launch a local command the way Claude Code, Codex, or the other CLIs above do — so `connect-ai-tools.ps1` has nothing to register even if ChatGPT is installed, and no local settings file exists to write to (the Windows app stores its state entirely against your OpenAI account, not on disk).
+ChatGPT's connector protocol itself only speaks Streamable HTTP — but OpenAI now ships an official, first-party bridge called **[Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)** that connects Developer Mode directly to a local **stdio** server like this one, outbound-only, with nothing exposed to the public internet. That's the supported way to get ChatGPT calling `memory_search`/`memory_propose` live, and `connect-ai-tools.ps1` can't set it up on its own because the last mile — creating a tunnel ID and an API key — happens in your browser, against your OpenAI account.
 
 ```mermaid
 flowchart LR
-    G["ChatGPT desktop app"] -->|Developer Mode connector| Need{"needs a publicly<br/>reachable https:// URL"}
-    Need -.->|"cannot reach"| Local["memory_hub.mcp_server<br/>(local stdio process)"]
+    G["ChatGPT Developer Mode"] -->|Streamable HTTP| OA["OpenAI's tunnel endpoint"]
+    OA -.->|outbound-only,<br/>no inbound exposure| TC["tunnel-client<br/>(runs on your machine)"]
+    TC -->|stdio| Local["memory_hub.mcp_server"]
 ```
 
-#### Recommended: transcript ingestion (fully local)
+#### One-time account setup (do this in your browser)
 
-This is already built into the project and needs nothing beyond what `setup.ps1` installed. Copy a conversation out of ChatGPT, save it as a `.txt` file, and run:
+1. **Create a Runtime API key** — [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys), with the Tunnels **Read** + **Use** permissions.
+2. **Create a tunnel ID** — [platform.openai.com/settings/organization/tunnels](https://platform.openai.com/settings/organization/tunnels).
+3. **Install `tunnel-client`** for Windows from the [openai/tunnel-client releases](https://github.com/openai/tunnel-client/releases) page and make sure it's on `PATH`.
+
+#### Connect it
+
+```powershell
+.\connect-chatgpt-tunnel.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
+    -TunnelId "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" `
+    -ApiKey "sk-..."
+```
+
+This configures a `tunnel-client` profile that launches `memory_hub.mcp_server` as a stdio subprocess (the same way the other tools do it) and starts the tunnel. Leave the window open — closing it disconnects ChatGPT. Then in ChatGPT: **Settings → Connectors → Advanced → Developer mode → + → Connection: Tunnel →** select `ai-memory-hub`.
+
+Give it the behavior prompt the same way as any other tool: [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md), pasted into ChatGPT's custom instructions.
+
+> `connect-chatgpt-tunnel.ps1` is written directly from `tunnel-client`'s documented CLI — verify the exact flags against `tunnel-client --help` if OpenAI changes them.
+
+#### No account access, or don't want a live connection?
+
+Transcript ingestion works with zero extra setup — it's already built into the CLI and stays fully local:
 
 ```powershell
 python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
 ```
 
-Point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below) and the transcript never leaves your machine. Candidates still pass through the same validation, secret-rejection, and dedup as anything proposed over MCP.
-
-Once a fact is in the vault, hand ChatGPT the context by hand — paste the relevant bit from `profile.md`/`preferences.md` into a conversation, or read [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md) for the exact retrieval/storage rules it should be told to follow.
-
-#### Advanced (optional): bridging to a remote connector
-
-If you specifically want ChatGPT calling `memory_search`/`memory_propose` live, you'd need to front the local stdio server with a remote-MCP bridge (e.g. [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)) and a tunnel (e.g. `ngrok`) so it has an `https://` URL to call, then add authentication in front of it. **This isn't wired up by this project on purpose** — it means your memory vault becomes reachable from the internet, which cuts against the local-first, nothing-leaves-your-machine design this whole tool is built around. Only do this if you understand and accept that trade-off.
+Copy a ChatGPT conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below), and candidates get extracted and validated exactly like anything proposed over MCP — nothing leaves your machine.
 
 ### Any other MCP-capable tool
 
@@ -410,6 +423,7 @@ ai-memory-hub/
 ├─ tests/                   # unit tests (unittest)
 ├─ setup.ps1 / setup.sh     # create venv, install deps, initialize the vault
 ├─ connect-ai-tools.ps1     # detect installed AI CLIs and wire them all up at once
+├─ connect-chatgpt-tunnel.ps1 # bridge to ChatGPT via OpenAI's Secure MCP Tunnel
 ├─ start-dashboard.ps1      # launch the local review dashboard
 ├─ start-tray.ps1           # launch the Windows system-tray version
 ├─ INSTALLATION_GUIDE.md    # full guided walkthrough
