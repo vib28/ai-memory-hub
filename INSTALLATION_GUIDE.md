@@ -1115,7 +1115,7 @@ Memory Hub validation
 vault
 ```
 
-This requires an OpenAI-compatible model endpoint.
+This requires a local (or remote) model server that exposes a standard chat-completions API, such as Ollama, LM Studio, llama.cpp's server, or vLLM.
 
 A local model is recommended if you want transcript analysis to remain private.
 

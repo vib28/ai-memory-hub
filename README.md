@@ -109,7 +109,7 @@ sequenceDiagram
 - 🖥️ **Local dashboard** (`127.0.0.1` only) — browse, search, edit, approve/reject, resolve conflicts, run audits
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed
-- 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any OpenAI-compatible endpoint (local models supported — nothing has to leave your machine)
+- 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - ✅ **7 unit tests** covering the manager, dashboard workflows, and conflict resolution
 
 ## Requirements
@@ -200,7 +200,7 @@ Anything that can launch an MCP server over stdio can join the same shared memor
 
 Ollama and LM Studio aren't AI *agents* — they're local model servers, so they don't call MCP tools on their own. What they're for here is powering the **optional transcript extractor**, which lets a tool that can't call MCP directly (a chat UI you just copy/paste from, for example) still get memories out of a conversation — entirely on your machine, with nothing sent anywhere.
 
-The extractor talks to any OpenAI-compatible `/chat/completions` endpoint, which both Ollama and LM Studio expose locally:
+The extractor is platform-agnostic: it just sends a POST request to `/chat/completions` with a `messages` array and reads back a `choices[0].message.content` reply — the same request/response shape used by Ollama, LM Studio, llama.cpp's server, vLLM, LocalAI, and most other local model runners. Point it at any server that speaks that shape:
 
 ```mermaid
 flowchart LR
@@ -351,7 +351,7 @@ python -m memory_hub.cli --vault "<vault>" search "response style"
 python -m memory_hub.cli --vault "<vault>" audit
 python -m memory_hub.cli --vault "<vault>" reindex
 
-# Optional: extract memories from a saved transcript via a local/OpenAI-compatible model
+# Optional: extract memories from a saved transcript via a local chat-completions server
 $env:MEMORY_LLM_BASE_URL = "http://localhost:11434/v1"
 $env:MEMORY_LLM_MODEL    = "your-model-name"
 python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt

@@ -44,7 +44,7 @@ def _extract_json_text(payload: dict[str, Any]) -> str:
     try:
         return payload["choices"][0]["message"]["content"]
     except Exception as exc:
-        raise ExtractionError(f"unexpected OpenAI-compatible response: {payload}") from exc
+        raise ExtractionError(f"unexpected chat-completions response: {payload}") from exc
 
 def extract_candidates(transcript: str) -> list[dict]:
     base_url = os.environ.get("MEMORY_LLM_BASE_URL", "").rstrip("/")
