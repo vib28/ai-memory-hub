@@ -7,6 +7,12 @@ ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decisio
 ALLOWED_TAGS = {"stated", "decided", "inferred", "preference", "constraint", "open", "superseded"}
 ALLOWED_WRITERS = {"chatgpt", "claude", "gemini", "kimi", "cursor", "user", "other"}
 
+# Kinds where a subject should hold one current answer (e.g. "primary OS"), so two
+# differently-worded active entries for the same subject really are contradictory.
+# The other kinds (project, topic, person, decision) are logs that legitimately
+# accumulate many distinct, non-conflicting facts about the same subject over time.
+SINGLETON_KINDS = {"profile", "preference"}
+
 @dataclass
 class MemoryCandidate:
     text: str

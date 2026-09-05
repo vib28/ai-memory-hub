@@ -97,7 +97,13 @@ details.issue .body{padding:0 15px 14px;color:var(--muted);font-size:12.5px}
 details.issue .body div{padding:6px 0;border-top:1px solid var(--line)}
 .conflict-group{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
 .conflict-group h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--warn)}
-.conflict-item{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:8px}
+.conflict-item{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:8px;position:relative}
+.conflict-item.stale{opacity:.6}
+.recent-badge{position:absolute;top:-9px;right:10px;background:var(--good);color:#04170b;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:99px;letter-spacing:.02em}
+.project-group{margin-bottom:22px}
+.project-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.project-head h3{margin:0;font-size:13.5px;font-weight:600;color:var(--text);text-transform:capitalize}
+.project-head .badge{background:transparent;border:1px solid var(--line)}
 .toast-host{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:100}
 .toast{background:#1c2129;border:1px solid var(--line);border-left:3px solid var(--accent);color:var(--text);padding:10px 14px;border-radius:8px;box-shadow:0 6px 20px #0008;font-size:13px;min-width:220px;animation:slidein .15s ease-out}
 .toast.ok{border-left-color:var(--good)}.toast.err{border-left-color:var(--bad)}
@@ -142,7 +148,7 @@ details.issue .body div{padding:6px 0;border-top:1px solid var(--line)}
   <button onclick="loadMemories()">Search</button>
  </div>
  <div class="chips" id="kindChips"></div>
- <div id="memoryList" class="grid"><div class="skeleton">Loading…</div></div>
+ <div id="memoryList"><div class="skeleton">Loading…</div></div>
 </section>
 
 <section id="pending" class="panel hidden">
@@ -223,6 +229,16 @@ function refreshCurrent(){
 }
 function debouncedSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(loadMemories,300)}
 
+function formatWhen(s){
+  if(!s) return '';
+  const hasTime = s.includes('T');
+  const d = new Date(hasTime ? s : s+'T00:00:00');
+  if(isNaN(d)) return esc(s);
+  const dateFmt = d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+  if(!hasTime) return esc(dateFmt);
+  const timeFmt = d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+  return esc(dateFmt+' · '+timeFmt);
+}
 function kindColor(kind){
   const palette=['#58a6ff','#3fb950','#d29922','#f778ba','#a371f7','#39c5cf','#f85149','#8b949e'];
   let h=0; for(const c of String(kind)) h=(h*31+c.charCodeAt(0))>>>0;
@@ -234,26 +250,52 @@ function renderKindChips(){
     .concat(kinds.map(k=>`<button class="chip${activeKind===k?' active':''}" onclick="setKindFilter('${esc(k)}')">${esc(k)}</button>`)).join('');
 }
 function setKindFilter(k){activeKind=k;renderKindChips();renderMemories()}
-function renderMemories(){
-  const rows = activeKind ? memoryRows.filter(r=>r.kind===activeKind) : memoryRows;
-  $('c-memories').textContent=memoryRows.length;
-  $('memoryList').innerHTML = rows.length ? rows.map(r=>`
+function memoryCard(r){
+  return `
     <div class="card">
       <div class="row space">
         <span class="row" style="gap:6px">
           <span class="tag-chip kind" style="background:${kindColor(r.kind)}22;color:${kindColor(r.kind)}">${esc(r.kind)}</span>
           <span class="tag-chip${r.tag==='superseded'?' superseded':''}">${esc(r.tag)}</span>
         </span>
+        <span class="meta" style="margin:0">🕐 ${formatWhen(r.date)}</span>
       </div>
       <p class="memory-text" id="t-${r.memory_id}">${esc(r.text)}</p>
       <div class="meta">
-        <span>📄 ${esc(r.path)}</span><span>·</span><span>${esc(r.subject)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><span>${esc(r.date)}</span><span>·</span><code>${esc(r.memory_id)}</code>
+        <span>📄 ${esc(r.path)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><code>${esc(r.memory_id)}</code>
       </div>
       <div class="card-actions">
         <button class="ghost" onclick="editMemory('${r.memory_id}')">✎ Edit</button>
         <button class="danger-outline" onclick="forgetMemory('${r.memory_id}')">🗑 Forget</button>
       </div>
-    </div>`).join('') : `<div class="empty"><span class="big">🔎</span>No memories found${activeKind?' for "'+esc(activeKind)+'"':''}.</div>`;
+    </div>`;
+}
+function renderMemories(){
+  const rows = activeKind ? memoryRows.filter(r=>r.kind===activeKind) : memoryRows;
+  $('c-memories').textContent=memoryRows.length;
+  if(!rows.length){
+    $('memoryList').innerHTML = `<div class="empty"><span class="big">🔎</span>No memories found${activeKind?' for "'+esc(activeKind)+'"':''}.</div>`;
+    return;
+  }
+  // Group by project/subject so entries about the same thing sit together,
+  // oldest first within a group — the order they actually happened in.
+  const groups = new Map();
+  for(const r of rows){
+    const key = r.subject || 'general';
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for(const g of groups.values()) g.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  // Most recently active project first.
+  const ordered = [...groups.entries()].sort((a,b)=>{
+    const la=a[1][a[1].length-1].date, lb=b[1][b[1].length-1].date;
+    return la<lb?1:la>lb?-1:0;
+  });
+  $('memoryList').innerHTML = ordered.map(([subject,items])=>`
+    <div class="project-group">
+      <div class="project-head"><h3>${esc(subject)}</h3><span class="badge">${items.length}</span></div>
+      <div class="grid">${items.map(memoryCard).join('')}</div>
+    </div>`).join('');
 }
 async function loadMemories(){
   const q=$('search').value.trim();
@@ -284,7 +326,7 @@ async function loadPending(){
         </span>
       </div>
       <p class="memory-text">${esc(r.text)}</p>
-      <div class="meta"><span>${esc(r.subject)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><span>${esc(r.created_at)}</span></div>
+      <div class="meta"><span>${esc(r.subject)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><span>🕐 ${formatWhen(r.created_at)}</span></div>
       <div class="card-actions">
         <button class="good-outline" onclick="approve('${r.proposal_id}')">✓ Approve</button>
         <button class="danger-outline" onclick="rejectP('${r.proposal_id}')">✕ Reject</button>
@@ -296,18 +338,24 @@ async function rejectP(id){await guarded(()=>api('/api/pending/'+id+'/reject','P
 async function loadConflicts(){
   const groups=await guarded(()=>api('/api/conflicts'));
   $('c-conflicts').textContent=groups.length;
-  $('conflictList').innerHTML = groups.length ? groups.map(g=>`
+  $('conflictList').innerHTML = groups.length ? groups.map(g=>{
+    // Backend already returns each group's memories oldest-first (creation order),
+    // so the last one is the most recent — flag it to make "which do I keep" fast.
+    const lastIdx = g.memories.length-1;
+    return `
     <div class="conflict-group">
       <h3>⚡ ${esc(g.kind)} · ${esc(g.subject)}</h3>
-      ${g.memories.map(m=>`
-        <div class="conflict-item">
+      ${g.memories.map((m,i)=>`
+        <div class="conflict-item${i===lastIdx?'':' stale'}">
+          ${i===lastIdx?'<span class="recent-badge">🕐 Most recent</span>':''}
           <p class="memory-text">${esc(m.text)}</p>
-          <div class="meta"><span>${esc(m.writer)}</span><span>·</span><span>${esc(m.date)}</span><span>·</span><code>${esc(m.memory_id)}</code></div>
+          <div class="meta"><span>${esc(m.writer)}</span><span>·</span><span>${formatWhen(m.date)}</span><span>·</span><code>${esc(m.memory_id)}</code></div>
           <div class="card-actions" style="justify-content:flex-start;margin-top:9px">
             <button class="good-outline" onclick="resolveConflict('${m.memory_id}')">Keep this as current</button>
           </div>
         </div>`).join('')}
-    </div>`).join('') : `<div class="empty"><span class="big">🎉</span>No potential conflicts detected.</div>`;
+    </div>`;
+  }).join('') : `<div class="empty"><span class="big">🎉</span>No potential conflicts detected.</div>`;
 }
 async function resolveConflict(id){
   const ok=await confirmModal('Resolve conflict','Keep this memory as current and mark the other entries for the same kind/subject as superseded.','Keep this one',false);
