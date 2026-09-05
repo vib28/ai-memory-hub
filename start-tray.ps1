@@ -1,7 +1,6 @@
 param(
-    [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
-    [string]$VaultPath
+    [string]$VaultPath = "C:\Users\vibm\OneDrive\Documents\Memory"
 )
 
 $ErrorActionPreference = "Stop"

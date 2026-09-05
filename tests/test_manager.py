@@ -54,6 +54,17 @@ class ManagerTests(unittest.TestCase):
         ))
         self.assertEqual(result["status"], "rejected")
 
+    def test_codex_writer_is_preserved(self):
+        result = self.manager.propose(MemoryCandidate(
+            text="Uses Codex for local development work.",
+            kind="project",
+            tag="stated",
+            subject="development-tooling",
+            writer="codex",
+        ))
+        self.assertEqual(result["status"], "stored")
+        self.assertEqual(result["memory"]["writer"], "codex")
+
     def test_supersede(self):
         old = self.manager.propose(MemoryCandidate(
             text="Uses Windows as the primary development OS.",

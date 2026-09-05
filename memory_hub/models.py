@@ -5,7 +5,7 @@ from typing import Optional
 
 ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision"}
 ALLOWED_TAGS = {"stated", "decided", "inferred", "preference", "constraint", "open", "superseded"}
-ALLOWED_WRITERS = {"chatgpt", "claude", "gemini", "kimi", "cursor", "user", "other"}
+ALLOWED_WRITERS = {"chatgpt", "claude", "codex", "gemini", "kimi", "cursor", "user", "other"}
 
 @dataclass
 class MemoryCandidate:
