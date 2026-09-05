@@ -20,9 +20,11 @@ class SafeJoinTests(unittest.TestCase):
             safe_join(self.root, "../outside.md")
 
     def test_absolute_path_is_confined_to_root(self):
-        # Treated as vault-relative once the leading slash is stripped.
+        # Treated as vault-relative once the leading slash is stripped. Compare
+        # against the resolved root, since safe_join resolves internally and a
+        # temp dir may itself be a symlink/junction (e.g. CI runners' TEMP).
         p = safe_join(self.root, "/topics/thing.md")
-        self.assertTrue(str(p).startswith(str(self.root)))
+        self.assertTrue(str(p).startswith(str(self.root.resolve())))
 
     def test_backslash_traversal_is_rejected(self):
         with self.assertRaises(ValueError):
