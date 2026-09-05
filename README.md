@@ -8,7 +8,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
-![Tests: 7 passing](https://img.shields.io/badge/tests-7%20passing-brightgreen.svg)
+![Tests: 8 passing](https://img.shields.io/badge/tests-8%20passing-brightgreen.svg)
 
 ---
 
@@ -128,12 +128,14 @@ sequenceDiagram
 - 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_forget`, `memory_supersede`, `memory_audit`, `memory_reindex`, `memory_policy`
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
-- 🔁 **Deduplication & conflict detection** by subject, with one-click supersede
-- 🖥️ **Local dashboard** (`127.0.0.1` only) — browse, search, edit, approve/reject, resolve conflicts, run audits
+- 🔁 **Deduplication & conflict detection** by subject — scoped to singleton-fact kinds (`profile`, `preference`), so log-like kinds (`project`, `topic`, `person`, `decision`) can accumulate many distinct facts about the same subject without tripping false-positive conflicts — with one-click supersede
+- 🗃️ **Fragmentation-resistant project routing** — a new subject that's a hyphen-prefixed variant of an existing project file (e.g. `widget-app-ui` → `widget-app.md`) is folded into it instead of forking a new file
+- 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
+- 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals in place of browser `prompt()`/`confirm()`, toast feedback on every action, kind-based filter chips, subject-grouped and chronologically sorted memory lists with a "most recent" badge on conflicts, and a readable audit view instead of raw JSON
 - 🧰 **System-tray launcher** for Windows
-- 🤖 **One script to connect every AI tool** you have installed
+- 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
-- ✅ **7 unit tests** covering the manager, dashboard workflows, and conflict resolution
+- ✅ **8 unit tests** covering the manager, dashboard workflows, and conflict resolution
 
 ## Requirements
 
@@ -361,20 +363,26 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 .\start-dashboard.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 ```
 
-Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. From there you can:
+Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. It's organized as a sidebar with live counts per section, and from there you can:
 
-- browse and search everything stored
-- edit a stored fact in place
-- one-click forget
+- browse everything stored, grouped by subject and sorted chronologically within each group
+- search across the vault
+- edit a stored fact in place, via an in-page modal (no browser `prompt()`/`confirm()` popups)
+- one-click forget, with toast feedback on success/failure
+- filter by kind using the filter chips
 - review and approve/reject queued proposals
-- see likely conflicts (same subject, competing facts) and resolve them by choosing the current version
-- run a vault/index audit or force a reindex
+- see likely conflicts (same subject, competing facts, flagged only for singleton-fact kinds like `profile`/`preference`) with a "🕐 Most recent" badge, and resolve them by choosing the current version
+- run a vault/index audit, shown as a readable summary instead of raw JSON, or force a reindex
+
+`-VaultPath` is optional — omit it and the script defaults to `%USERPROFILE%\OneDrive\Documents\Memory`.
 
 Prefer a system-tray icon instead of a browser tab left open?
 
 ```powershell
 .\start-tray.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 ```
+
+(Same default applies here if `-VaultPath` is omitted.)
 
 ## MCP tools exposed
 

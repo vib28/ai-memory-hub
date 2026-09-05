@@ -1,6 +1,6 @@
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$VaultPath = "C:\Users\vibm\OneDrive\Documents\Memory"
+    [string]$VaultPath = (Join-Path $env:USERPROFILE "OneDrive\Documents\Memory")
 )
 
 $ErrorActionPreference = "Stop"
