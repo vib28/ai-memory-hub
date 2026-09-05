@@ -3,11 +3,12 @@
     Registers the AI Memory Hub MCP server with every supported AI CLI found on this machine.
 
 .DESCRIPTION
-    Detects Claude Code, Gemini CLI, Qwen Code, Codex CLI, and Kimi Code, then:
+    Detects Claude Code, Gemini CLI, Qwen Code, Codex CLI, Kimi Code, and Hermes Agent, then:
       1. Registers ai-memory-hub as an MCP server (user/global scope) for each one found.
       2. Installs the matching client-prompts/<tool>.md behavioral instructions into that
-         tool's global memory/instructions file, so it knows to search and propose memories
-         automatically without being told "remember this" every time.
+         tool's global memory/instructions file — or, for Hermes Agent, installs the
+         ai-memory-hub SKILL.md into its skills directory — so it knows to search and
+         propose memories automatically without being told "remember this" every time.
 
     Run .\setup.ps1 first — this script requires the .venv it creates.
 
@@ -137,7 +138,13 @@ if ($claudeLauncher) {
         }
     }
     catch {
-        $results.Add("[failed]    Claude Code ($($_.Exception.Message))")
+        if (Test-AlreadyRegistered $_.Exception.Message) {
+            Install-Instructions "$HOME\.claude\CLAUDE.md" "claude.md"
+            $results.Add("[connected] Claude Code")
+        }
+        else {
+            $results.Add("[failed]    Claude Code ($($_.Exception.Message))")
+        }
     }
 }
 else {
@@ -162,7 +169,13 @@ if ($geminiLauncher) {
         }
     }
     catch {
-        $results.Add("[failed]    Gemini CLI ($($_.Exception.Message))")
+        if (Test-AlreadyRegistered $_.Exception.Message) {
+            Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
+            $results.Add("[connected] Gemini CLI")
+        }
+        else {
+            $results.Add("[failed]    Gemini CLI ($($_.Exception.Message))")
+        }
     }
 }
 else {
@@ -272,6 +285,65 @@ else {
     $results.Add("[skipped]   Kimi Code (not found on PATH)")
 }
 
+# --- Hermes Agent ------------------------------------------------------------
+# Hermes Agent (Nous Research) has a native MCP client and discovers skills by
+# scanning its skills/ directory. Two things are needed: register ai-memory-hub
+# as an MCP server, AND install the ai-memory-hub SKILL.md (Hermes does not read
+# client-prompts/). Hermes needs a distinct server name (ai_memory_hub) because it
+# prefixes tools mcp_{server}_{tool}.
+$hermesLauncher = Resolve-CliLauncher "hermes"
+if ($hermesLauncher) {
+    $hermesServer = "ai_memory_hub"
+    try {
+        $hermesConfig = (& hermes config path 2>&1 | Out-String).Trim()
+        if (-not $hermesConfig -or -not (Test-Path $hermesConfig)) {
+            throw "Could not resolve Hermes config path ('hermes config path')."
+        }
+        $hermesHome = Split-Path -Parent $hermesConfig
+        $skillDestDir = Join-Path $hermesHome "skills\productivity\ai-memory-hub"
+        $skillSource = Join-Path $Root "hermes\skills\ai-memory-hub\SKILL.md"
+
+        $mcpList = (& hermes mcp list 2>&1 | Out-String)
+        if ($mcpList -match [regex]::Escape($hermesServer)) {
+            $results.Add("[connected] Hermes Agent (server already registered)")
+        }
+        else {
+            # --env MUST precede --args (args is the greedy last option), or the
+            # env vars get swallowed into args and the server loses its vault.
+            $regOut = "Y" | & $hermesLauncher mcp add $hermesServer `
+                --env "AI_MEMORY_VAULT=$VaultPath" `
+                --env "MEMORY_WRITER=hermes" `
+                --env "MEMORY_WRITE_MODE=$WriteMode" `
+                --command $Python `
+                --args -m memory_hub.mcp_server 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0 -and $regOut -match "Saved '$hermesServer'") {
+                $results.Add("[connected] Hermes Agent")
+            }
+            else {
+                $results.Add("[failed]    Hermes Agent (exit ${LASTEXITCODE}): $($regOut.Trim())")
+            }
+        }
+
+        # Install the skill regardless (idempotent refresh to this repo's copy).
+        if (Test-Path $skillSource) {
+            if (-not (Test-Path $skillDestDir)) {
+                New-Item -ItemType Directory -Force -Path $skillDestDir | Out-Null
+            }
+            Copy-Item -Force -Path $skillSource -Destination (Join-Path $skillDestDir "SKILL.md")
+            $results.Add("[skill]     Hermes Agent -> $skillDestDir\SKILL.md")
+        }
+        else {
+            $results.Add("[failed]    Hermes Agent (skill source missing: $skillSource)")
+        }
+    }
+    catch {
+        $results.Add("[failed]    Hermes Agent ($($_.Exception.Message))")
+    }
+}
+else {
+    $results.Add("[skipped]   Hermes Agent (not found on PATH)")
+}
+
 # --- Summary -----------------------------------------------------------
 Write-Host ""
 Write-Host "AI Memory Hub connection summary"
@@ -288,8 +360,9 @@ Write-Host "See client-prompts/ and README.md."
 Write-Host ""
 Write-Host "IMPORTANT: each tool reads its MCP server list once, at session start."
 Write-Host "If you already had a Claude Code / Gemini CLI / Qwen Code / Codex CLI /"
-Write-Host "Kimi Code window open, close that session and start a new one - it will not"
-Write-Host "see ai-memory-hub until it does. New sessions pick it up automatically."
+Write-Host "Kimi Code / Hermes Agent session open, close it and start a new one - it"
+Write-Host "will not see ai-memory-hub until it does. New sessions pick it up"
+Write-Host "automatically (Hermes also auto-loads the skill when relevant)."
 if ($results | Where-Object { $_ -like "*Gemini CLI*" -and $_ -like "*connected*" }) {
     Write-Host ""
     Write-Host "Gemini CLI note: it disables ALL MCP servers in a folder it doesn't yet"

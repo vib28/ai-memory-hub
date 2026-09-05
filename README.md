@@ -8,7 +8,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
-![Tests: 8 passing](https://img.shields.io/badge/tests-8%20passing-brightgreen.svg)
+![Tests: 13 passing](https://img.shields.io/badge/tests-13%20passing-brightgreen.svg)
 
 ---
 
@@ -21,6 +21,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 | Qwen Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
 | Gemini CLI | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | if installed |
 | Kimi Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | edits `mcp.json` directly — no CLI command for this yet |
+| Hermes Agent | stdio | [`connect-ai-tools.ps1`](#hermes-agent) | registers the MCP server **and** installs the behavioral skill |
 | ChatGPT (desktop app) | Streamable HTTP, via OpenAI's Secure MCP Tunnel | [`connect-chatgpt-tunnel.ps1`](#chatgpt-desktop-app) | needs a one-time OpenAI account setup first |
 | Cursor, Windsurf, JetBrains AI, or anything else MCP-capable | stdio | [manual, 3 steps](#connect-any-other-mcp-tool) | |
 | ChatGPT, or any tool without MCP access at all | — | [transcript ingestion](#transcript-ingestion-no-live-mcp-connection-needed) | fully local fallback, works with any tool |
@@ -37,6 +38,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Quick start](#quick-start)
 - [Connect your AI tools](#connect-your-ai-tools)
   - [Connected automatically by `connect-ai-tools.ps1`](#connected-automatically-by-connect-ai-toolsps1)
+  - [Hermes Agent](#hermes-agent)
   - [Already have a session open?](#already-have-a-session-open)
   - [ChatGPT (desktop app)](#chatgpt-desktop-app)
 - [Connect any other MCP tool](#connect-any-other-mcp-tool)
@@ -135,7 +137,7 @@ sequenceDiagram
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
-- ✅ **8 unit tests** covering the manager, dashboard workflows, and conflict resolution
+- ✅ **13 unit tests** covering the manager, dashboard workflows, and conflict resolution
 
 ## Requirements
 
@@ -208,18 +210,53 @@ Want the click-by-click version, including installing Python and Obsidian from s
 | **Qwen Code** | ✅ | `~/.qwen/QWEN.md` |
 | **Gemini CLI** | ✅ (if installed) — see the workspace-trust note below | `~/.gemini/GEMINI.md` |
 | **Kimi Code** | ✅ (edits `~/.kimi-code/mcp.json` directly — Kimi has no `mcp add` CLI command yet) | `~/.kimi-code/AGENTS.md` |
+| **Hermes Agent** | ✅ (if installed) — registers the server *and* installs the [`ai-memory-hub` skill](#hermes-agent) | `<Hermes-home>/skills/productivity/ai-memory-hub/SKILL.md` |
 
 These are all developer CLIs that launch the server themselves as a **local stdio subprocess** — the script just tells each one what command to run. ChatGPT's desktop app works differently; see below.
 
 > **Gemini CLI only:** it disables *all* MCP servers — including user-level ones like this one — in any folder it doesn't yet trust, to prevent an untrusted project from silently running tools. The first time you launch `gemini` in a given folder, answer its workspace-trust prompt (or pass `--skip-trust` for a one-off session). Run `gemini mcp list` any time to check whether `ai-memory-hub` shows as enabled or disabled for the folder you're in.
 
+### Hermes Agent
+
+[Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research's agent — CLI, desktop app, or messaging gateway) joins the same shared memory through its native MCP client. It's wired up by the same `connect-ai-tools.ps1` as the other CLIs — when the `hermes` CLI is on `PATH`, the script does two things for it:
+
+1. **Registers `ai-memory-hub` as an MCP server** in Hermes' config, pointing at this repo's `.venv` and your vault. On Hermes' next session the tools appear as `mcp_ai_memory_hub_memory_search`, `mcp_ai_memory_hub_memory_propose`, etc.
+2. **Installs a behavioral skill** — Hermes does not read `client-prompts/`; the equivalent mechanism is a **skill** (a `SKILL.md` under Hermes' `skills/` directory) that auto-loads into a session whenever the task involves durable user context. The skill encodes the same search/propose rules as [`client-prompts/hermes.md`](client-prompts/hermes.md), so Hermes searches the vault and proposes durable memories *without* being told "remember this" — matching the other clients.
+
+So there's no separate command — just run the normal one, and Hermes is picked up alongside everything else if it's installed:
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Memory"
+
+# Or fully automatic mode instead of review:
+.\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Memory" -WriteMode auto
+```
+
+Prerequisites: this repo's `.venv` (run `.\setup.ps1` first) and the `hermes` CLI on `PATH`. The script is **idempotent** — re-running it leaves an already-registered server alone and simply refreshes the installed skill to this repo's copy.
+
+**How it works, concretely:**
+
+- The MCP server is launched as a local stdio subprocess. Hermes deliberately filters the subprocess environment, so the script passes the vault path, writer identity, and write mode explicitly via `--env` (which must appear *before* `--args`, or the flags are swallowed into the args list and the server silently loses its vault).
+- Hermes prefixes MCP tools `mcp_{server}_{tool}`, so it's registered under the distinct server name `ai_memory_hub` (underscore) rather than the `ai-memory-hub` the other CLIs use — avoiding a hyphen-to-underscore collision in tool names.
+- The skill is copied to `<Hermes-home>/skills/productivity/ai-memory-hub/SKILL.md`, where `<Hermes-home>` is resolved from `hermes config path`. Hermes discovers skills by scanning that directory; a new session auto-loads `ai-memory-hub` when relevant.
+- Writer identity is `hermes` — a first-class `ALLOWED_WRITERS` value — so entries you approve carry a `hermes` source tag, exactly like `claude`, `codex`, etc.
+
+Verify any time:
+
+```powershell
+hermes mcp list
+hermes mcp test ai_memory_hub
+```
+
+> **Important:** Hermes reads its MCP server list once, at session start. If you have a Hermes session already open, close it and start a new one — it won't see `ai-memory-hub` until it does. Sessions started *after* the script pick it up automatically, and the skill auto-loads on its own.
+
 ### Already have a session open?
 
-Every tool above reads its MCP server list once, when that session starts — none of them watch their config file for changes mid-session. So after running `connect-ai-tools.ps1` (or `connect-chatgpt-tunnel.ps1`), **any Claude Code, Gemini CLI, Qwen Code, Codex CLI, or Kimi Code window you already had open needs a new session** before it can see `ai-memory-hub` — close that chat and run the same command again to start a fresh one. This isn't reinstalling or restarting an application, just starting a new conversation; a session you open *after* running the script picks it up immediately, no action needed. ChatGPT is the exception — there's no "session" to restart, just enable the connector once in Settings as described above and the running tunnel stays connected.
+Every tool above reads its MCP server list once, when that session starts — none of them watch their config file for changes mid-session. So after running `connect-ai-tools.ps1` (or `connect-chatgpt-tunnel.ps1`), **any Claude Code, Gemini CLI, Qwen Code, Codex CLI, Kimi Code, or Hermes Agent session you already had open needs a new session** before it can see `ai-memory-hub` — close that chat and run the same command again to start a fresh one. This isn't reinstalling or restarting an application, just starting a new conversation; a session you open *after* running the script picks it up immediately, no action needed. ChatGPT is the exception — there's no "session" to restart, just enable the connector once in Settings as described above and the running tunnel stays connected.
 
 ### Refresh revised instructions
 
-After updating this project, rerun `connect-ai-tools.ps1` to replace the managed AI Memory Hub instruction block in each detected CLI's global instructions file. Then start a new session in Claude Code, Codex, Qwen, Gemini, or Kimi Code. For ChatGPT, paste the current `client-prompts/chatgpt.md` into Custom Instructions and begin a new conversation. Manually configured MCP hosts likewise need their updated prompt saved and a new session or reload.
+After updating this project, rerun `connect-ai-tools.ps1` — it replaces the managed AI Memory Hub instruction block in each detected CLI's global instructions file *and* refreshes Hermes' installed skill. Then start a new session in Claude Code, Codex, Qwen, Gemini, Kimi Code, or Hermes Agent. For ChatGPT, paste the current `client-prompts/chatgpt.md` into Custom Instructions and begin a new conversation. Manually configured MCP hosts likewise need their updated prompt saved and a new session or reload.
 
 `vault_template/` is used only when a vault is initialized; it never overwrites existing vault files. To adopt a revised `AI_INSTRUCTIONS.md` in an existing vault, review the template and merge its guidance into your vault's copy without replacing your memory content.
 
@@ -266,7 +303,7 @@ Anything that can launch an MCP server over stdio can join the same shared memor
 
 1. **Point it at the server.** Copy [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json), then set only your Python path, vault path, writer identity, and write mode in the host's MCP settings. The configuration contains no credentials.
 
-2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi), use its dedicated file instead — it's identical except for the writer identity.
+2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi, Hermes), use its dedicated file instead — it's identical except for the writer identity.
 
 3. **Restart the tool** so it picks up the new MCP server, then ask it something a durable memory would help with.
 
@@ -280,7 +317,7 @@ python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer ch
 
 Copy a conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below), and candidates get extracted and validated exactly like anything proposed over MCP — nothing leaves your machine.
 
-`--writer` preserves the built-in client identities (`chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `user`, or `other`) in the stored `source:` tag. Unknown values are recorded as `other`.
+`--writer` preserves the built-in client identities (`chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `hermes`, `user`, or `other`) in the stored `source:` tag. Unknown values are recorded as `other`.
 
 ## Connect Ollama or LM Studio
 
@@ -463,7 +500,8 @@ python -m memory_hub.mcp_server
 ai-memory-hub/
 ├─ memory_hub/              # manager, vault, index, security, MCP server, dashboard, tray, CLI
 ├─ vault_template/          # the Markdown skeleton a fresh vault is seeded with
-├─ client-prompts/          # per-tool behavioral instructions (claude, codex, qwen, gemini, kimi, chatgpt, generic)
+├─ client-prompts/          # per-tool behavioral instructions (claude, codex, qwen, gemini, kimi, hermes, chatgpt, generic)
+├─ hermes/                  # Hermes Agent skill source (skills/ai-memory-hub/SKILL.md), installed by connect-ai-tools.ps1
 ├─ examples/                # sample transcript + generic MCP host config
 ├─ tests/                   # unit tests (unittest)
 ├─ install.ps1              # one-line irm | iex bootstrap: download + setup + connect
@@ -487,6 +525,7 @@ flowchart TD
     Start --> Qwen["Try: Qwen Code"]
     Start --> Codex["Try: Codex CLI"]
     Start --> Kimi["Try: Kimi Code"]
+    Start --> Hermes["Try: Hermes Agent"]
 
     Claude -->|"exit code checked"| R1{"ok?"}
     R1 -- yes --> C1["[connected]"]
@@ -497,9 +536,15 @@ flowchart TD
     K1 -- no --> K2["back up the bad file,<br/>rebuild fresh, continue"]
     K2 --> C2
 
+    Hermes --> H1{"already registered?"}
+    H1 -- no --> H2["hermes mcp add + install skill"]
+    H1 -- yes --> H2
+    H2 --> C3["[connected] + [skill]"]
+
     C1 --> Summary["Summary printed for every tool"]
     F1 --> Summary
     C2 --> Summary
+    C3 --> Summary
     Summary --> Exit{"any [failed]?"}
     Exit -- yes --> E1["exit code 1"]
     Exit -- no --> E0["exit code 0"]
@@ -508,7 +553,7 @@ flowchart TD
 What that means in practice:
 
 - **A failed native command is never mistaken for success.** `$ErrorActionPreference = "Stop"` only catches PowerShell's own errors — it does nothing for a `.exe`/`.cmd` that exits non-zero. Every script checks the actual exit code after calling Python, pip, or an AI tool's CLI, rather than assuming the next line means everything worked.
-- **One tool's failure doesn't block the rest.** `connect-ai-tools.ps1` tries Claude, Gemini, Qwen, Codex, and Kimi independently. If one genuinely fails, it's reported as `[failed]` with the reason, and the others still get attempted.
+- **One tool's failure doesn't block the rest.** `connect-ai-tools.ps1` tries Claude, Gemini, Qwen, Codex, Kimi, and Hermes independently. If one genuinely fails, it's reported as `[failed]` with the reason, and the others still get attempted.
 - **"Already connected" isn't treated as an error.** Some CLIs (Claude Code, for one) exit non-zero when the server is already registered. That's recognized and reported as `[connected]`, not `[failed]`.
 - **A corrupted config gets backed up, not blown away.** If Kimi's `mcp.json` isn't valid JSON (hand-edited and broken, for instance), the script copies it to a timestamped `.bak` file next to it and rebuilds a fresh config, rather than crashing or silently overwriting something you might have wanted to recover.
 - **Scripts are safe to run again.** Re-running `connect-ai-tools.ps1` after changing your vault path or write mode just re-registers everything. `connect-chatgpt-tunnel.ps1` passes `--force` to `tunnel-client init` for the same reason — without it, a second run fails outright with "profile already exists".
