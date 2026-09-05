@@ -134,6 +134,49 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(new["status"], "stored")
         self.assertEqual(self.manager.index.by_id(old_id)["tag"], "superseded")
 
+    def test_reserved_target_path_is_rejected(self):
+        for reserved in ("/MEMORY.md", "/AI_INSTRUCTIONS.md", "ai_instructions.md"):
+            result = self.manager.propose(MemoryCandidate(
+                text="Attempt to plant instructions for all connected tools.",
+                kind="topic",
+                tag="stated",
+                subject="whatever",
+                writer="other",
+                target_path=reserved,
+            ))
+            self.assertEqual(result["status"], "rejected", reserved)
+            self.assertIn("reserved", result["reason"])
+
+    def test_near_duplicate_update_is_surfaced_not_silently_dropped(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Uses Python 3.11 for local development.",
+            kind="profile",
+            tag="stated",
+            subject="python-version",
+            writer="chatgpt",
+        ))
+        self.assertEqual(first["status"], "stored")
+
+        near = self.manager.propose(MemoryCandidate(
+            text="Uses Python 3.12 for local development.",
+            kind="profile",
+            tag="stated",
+            subject="python-version",
+            writer="chatgpt",
+        ))
+        self.assertEqual(near["status"], "possible_update")
+        self.assertEqual(near["memory"]["memory_id"], first["memory"]["memory_id"])
+
+        applied = self.manager.supersede(near["memory"]["memory_id"], MemoryCandidate(
+            text="Uses Python 3.12 for local development.",
+            kind="profile",
+            tag="stated",
+            subject="python-version",
+            writer="chatgpt",
+        ))
+        self.assertEqual(applied["status"], "stored")
+        self.assertEqual(self.manager.index.by_id(first["memory"]["memory_id"])["tag"], "superseded")
+
     def test_audit_healthy(self):
         self.manager.propose(MemoryCandidate(
             text="Prefers Python for small automation tools.",

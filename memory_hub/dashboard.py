@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import threading
 import webbrowser
 from http import HTTPStatus
@@ -176,8 +177,11 @@ const $=id=>document.getElementById(id);
 const TITLES={memories:['Memories','Everything currently stored in your vault'],pending:['Review queue','Proposals waiting for approval'],conflicts:['Conflicts','Memories that disagree with each other'],audit:['Vault health','Consistency check across files and index']};
 let currentTab='memories', memoryRows=[], activeKind=null, searchTimer=null;
 
+const LAUNCH_TOKEN='__LAUNCH_TOKEN__';
 async function api(path,method='GET',body=null){
-  const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):null});
+  const headers={'Content-Type':'application/json'};
+  if(method!=='GET') headers['X-Launch-Token']=LAUNCH_TOKEN;
+  const r=await fetch(path,{method,headers,body:body?JSON.stringify(body):null});
   let j={}; try{j=await r.json()}catch(e){}
   if(!r.ok) throw new Error(j.error||r.statusText);
   return j;
@@ -413,9 +417,26 @@ def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[d
 
 class DashboardHandler(BaseHTTPRequestHandler):
     manager: MemoryManager = None  # type: ignore
+    # Random per-launch token the page must echo back on every state-changing
+    # request, plus the exact Host values this server considers itself bound to.
+    # Localhost binding alone does not stop DNS rebinding or cross-origin POSTs
+    # from a page the browser merely happens to have open (#6).
+    launch_token: str = ""
+    allowed_hosts: frozenset = frozenset()
 
     def log_message(self, format, *args):
         return
+
+    def _origin_ok(self) -> bool:
+        host = self.headers.get("Host", "")
+        if host not in self.allowed_hosts:
+            return False
+        origin = self.headers.get("Origin")
+        if origin:
+            if urlparse(origin).netloc not in self.allowed_hosts:
+                return False
+        token = self.headers.get("X-Launch-Token", "")
+        return secrets.compare_digest(token, self.launch_token)
 
     def _json(self, payload, status=200):
         data = json.dumps(payload, ensure_ascii=False).encode()
@@ -434,7 +455,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/":
-            data = HTML.encode()
+            data = HTML.replace("__LAUNCH_TOKEN__", self.launch_token).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
@@ -457,6 +478,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        if not self._origin_ok():
+            return self._json({"error": "forbidden: bad host/origin/launch token"}, 403)
         try:
             body = self._body()
             parts = [p for p in u.path.split("/") if p]
@@ -478,6 +501,9 @@ def serve(vault: str, host: str = "127.0.0.1", port: int = 8765, open_browser: b
     manager = MemoryManager(vault)
     manager.reindex()
     DashboardHandler.manager = manager
+    DashboardHandler.launch_token = secrets.token_urlsafe(24)
+    loopback_names = {host, "127.0.0.1", "localhost"} if host in ("127.0.0.1", "localhost", "0.0.0.0") else {host}
+    DashboardHandler.allowed_hosts = frozenset(f"{h}:{port}" for h in loopback_names)
     httpd = ThreadingHTTPServer((host, port), DashboardHandler)
     url = f"http://{host}:{port}/"
     if open_browser:

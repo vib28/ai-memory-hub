@@ -9,6 +9,10 @@ from typing import Iterable
 from .models import MemoryRecord
 from .utils import atomic_write, file_lock, safe_join, slugify
 
+# Files every connected AI tool trusts as instructions/index rather than ordinary
+# memory content. Never writable via a caller-supplied target_path (issue #2).
+RESERVED_FILENAMES = {"memory.md", "ai_instructions.md"}
+
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 ENTRY_RE = re.compile(
     r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
@@ -194,19 +198,17 @@ class Vault:
             return subject_slug
         return min(related, key=len)
 
-    def ensure_file(self, relative: str, kind: str, writer: str) -> Path:
+    def append_entry(self, relative: str, line: str, *, kind: str, writer: str) -> None:
         p = self.resolve(relative)
         p.parent.mkdir(parents=True, exist_ok=True)
-        if not p.exists():
-            title = p.stem.replace("-", " ").title()
-            initial = ensure_metadata(f"\n# {title}\n", kind=kind, writer=writer)
-            atomic_write(p, initial)
-        return p
-
-    def append_entry(self, relative: str, line: str, *, kind: str, writer: str) -> None:
-        p = self.ensure_file(relative, kind, writer)
+        # File creation happens *inside* the lock: two writers racing on a brand-new
+        # file must not each write their own skeleton outside a critical section (#7).
         with file_lock(p):
-            current = p.read_text(encoding="utf-8")
+            if p.exists():
+                current = p.read_text(encoding="utf-8")
+            else:
+                title = p.stem.replace("-", " ").title()
+                current = f"\n# {title}\n"
             current = ensure_metadata(current, kind=kind, writer=writer).rstrip() + "\n"
             if line not in current:
                 if not current.endswith("\n\n"):

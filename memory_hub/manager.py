@@ -9,7 +9,7 @@ from .index import MemoryIndex
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
 from .utils import normalize_text, slugify, text_hash
-from .vault import Vault, ENTRY_RE, parse_records, ensure_metadata, now_stamp
+from .vault import Vault, ENTRY_RE, RESERVED_FILENAMES, parse_records, ensure_metadata, now_stamp
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -81,26 +81,55 @@ class MemoryManager:
             return {"status": "rejected", "reason": "automatic inferred memories are disabled by default"}
         return None
 
-    def _near_duplicate(self, text: str, threshold: float = 0.93):
+    # Ratio at/above this is treated as the same fact restated verbatim: a genuine
+    # duplicate, safe to hard-block. Ratio in the DUPLICATE_UPDATE_BAND below this
+    # is close enough to be the same subject but differs by a token (a version
+    # bump, a spelling fix) — that's an *update* the user likely wants applied,
+    # not a duplicate to silently drop, so it is routed to review instead (#3).
+    TRUE_DUPLICATE_THRESHOLD = 0.985
+    DUPLICATE_UPDATE_BAND = 0.85
+
+    def _near_duplicate(self, text: str, kind: str, threshold: float):
         norm = normalize_text(text)
+        best_row, best_ratio = None, 0.0
         for row in self.index.all_rows():
-            if row["tag"] == "superseded":
+            if row["tag"] == "superseded" or row["kind"] != kind:
                 continue
             ratio = SequenceMatcher(None, norm, normalize_text(row["text"])).ratio()
-            if ratio >= threshold:
-                return row, ratio
-        return None, 0.0
+            if ratio >= threshold and ratio > best_ratio:
+                best_row, best_ratio = row, ratio
+        return best_row, best_ratio
+
+    def _duplicate_or_update(self, candidate: MemoryCandidate):
+        """Returns (status_dict, near_update_row_or_None). status_dict is set only
+        for a genuine, hard-blocking duplicate; near_update_row is set when a close
+        but not identical match exists so the caller can route it for review."""
+        exact = self.index.exact_hash(text_hash(candidate.text))
+        if exact:
+            return {"status": "duplicate", "memory": exact}, None
+        dup, score = self._near_duplicate(candidate.text, candidate.kind, self.TRUE_DUPLICATE_THRESHOLD)
+        if dup:
+            return {"status": "duplicate", "similarity": round(score, 3), "memory": dup}, None
+        if candidate.supersedes_id:
+            return None, None
+        update, uscore = self._near_duplicate(candidate.text, candidate.kind, self.DUPLICATE_UPDATE_BAND)
+        if update:
+            return None, (update, uscore)
+        return None, None
 
     def queue(self, candidate: MemoryCandidate) -> dict:
         problem = self._validate(candidate)
         if problem:
             return problem
-        exact = self.index.exact_hash(text_hash(candidate.text))
-        if exact:
-            return {"status": "duplicate", "memory": exact}
-        near, score = self._near_duplicate(candidate.text)
-        if near:
-            return {"status": "duplicate", "similarity": round(score, 3), "memory": near}
+        blocked, update = self._duplicate_or_update(candidate)
+        if blocked:
+            return blocked
+        if update:
+            match, score = update
+            candidate.supersedes_id = match["memory_id"]
+            row = self.index.enqueue(candidate.to_dict())
+            return {"status": "queued_as_update", "similarity": round(score, 3),
+                    "supersedes": match["memory_id"], "proposal": row}
         dup = self.index.pending_duplicate(candidate.text, candidate.subject, candidate.kind)
         if dup:
             return {"status": "already_pending", "proposal": dup}
@@ -111,17 +140,21 @@ class MemoryManager:
         problem = self._validate(candidate)
         if problem:
             return problem
-        exact = self.index.exact_hash(text_hash(candidate.text))
-        if exact:
-            return {"status": "duplicate", "memory": exact}
-        near, score = self._near_duplicate(candidate.text)
-        if near:
-            return {"status": "duplicate", "similarity": round(score, 3), "memory": near}
+        blocked, update = self._duplicate_or_update(candidate)
+        if blocked:
+            return blocked
+        if update:
+            match, score = update
+            return {"status": "possible_update", "similarity": round(score, 3), "memory": match,
+                     "hint": "Nearly identical to an existing memory. Call supersede() with this "
+                             "memory_id (or set supersedes_id) if this is meant to update it."}
 
         relative = candidate.target_path or self.vault.canonical_path(candidate.kind, candidate.subject)
         relative = "/" + relative.replace("\\", "/").lstrip("/")
         if not relative.endswith(".md"):
             return {"status": "rejected", "reason": "target_path must be a Markdown file"}
+        if Path(relative).name.lower() in RESERVED_FILENAMES:
+            return {"status": "rejected", "reason": f"target_path may not write to reserved file: {relative}"}
         self.vault.resolve(relative)
 
         if candidate.supersedes_id:

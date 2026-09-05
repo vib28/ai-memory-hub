@@ -1,11 +1,15 @@
+import http.client
+import json
 import tempfile
+import threading
 import unittest
+from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 from pathlib import Path
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
-from memory_hub.dashboard import HTML, memory_rows_for_dashboard
+from memory_hub.dashboard import HTML, DashboardHandler, memory_rows_for_dashboard
 
 class DashboardFeatureTests(unittest.TestCase):
     def setUp(self):
@@ -91,6 +95,58 @@ class DashboardFeatureTests(unittest.TestCase):
         older_search = memory_rows_for_dashboard(self.manager, "Vintageonly")
         self.assertEqual(len(older_search), 1)
         self.assertFalse(older_search[0]["is_most_recent"])
+
+class DashboardOriginProtectionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.manager = MemoryManager(self.vault)
+        template = Path(__file__).resolve().parent.parent / "vault_template"
+        self.manager.initialize(template)
+
+        DashboardHandler.manager = self.manager
+        DashboardHandler.launch_token = "test-token"
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), DashboardHandler)
+        DashboardHandler.allowed_hosts = frozenset({f"127.0.0.1:{self.httpd.server_address[1]}"})
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.thread.join(timeout=5)
+        self.httpd.server_close()
+        self.manager.close()
+        self.tmp.cleanup()
+
+    def _post(self, path, headers, payload=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1])
+        conn.request("POST", path, body=json.dumps(payload or {}), headers=headers)
+        resp = conn.getresponse()
+        status, body = resp.status, resp.read()
+        conn.close()
+        return status, body
+
+    def test_post_without_launch_token_is_rejected(self):
+        status, _ = self._post("/api/conflict/resolve", {"Host": f"127.0.0.1:{self.httpd.server_address[1]}"})
+        self.assertEqual(status, 403)
+
+    def test_post_with_foreign_origin_is_rejected(self):
+        headers = {
+            "Host": f"127.0.0.1:{self.httpd.server_address[1]}",
+            "X-Launch-Token": "test-token",
+            "Origin": "http://evil.example",
+        }
+        status, _ = self._post("/api/conflict/resolve", headers)
+        self.assertEqual(status, 403)
+
+    def test_post_with_correct_token_and_host_is_accepted(self):
+        headers = {
+            "Host": f"127.0.0.1:{self.httpd.server_address[1]}",
+            "X-Launch-Token": "test-token",
+        }
+        status, body = self._post("/api/conflict/resolve", headers, {"keep_id": "does-not-exist"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["status"], "not_found")
 
 if __name__ == "__main__":
     unittest.main()

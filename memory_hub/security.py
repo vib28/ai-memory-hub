@@ -15,13 +15,37 @@ SECRET_PATTERNS = [
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "GitHub token"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access key"),
     (re.compile(r"\b(?:seed phrase|mnemonic)\b\s*[:=]\s*(?:[a-z]+\s+){7,}[a-z]+", re.I), "seed phrase"),
-    (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "possible payment/account number"),
 ]
 
 HIGH_RISK_LABELS = re.compile(
     r"\b(?:aadhaar|aadhar|pan number|passport number|bank account|routing number|cvv|pin code for account)\b",
     re.I,
 )
+
+# Candidate payment-card-shaped runs: 13-19 digits, optionally split by spaces or
+# hyphens only every 4 digits (real card formatting), never at arbitrary offsets.
+# This alone still matches plenty of non-card numbers (IDs, ranges), so a Luhn
+# check below decides — real card numbers pass it, and an arbitrary digit run
+# has only ~1-in-10 odds of doing so (issue #4).
+_CARD_CANDIDATE_RE = re.compile(r"\b\d{4}(?:[ -]?\d{4}){2,3}(?:[ -]?\d{1,3})?\b")
+
+def _luhn_ok(digits: str) -> bool:
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+def _looks_like_card(text: str) -> bool:
+    for m in _CARD_CANDIDATE_RE.finditer(text):
+        digits = re.sub(r"[ -]", "", m.group())
+        if 13 <= len(digits) <= 19 and _luhn_ok(digits):
+            return True
+    return False
 
 def check_text(text: str) -> SecurityResult:
     t = text.strip()
@@ -32,6 +56,8 @@ def check_text(text: str) -> SecurityResult:
     for pattern, label in SECRET_PATTERNS:
         if pattern.search(t):
             return SecurityResult(False, f"probable sensitive data detected: {label}")
+    if _looks_like_card(t):
+        return SecurityResult(False, "probable sensitive data detected: possible payment/account number")
     if HIGH_RISK_LABELS.search(t):
         return SecurityResult(False, "probable sensitive identifier")
     return SecurityResult(True, "")
