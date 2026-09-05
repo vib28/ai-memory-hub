@@ -45,6 +45,16 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(approved["status"], "stored")
         self.assertIn("### Next Steps", self.manager.read("/sessions/gemini.md"))
 
+    def test_empty_optional_section_does_not_reject_session(self):
+        result = self.manager.propose_session({
+            "model": "codex", "title": "empty-next-steps", "date": "2026-09-06T23:00:00",
+            "investigated": ["The session writer was tested"],
+            "learned": ["Next Steps may legitimately be empty"],
+            "completed": ["Added regression coverage"],
+            "next_steps": [],
+        }, write_mode="review")
+        self.assertEqual(result["status"], "queued")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -182,10 +182,16 @@ class MemoryManager:
             return {"status": "rejected", "reason": str(exc)}
         if data["model"] not in ALLOWED_WRITERS:
             data["model"] = "other"
-        for key in ("investigated", "learned", "completed", "next_steps"):
-            security = check_text(" ".join(data[key]))
-            if not security.safe:
-                return {"status": "rejected", "reason": security.reason}
+        section_text = " ".join(
+            item
+            for key in ("investigated", "learned", "completed", "next_steps")
+            for item in data[key]
+        )
+        if not section_text:
+            return {"status": "rejected", "reason": "empty memory"}
+        security = check_text(section_text)
+        if not security.safe:
+            return {"status": "rejected", "reason": security.reason}
         subject = slugify(f"{data['model']}-{data['title']}-{data['date']}")
         candidate = MemoryCandidate(" ".join(sum((data[k] for k in ("investigated", "learned", "completed", "next_steps")), [])),
                                     "session", "stated", subject, data["model"])
