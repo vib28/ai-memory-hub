@@ -322,10 +322,6 @@ Give it the behavior prompt the same way as any other tool: [`client-prompts/cha
 
 No account access, or don't want a live connection? See [Transcript ingestion](#transcript-ingestion-no-live-mcp-connection-needed) below — it needs zero extra setup and stays fully local.
 
-### Any other MCP-capable tool
-
-Cursor, Windsurf, VS Code extensions, JetBrains AI Assistant, your own agent, whatever comes next — see [Connect any other MCP tool](#connect-any-other-mcp-tool) below.
-
 ## Connect any other MCP tool
 
 Anything that can launch an MCP server over stdio can join the same shared memory. There's no CLI automation for these (each has its own settings UI/file), but the setup is always the same three steps:
