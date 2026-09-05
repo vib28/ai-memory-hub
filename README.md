@@ -8,7 +8,8 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
-![Tests: 13 passing](https://img.shields.io/badge/tests-13%20passing-brightgreen.svg)
+![Tests: 26 passing](https://img.shields.io/badge/tests-26%20passing-brightgreen.svg)
+[![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
 
 ---
 
@@ -139,10 +140,11 @@ sequenceDiagram
 - 🗃️ **Fragmentation-resistant project routing** — a new subject that's a hyphen-prefixed variant of an existing project file (e.g. `widget-app-ui` → `widget-app.md`) is folded into it instead of forking a new file
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
 - 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped lists with the newest entry first in each group and one most-recent marker per group, and a readable audit view
+- 🔒 **Origin-protected dashboard API** — every state-changing request is checked against the `Host`/`Origin` headers and a random per-launch token, so binding to localhost isn't the only thing standing between the vault and a rogue page in your browser
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
-- ✅ **13 unit tests** covering the manager, dashboard workflows, and conflict resolution
+- ✅ **26 unit tests** covering the manager, dashboard workflows, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
 
@@ -411,7 +413,7 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 .\start-dashboard.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 ```
 
-Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. It's organized as a sidebar with live counts per section, and from there you can:
+Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. Every state-changing request also carries a random token generated at launch and is checked against the `Host`/`Origin` headers, so a malicious page you have open in another tab can't silently approve/reject/forget/edit entries just because the dashboard happens to be running. It's organized as a sidebar with live counts per section, and from there you can:
 
 - browse everything stored, grouped by subject with the newest entry listed first within each group, and the clock marker only on that group's newest entry
 - search across the vault
@@ -447,7 +449,7 @@ Prefer a system-tray icon instead of a browser tab left open?
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |
 
-Every write acquires a per-file lock, re-reads the current file, applies a surgical line-level change, atomically replaces the file, and refreshes the index — so multiple AI tools can share the vault without stepping on each other.
+Every write acquires a per-file lock, re-reads the current file, applies a surgical line-level change, atomically replaces the file, and refreshes the index — so multiple AI tools can share the vault without stepping on each other. If a writer is killed mid-write, the lock it left behind is detected as stale (its PID is no longer running) and stolen by the next writer instead of blocking every future write on that file forever.
 
 ## Memory format & routing
 
@@ -478,8 +480,10 @@ The manager rejects probable:
 - API keys / tokens
 - private keys
 - seed phrases
-- card numbers
+- card numbers (require card-shaped formatting *and* a Luhn checksum, so ordinary long IDs/number ranges aren't flagged)
 - government/account identifiers, when obvious
+
+`AI_INSTRUCTIONS.md` and `MEMORY.md` are reserved: no `target_path` can point a proposed memory at either, so no connected client can plant persistent instructions into the files every other tool reads as canon.
 
 This is defense-in-depth, not a certified DLP system. **Don't use the vault as a secret manager.**
 
@@ -529,6 +533,7 @@ ai-memory-hub/
 ├─ hermes/                  # Hermes Agent skill source (skills/ai-memory-hub/SKILL.md), installed by connect-ai-tools.ps1
 ├─ examples/                # sample transcript + generic MCP host config
 ├─ tests/                   # unit tests (unittest)
+├─ .github/workflows/ci.yml # GitHub Actions: runs the test suite on push/PR (Windows + Ubuntu, Python 3.10-3.12)
 ├─ install.ps1              # one-line irm | iex bootstrap: download + setup + connect
 ├─ setup.ps1 / setup.sh     # create venv, install deps, initialize the vault
 ├─ connect-ai-tools.ps1     # detect installed AI CLIs and wire them all up at once
@@ -536,7 +541,8 @@ ai-memory-hub/
 ├─ start-dashboard.ps1      # launch the local review dashboard
 ├─ start-tray.ps1           # launch the Windows system-tray version
 ├─ INSTALLATION_GUIDE.md    # full guided walkthrough
-└─ QUICK_START.md           # 5-minute version
+├─ QUICK_START.md           # 5-minute version
+└─ FIXLOG.md                # dated log of bug/security fixes, most-to-least important
 ```
 
 ## Reliability: what happens when something goes wrong
