@@ -8,7 +8,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
-![Tests: 26 passing](https://img.shields.io/badge/tests-26%20passing-brightgreen.svg)
+![Tests: 37 passing](https://img.shields.io/badge/tests-37%20passing-brightgreen.svg)
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
 
 ---
@@ -51,6 +51,8 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Transcript ingestion (no live MCP connection needed)](#transcript-ingestion-no-live-mcp-connection-needed)
 - [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
+- [Session summaries](#session-summaries)
+- [Roadmap and planning](#roadmap-and-planning)
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
 - [Memory format & routing](#memory-format--routing)
@@ -135,7 +137,7 @@ sequenceDiagram
 
 - 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
-- 🐛 **Issue tracking** — GitHub issues #2–#11 are closed; the current test suite contains 34 tests
+- 🐛 **Issue tracking** — GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track bug fixes, with #12 covering session-write validation; planned improvements are tracked in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13) and issues #14–#18
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
@@ -146,7 +148,7 @@ sequenceDiagram
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
-- ✅ **26 unit tests** covering the manager, dashboard workflows, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **37 unit tests** covering the manager, dashboard workflows, session summaries, pattern-linked memories, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
 
@@ -409,6 +411,27 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 .\connect-ai-tools.ps1 -VaultPath "<vault>" -WriteMode auto
 ```
 
+## Session summaries
+
+Clients can write a four-section session summary with `session_write`: `Investigated`, `Learned`, `Completed`, and `Next Steps`. Empty individual sections are allowed; a summary is rejected only when all four sections are empty.
+
+Session summaries are stored in a running file per writer, such as `/sessions/codex.md`, and are searchable through the same SQLite-backed `memory_search` index. If a project is supplied, the summary also creates a linked project entry.
+
+Session writes follow the global write mode. In `review` mode, `session_write` returns `status: queued` and the summary must be approved in the dashboard before it appears in the vault. In `auto` mode, it returns `status: stored` and writes immediately. Always inspect the application-level status; a successful MCP transport call alone does not mean that memory was persisted. Rejected writes now surface their reason as an MCP tool error.
+
+## Roadmap and planning
+
+The approved improvement roadmap is tracked in GitHub:
+
+- [Roadmap: Claude integration and session-pattern memory improvements (#13)](https://github.com/vib28/ai-memory-hub/issues/13)
+- [Claude Code lifecycle hooks and local compression (#14)](https://github.com/vib28/ai-memory-hub/issues/14)
+- [Reliable session-summary import and verification (#15)](https://github.com/vib28/ai-memory-hub/issues/15)
+- [Configurable pattern-linked memory proposals (#16)](https://github.com/vib28/ai-memory-hub/issues/16)
+- [Client prompts and integration documentation (#17)](https://github.com/vib28/ai-memory-hub/issues/17)
+- [Review-safe historical pattern backfill (#18)](https://github.com/vib28/ai-memory-hub/issues/18)
+
+Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. The source planning documents currently live outside the repository on the maintainer's workstation; copy stable versions into `docs/plans/` when they should be reviewed by collaborators.
+
 ## The dashboard
 
 ```powershell
@@ -445,6 +468,8 @@ Prefer a system-tray icon instead of a browser tab left open?
 | `memory_search(query, limit=10)` | Search the vault without reading everything |
 | `memory_read(path)` | Read one indexed memory file |
 | `memory_propose(...)` | Propose a durable memory; written immediately or queued, depending on write mode |
+| `session_write(...)` | Write a four-section session summary; stored immediately or queued, depending on write mode |
+| `propose_pattern_match(...)` | Propose a linked project fact and global preference rule for a configured pattern |
 | `memory_forget(memory_id)` | Delete a specific memory by its stable ID |
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |
 | `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, index drift |
@@ -471,6 +496,7 @@ Facts are routed to one canonical home by kind:
 | project | `/projects/<subject>.md` |
 | topic | `/topics/<subject>.md` |
 | decision | `/decisions/<subject>.md` |
+| session | `/sessions/<writer>.md` |
 
 New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. A project first uses an exact matching file. Otherwise, a hyphen-segment prefix match routes to the shortest existing project file (`widget-app-ui` routes to `widget-app.md`); unrelated shared-prefix projects stay separate. A caller may explicitly set `target_path`, which is validated to stay inside the vault and bypasses automatic routing. Existing fragmented files are not merged automatically.
 
