@@ -432,6 +432,8 @@ The approved improvement roadmap is tracked in GitHub:
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. The source planning documents currently live outside the repository on the maintainer's workstation; copy stable versions into `docs/plans/` when they should be reviewed by collaborators.
 
+The session-import workstream includes a supported MCP-based migration utility for historical Codex sessions. It must submit through the public `session_write` workflow and honor `review` versus `auto` mode; internal methods such as `MemoryManager.propose_session()` are not client APIs. See [#15](https://github.com/vib28/ai-memory-hub/issues/15) and the boundary defect [#21](https://github.com/vib28/ai-memory-hub/issues/21).
+
 ## The dashboard
 
 ```powershell
