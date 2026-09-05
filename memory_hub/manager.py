@@ -89,14 +89,17 @@ class MemoryManager:
     TRUE_DUPLICATE_THRESHOLD = 0.985
     DUPLICATE_UPDATE_BAND = 0.85
 
-    def _near_duplicate(self, text: str, kind: str, threshold: float):
+    def _best_match(self, text: str, kind: str):
+        """Single O(n) pass finding the closest same-kind, non-superseded row —
+        classified against both thresholds by the caller, instead of scanning
+        the whole index once per threshold."""
         norm = normalize_text(text)
         best_row, best_ratio = None, 0.0
         for row in self.index.all_rows():
             if row["tag"] == "superseded" or row["kind"] != kind:
                 continue
             ratio = SequenceMatcher(None, norm, normalize_text(row["text"])).ratio()
-            if ratio >= threshold and ratio > best_ratio:
+            if ratio > best_ratio:
                 best_row, best_ratio = row, ratio
         return best_row, best_ratio
 
@@ -104,17 +107,16 @@ class MemoryManager:
         """Returns (status_dict, near_update_row_or_None). status_dict is set only
         for a genuine, hard-blocking duplicate; near_update_row is set when a close
         but not identical match exists so the caller can route it for review."""
-        exact = self.index.exact_hash(text_hash(candidate.text))
+        exact = self.index.exact_hash(text_hash(candidate.text), candidate.kind)
         if exact:
             return {"status": "duplicate", "memory": exact}, None
-        dup, score = self._near_duplicate(candidate.text, candidate.kind, self.TRUE_DUPLICATE_THRESHOLD)
-        if dup:
-            return {"status": "duplicate", "similarity": round(score, 3), "memory": dup}, None
+        match, score = self._best_match(candidate.text, candidate.kind)
+        if match and score >= self.TRUE_DUPLICATE_THRESHOLD:
+            return {"status": "duplicate", "similarity": round(score, 3), "memory": match}, None
         if candidate.supersedes_id:
             return None, None
-        update, uscore = self._near_duplicate(candidate.text, candidate.kind, self.DUPLICATE_UPDATE_BAND)
-        if update:
-            return None, (update, uscore)
+        if match and score >= self.DUPLICATE_UPDATE_BAND:
+            return None, (match, score)
         return None, None
 
     def queue(self, candidate: MemoryCandidate) -> dict:

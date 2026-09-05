@@ -139,6 +139,15 @@ class DashboardOriginProtectionTests(unittest.TestCase):
         status, _ = self._post("/api/conflict/resolve", headers)
         self.assertEqual(status, 403)
 
+    def test_get_with_foreign_host_is_rejected(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1])
+        conn.request("GET", "/api/memories", headers={"Host": "evil.example:1234"})
+        resp = conn.getresponse()
+        status = resp.status
+        resp.read()
+        conn.close()
+        self.assertEqual(status, 403)
+
     def test_post_with_correct_token_and_host_is_accepted(self):
         headers = {
             "Host": f"127.0.0.1:{self.httpd.server_address[1]}",

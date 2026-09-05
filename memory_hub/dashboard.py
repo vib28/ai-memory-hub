@@ -419,22 +419,31 @@ class DashboardHandler(BaseHTTPRequestHandler):
     manager: MemoryManager = None  # type: ignore
     # Random per-launch token the page must echo back on every state-changing
     # request, plus the exact Host values this server considers itself bound to.
-    # Localhost binding alone does not stop DNS rebinding or cross-origin POSTs
-    # from a page the browser merely happens to have open (#6).
+    # Localhost binding alone does not stop DNS rebinding (which affects GET too —
+    # see _host_ok) or cross-origin POSTs from a page the browser merely happens
+    # to have open (#6).
     launch_token: str = ""
     allowed_hosts: frozenset = frozenset()
 
     def log_message(self, format, *args):
         return
 
+    def _host_ok(self) -> bool:
+        # DNS rebinding sends the *hostname* the page's JS used (e.g. attacker.com),
+        # even once that name resolves to 127.0.0.1 — checking Host, not the socket's
+        # peer address, is what actually distinguishes a rebound request from a
+        # legitimate one, for GET as much as for POST: an unauthenticated GET is
+        # exactly what rebinding is for, since it lets the attacker's now-same-origin
+        # JS read the response (list memories, pending proposals, audit) that a
+        # cross-origin fetch could not read without CORS headers this server never sends.
+        return self.headers.get("Host", "") in self.allowed_hosts
+
     def _origin_ok(self) -> bool:
-        host = self.headers.get("Host", "")
-        if host not in self.allowed_hosts:
+        if not self._host_ok():
             return False
         origin = self.headers.get("Origin")
-        if origin:
-            if urlparse(origin).netloc not in self.allowed_hosts:
-                return False
+        if origin and urlparse(origin).netloc not in self.allowed_hosts:
+            return False
         token = self.headers.get("X-Launch-Token", "")
         return secrets.compare_digest(token, self.launch_token)
 
@@ -453,6 +462,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(n).decode("utf-8"))
 
     def do_GET(self):
+        if not self._host_ok():
+            return self._json({"error": "forbidden: bad host"}, 403)
         u = urlparse(self.path)
         if u.path == "/":
             data = HTML.replace("__LAUNCH_TOKEN__", self.launch_token).encode()

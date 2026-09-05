@@ -86,8 +86,19 @@ def file_lock(target: Path, timeout: float = 8.0, poll: float = 0.05):
         except FileExistsError:
             stale_pid = _read_lock_pid(lock)
             if stale_pid is not None and not _pid_alive(stale_pid):
+                # Steal via an atomic rename, not a plain unlink: two waiters can
+                # both observe the same dead PID, and an unconditional unlink lets
+                # both proceed to os.open() the fresh lock the other just created,
+                # putting them in the critical section together. os.replace is a
+                # single winner per source path — a loser gets FileNotFoundError
+                # and simply retries instead of deleting a lock it doesn't own.
+                stolen = lock.with_name(lock.name + f".stale-{os.getpid()}")
                 try:
-                    lock.unlink()
+                    os.replace(str(lock), str(stolen))
+                except FileNotFoundError:
+                    continue
+                try:
+                    stolen.unlink()
                 except FileNotFoundError:
                     pass
                 continue

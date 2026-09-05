@@ -255,14 +255,18 @@ class Vault:
 
     def ensure_index_entry(self, relative: str, kind: str, covers: str) -> None:
         idx = self.resolve("/MEMORY.md")
-        if not idx.exists():
-            idx.write_text("# Memory Index\n\n| Path | Type | Updated | Covers |\n|---|---|---|---|\n", encoding="utf-8")
         link = relative.lstrip("/")
         if link.endswith(".md"):
             link = link[:-3]
         row_prefix = f"| [[{link}]] |"
+        # Creation happens inside the same lock as the read-modify-write below —
+        # a separate unlocked exists()/write_text() before the lock would race
+        # the same way append_entry()'s did (#7).
         with file_lock(idx):
-            content = idx.read_text(encoding="utf-8")
+            if idx.exists():
+                content = idx.read_text(encoding="utf-8")
+            else:
+                content = "# Memory Index\n\n| Path | Type | Updated | Covers |\n|---|---|---|---|\n"
             lines = content.splitlines()
             now = today()
             found = False

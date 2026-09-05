@@ -98,9 +98,10 @@ class MemoryIndex:
         row = self.conn.execute("SELECT * FROM memories WHERE memory_id=?", (memory_id,)).fetchone()
         return dict(row) if row else None
 
-    def exact_hash(self, normalized_hash: str):
+    def exact_hash(self, normalized_hash: str, kind: str):
         row = self.conn.execute(
-            "SELECT * FROM memories WHERE normalized_hash=? AND tag!='superseded' LIMIT 1", (normalized_hash,)
+            "SELECT * FROM memories WHERE normalized_hash=? AND kind=? AND tag!='superseded' LIMIT 1",
+            (normalized_hash, kind),
         ).fetchone()
         return dict(row) if row else None
 

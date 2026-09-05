@@ -177,6 +177,26 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(applied["status"], "stored")
         self.assertEqual(self.manager.index.by_id(first["memory"]["memory_id"])["tag"], "superseded")
 
+    def test_exact_duplicate_check_is_scoped_to_kind(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Migrated the frontend to TypeScript.",
+            kind="topic",
+            tag="stated",
+            subject="frontend-migration",
+            writer="chatgpt",
+        ))
+        self.assertEqual(first["status"], "stored")
+
+        other_kind = self.manager.propose(MemoryCandidate(
+            text="Migrated the frontend to TypeScript.",
+            kind="decision",
+            tag="decided",
+            subject="frontend-migration",
+            writer="chatgpt",
+        ))
+        self.assertEqual(other_kind["status"], "stored")
+        self.assertNotEqual(other_kind["memory"]["memory_id"], first["memory"]["memory_id"])
+
     def test_audit_healthy(self):
         self.manager.propose(MemoryCandidate(
             text="Prefers Python for small automation tools.",
