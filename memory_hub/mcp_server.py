@@ -97,11 +97,17 @@ def session_write(
     next_steps: list[str], project: str | None = None, session_date: str | None = None,
 ) -> dict:
     """Write a four-section session summary for the current client/model."""
-    return manager.propose_session({
+    result = manager.propose_session({
         "model": WRITER, "title": title, "date": session_date,
         "project": project, "investigated": investigated, "learned": learned,
         "completed": completed, "next_steps": next_steps,
     }, write_mode=WRITE_MODE)
+    # MCP transports can return a successful tool call even when the
+    # application-level operation was rejected. Surface that distinction to
+    # callers so they cannot mistake a rejected write for persisted memory.
+    if result.get("status") == "rejected":
+        raise ValueError(f"session write rejected: {result.get('reason', 'unknown reason')}")
+    return result
 
 @mcp.tool()
 def propose_pattern_match(
