@@ -60,7 +60,10 @@ function Install-Instructions {
 
     $promptPath = Join-Path $Root "client-prompts\$PromptFile"
     if (-not (Test-Path $promptPath)) { return }
-    $content = Get-Content -Raw -Path $promptPath
+    $content = Get-Content -Raw -Encoding UTF8 -Path $promptPath
+    $begin = "<!-- AI_MEMORY_HUB_PROMPT:START -->"
+    $end = "<!-- AI_MEMORY_HUB_PROMPT:END -->"
+    $managed = "$begin`n$content`n$end`n"
 
     $dir = Split-Path $TargetPath -Parent
     if ($dir -and -not (Test-Path $dir)) {
@@ -68,13 +71,23 @@ function Install-Instructions {
     }
 
     if (Test-Path $TargetPath) {
-        $existing = Get-Content -Raw -Path $TargetPath
-        if ($existing -notmatch "AI Memory Hub") {
-            Add-Content -Path $TargetPath -Value "`n`n$content"
+        $existing = Get-Content -Raw -Encoding UTF8 -Path $TargetPath
+        $marked = '(?s)<!-- AI_MEMORY_HUB_PROMPT:START -->.*?<!-- AI_MEMORY_HUB_PROMPT:END -->(?:\r?\n)?'
+        $legacy = '(?s)# Persistent Memory Instructions.*?Writer identity for this client: `[^\r\n]+`\.?'
+        if ($existing -match $marked) {
+            $updated = [regex]::Replace($existing, $marked, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $managed })
+            Set-Content -Encoding UTF8 -NoNewline -Path $TargetPath -Value $updated
+        }
+        elseif ($existing -match $legacy) {
+            $updated = [regex]::Replace($existing, $legacy, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $managed })
+            Set-Content -Encoding UTF8 -NoNewline -Path $TargetPath -Value $updated
+        }
+        elseif ($existing -notmatch "AI Memory Hub") {
+            Add-Content -Encoding UTF8 -Path $TargetPath -Value "`n`n$managed"
         }
     }
     else {
-        Set-Content -Path $TargetPath -Value $content
+        Set-Content -Encoding UTF8 -Path $TargetPath -Value $managed
     }
 }
 
@@ -268,14 +281,14 @@ Write-Host ""
 Write-Host "Vault:      $VaultPath"
 Write-Host "Write mode: $WriteMode"
 Write-Host ""
-Write-Host "ChatGPT (desktop app): run .\connect-chatgpt-tunnel.ps1 separately (needs a"
-Write-Host "one-time OpenAI account setup first — see README.md)."
+Write-Host "ChatGPT (desktop app): run .\connect-chatgpt-tunnel.ps1 separately."
+Write-Host "It needs one-time OpenAI account setup; see README.md."
 Write-Host "Any other MCP-capable tool without a CLI must be connected manually."
 Write-Host "See client-prompts/ and README.md."
 Write-Host ""
 Write-Host "IMPORTANT: each tool reads its MCP server list once, at session start."
 Write-Host "If you already had a Claude Code / Gemini CLI / Qwen Code / Codex CLI /"
-Write-Host "Kimi Code window open, close that session and start a new one — it won't"
+Write-Host "Kimi Code window open, close that session and start a new one - it will not"
 Write-Host "see ai-memory-hub until it does. New sessions pick it up automatically."
 if ($results | Where-Object { $_ -like "*Gemini CLI*" -and $_ -like "*connected*" }) {
     Write-Host ""

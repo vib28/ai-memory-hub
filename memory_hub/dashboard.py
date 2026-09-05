@@ -250,15 +250,16 @@ function renderKindChips(){
     .concat(kinds.map(k=>`<button class="chip${activeKind===k?' active':''}" onclick="setKindFilter('${esc(k)}')">${esc(k)}</button>`)).join('');
 }
 function setKindFilter(k){activeKind=k;renderKindChips();renderMemories()}
-function memoryCard(r){
+function memoryCard(r,isMostRecent=false){
   return `
-    <div class="card">
+    <div class="card" style="position:relative">
+      ${isMostRecent?'<span class="recent-badge">🕐 Most recent</span>':''}
       <div class="row space">
         <span class="row" style="gap:6px">
           <span class="tag-chip kind" style="background:${kindColor(r.kind)}22;color:${kindColor(r.kind)}">${esc(r.kind)}</span>
           <span class="tag-chip${r.tag==='superseded'?' superseded':''}">${esc(r.tag)}</span>
         </span>
-        <span class="meta" style="margin:0">🕐 ${formatWhen(r.date)}</span>
+        <span class="meta" style="margin:0">${formatWhen(r.date)}</span>
       </div>
       <p class="memory-text" id="t-${r.memory_id}">${esc(r.text)}</p>
       <div class="meta">
@@ -277,24 +278,28 @@ function renderMemories(){
     $('memoryList').innerHTML = `<div class="empty"><span class="big">🔎</span>No memories found${activeKind?' for "'+esc(activeKind)+'"':''}.</div>`;
     return;
   }
-  // Group by project/subject so entries about the same thing sit together,
-  // oldest first within a group — the order they actually happened in.
+  // Group projects by their canonical file, since routing may place several
+  // related subjects in one file. Other kinds are grouped by kind + subject.
+  // Oldest first within a group — the order they actually happened in.
   const groups = new Map();
   for(const r of rows){
-    const key = r.subject || 'general';
-    if(!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
+    const isProject = r.kind === 'project';
+    const key = isProject ? `project:${r.path}` : `${r.kind}:${r.subject || 'general'}`;
+    const label = isProject ? r.path.replace(/^\/projects\//,'').replace(/\.md$/,'') : (r.subject || 'general');
+    if(!groups.has(key)) groups.set(key, {label,items:[]});
+    groups.get(key).items.push(r);
   }
-  for(const g of groups.values()) g.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  const compareRows=(a,b)=>a.date<b.date?-1:a.date>b.date?1:a.memory_id<b.memory_id?-1:a.memory_id>b.memory_id?1:0;
+  for(const g of groups.values()) g.items.sort(compareRows);
   // Most recently active project first.
-  const ordered = [...groups.entries()].sort((a,b)=>{
-    const la=a[1][a[1].length-1].date, lb=b[1][b[1].length-1].date;
-    return la<lb?1:la>lb?-1:0;
+  const ordered = [...groups.values()].sort((a,b)=>{
+    const la=a.items[a.items.length-1], lb=b.items[b.items.length-1];
+    return compareRows(lb,la);
   });
-  $('memoryList').innerHTML = ordered.map(([subject,items])=>`
+  $('memoryList').innerHTML = ordered.map(({label,items})=>`
     <div class="project-group">
-      <div class="project-head"><h3>${esc(subject)}</h3><span class="badge">${items.length}</span></div>
-      <div class="grid">${items.map(memoryCard).join('')}</div>
+      <div class="project-head"><h3>${esc(label)}</h3><span class="badge">${items.length}</span></div>
+      <div class="grid">${items.map(item=>memoryCard(item,item.is_most_recent)).join('')}</div>
     </div>`).join('');
 }
 async function loadMemories(){
@@ -390,6 +395,21 @@ loadMemories(); loadPending(); loadConflicts();
 </body></html>
 """
 
+def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[dict]:
+    """Return visible dashboard rows with recency calculated from the full index."""
+    newest = {}
+    for row in manager.index.all_rows():
+        is_project = row["kind"] == "project"
+        key = f"project:{row['path']}" if is_project else f"{row['kind']}:{row['subject'] or 'general'}"
+        if key not in newest or (row["date"], row["memory_id"]) > (newest[key]["date"], newest[key]["memory_id"]):
+            newest[key] = row
+    rows = manager.search(query, 200) if query else manager.index.all_rows()[::-1][:200]
+    for row in rows:
+        is_project = row["kind"] == "project"
+        key = f"project:{row['path']}" if is_project else f"{row['kind']}:{row['subject'] or 'general'}"
+        row["is_most_recent"] = newest.get(key, {}).get("memory_id") == row["memory_id"]
+    return rows
+
 class DashboardHandler(BaseHTTPRequestHandler):
     manager: MemoryManager = None  # type: ignore
 
@@ -423,8 +443,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             if u.path == "/api/memories":
                 q = parse_qs(u.query).get("q", [""])[0]
-                rows = self.manager.search(q, 200) if q else self.manager.index.all_rows()[::-1][:200]
-                return self._json(rows)
+                return self._json(memory_rows_for_dashboard(self.manager, q))
             if u.path == "/api/pending":
                 return self._json(self.manager.list_pending())
             if u.path == "/api/conflicts":

@@ -1,9 +1,11 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
+from memory_hub.dashboard import HTML, memory_rows_for_dashboard
 
 class DashboardFeatureTests(unittest.TestCase):
     def setUp(self):
@@ -64,6 +66,31 @@ class DashboardFeatureTests(unittest.TestCase):
         result = self.manager.resolve_conflict(b["memory"]["memory_id"])
         self.assertEqual(result["status"], "resolved")
         self.assertEqual(self.manager.index.by_id(a["memory"]["memory_id"])["tag"], "superseded")
+
+    def test_dashboard_marks_only_the_newest_group_entry(self):
+        self.assertIn("memoryCard(item,item.is_most_recent)", HTML)
+        self.assertIn("${isMostRecent?'<span class=\"recent-badge\">🕐 Most recent</span>':''}", HTML)
+        self.assertIn("<span class=\"meta\" style=\"margin:0\">${formatWhen(r.date)}</span>", HTML)
+        self.assertIn("const key = isProject ? `project:${r.path}` : `${r.kind}:${r.subject || 'general'}`;", HTML)
+        self.assertIn("a.memory_id<b.memory_id?-1:a.memory_id>b.memory_id?1:0", HTML)
+
+    def test_dashboard_recency_uses_the_full_canonical_project_group(self):
+        with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
+            older = self.manager.propose(MemoryCandidate(
+                text="Vintageonly project note.", kind="project", tag="stated",
+                subject="widget-app", writer="chatgpt",
+            ))["memory"]
+            newer = self.manager.propose(MemoryCandidate(
+                text="Newer project note.", kind="project", tag="stated",
+                subject="widget-app-ui", writer="chatgpt",
+            ))["memory"]
+        all_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
+        self.assertEqual(all_rows[older["memory_id"]]["path"], all_rows[newer["memory_id"]]["path"])
+        self.assertFalse(all_rows[older["memory_id"]]["is_most_recent"])
+        self.assertTrue(all_rows[newer["memory_id"]]["is_most_recent"])
+        older_search = memory_rows_for_dashboard(self.manager, "Vintageonly")
+        self.assertEqual(len(older_search), 1)
+        self.assertFalse(older_search[0]["is_most_recent"])
 
 if __name__ == "__main__":
     unittest.main()

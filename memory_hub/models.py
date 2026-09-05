@@ -5,7 +5,7 @@ from typing import Optional
 
 ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision"}
 ALLOWED_TAGS = {"stated", "decided", "inferred", "preference", "constraint", "open", "superseded"}
-ALLOWED_WRITERS = {"chatgpt", "claude", "codex", "gemini", "kimi", "cursor", "user", "other"}
+ALLOWED_WRITERS = {"chatgpt", "claude", "codex", "gemini", "kimi", "qwen", "cursor", "user", "other"}
 
 # Kinds where a subject should hold one current answer (e.g. "primary OS"), so two
 # differently-worded active entries for the same subject really are contradictory.

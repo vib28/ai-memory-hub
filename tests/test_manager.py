@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from memory_hub.manager import MemoryManager
-from memory_hub.models import MemoryCandidate
+from memory_hub.models import MemoryCandidate, MemoryRecord
 
 class ManagerTests(unittest.TestCase):
     def setUp(self):
@@ -64,6 +64,54 @@ class ManagerTests(unittest.TestCase):
         ))
         self.assertEqual(result["status"], "stored")
         self.assertEqual(result["memory"]["writer"], "codex")
+
+    def test_qwen_writer_is_preserved(self):
+        result = self.manager.propose(MemoryCandidate(
+            text="Uses Qwen for local development work.",
+            kind="project",
+            tag="stated",
+            subject="development-tooling",
+            writer="qwen",
+        ))
+        self.assertEqual(result["status"], "stored")
+        self.assertEqual(result["memory"]["writer"], "qwen")
+
+    def test_new_entry_timestamp_and_subject_survive_reindex(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Uses Windows as the primary development OS.",
+            kind="profile",
+            tag="stated",
+            subject="primary-development-os",
+            writer="chatgpt",
+        ))
+        second = self.manager.propose(MemoryCandidate(
+            text="Uses English for technical communication.",
+            kind="profile",
+            tag="stated",
+            subject="technical-language",
+            writer="chatgpt",
+        ))
+        self.assertRegex(first["memory"]["date"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+        self.manager.reindex()
+        self.assertEqual(self.manager.index.by_id(first["memory"]["memory_id"])["subject"], "primary-development-os")
+        self.assertEqual(self.manager.index.by_id(second["memory"]["memory_id"])["subject"], "technical-language")
+        self.assertEqual(self.manager.conflicts(), [])
+
+    def test_edit_normalizes_a_legacy_subject_for_reindex(self):
+        memory_id = "legacy-subject"
+        path = self.vault / "profile.md"
+        path.write_text(
+            "---\ntype: profile\n---\n\n"
+            "- [stated] Uses Windows. <!-- mem:legacy-subject source:chatgpt date:2026-09-04 -->\n",
+            encoding="utf-8",
+        )
+        self.manager.index.upsert(MemoryRecord(
+            memory_id, "/profile.md", "Uses Windows.", "profile", "stated",
+            "Primary Development OS", "chatgpt", "2026-09-04",
+        ))
+        self.assertEqual(self.manager.edit(memory_id, "Uses Windows for development.")["status"], "updated")
+        self.manager.reindex()
+        self.assertEqual(self.manager.index.by_id(memory_id)["subject"], "primary-development-os")
 
     def test_supersede(self):
         old = self.manager.propose(MemoryCandidate(

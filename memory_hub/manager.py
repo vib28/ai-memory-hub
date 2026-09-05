@@ -8,7 +8,7 @@ from pathlib import Path
 from .index import MemoryIndex
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
-from .utils import normalize_text, text_hash
+from .utils import normalize_text, slugify, text_hash
 from .vault import Vault, ENTRY_RE, parse_records, ensure_metadata, now_stamp
 
 AUTO_POLICY = """
@@ -67,7 +67,7 @@ class MemoryManager:
         candidate.kind = candidate.kind.strip().lower()
         candidate.tag = candidate.tag.strip().lower()
         candidate.writer = candidate.writer.strip().lower()
-        candidate.subject = candidate.subject.strip() or "general"
+        candidate.subject = slugify(candidate.subject.strip() or "general")
         if candidate.kind not in ALLOWED_KINDS:
             return {"status": "rejected", "reason": f"invalid kind: {candidate.kind}"}
         if candidate.tag not in ALLOWED_TAGS - {"superseded"}:
@@ -132,7 +132,10 @@ class MemoryManager:
 
         memory_id = uuid.uuid4().hex[:12]
         stamp = now_stamp()
-        line = f"- [{candidate.tag}] {candidate.text} <!-- mem:{memory_id} source:{candidate.writer} date:{stamp} -->"
+        line = (
+            f"- [{candidate.tag}] {candidate.text} "
+            f"<!-- mem:{memory_id} source:{candidate.writer} subject:{candidate.subject} date:{stamp} -->"
+        )
         self.vault.append_entry(relative, line, kind=candidate.kind, writer=candidate.writer)
         self.vault.ensure_index_entry(relative, candidate.kind, self._covers(candidate))
 
@@ -199,10 +202,14 @@ class MemoryManager:
             lines = content.splitlines()
             changed = False
             stamp = now_stamp()
+            subject = slugify(old["subject"])
             for i, line in enumerate(lines):
                 m = ENTRY_RE.match(line)
                 if m and m.group("id") == memory_id:
-                    lines[i] = f"- [{old['tag']}] {new_text} <!-- mem:{memory_id} source:{writer} date:{stamp} -->"
+                    lines[i] = (
+                        f"- [{old['tag']}] {new_text} "
+                        f"<!-- mem:{memory_id} source:{writer} subject:{subject} date:{stamp} -->"
+                    )
                     changed = True
                     break
             if not changed:
@@ -211,7 +218,7 @@ class MemoryManager:
             body = ensure_metadata(body, kind=old["kind"], writer=writer)
             atomic_write(p, body)
         rec = MemoryRecord(memory_id, old["path"], new_text, old["kind"], old["tag"],
-                           old["subject"], writer, stamp)
+                           subject, writer, stamp)
         self.index.upsert(rec)
         return {"status": "updated", "memory": rec.to_dict()}
 

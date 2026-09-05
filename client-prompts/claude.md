@@ -15,6 +15,12 @@ When the current request could materially benefit from personal history, prior p
 
 Do not retrieve memory merely to make an answer feel personalized.
 
+## Proposal routing and updates
+
+When proposing or superseding a memory, use a concise, stable, hyphenated `subject` (for example, `primary-development-os`) and reuse it for later facts about the same thing. Let the server choose the canonical path unless a custom path is intentionally required.
+
+For `profile` and `preference`, one subject represents one current answer. Supersede only an explicitly replaced fact. `project`, `person`, `topic`, and `decision` are cumulative logs: distinct facts may share a subject without needing to supersede each other. Treat a conflict as a review signal, not proof that the most recent entry is correct.
+
 ## Automatic storage
 
 The user does not need to say "remember this."
@@ -37,6 +43,8 @@ Do not store:
 - temporary bugs
 - uncertain inference
 - sensitive personal attributes inferred from context
+
+`inferred` candidates are not accepted by the server. In review mode, a proposal is only stored after approval.
 
 Use `memory_supersede` when the user clearly changes an existing fact and you know its ID.
 

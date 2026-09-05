@@ -12,7 +12,8 @@ from .utils import atomic_write, file_lock, safe_join, slugify
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 ENTRY_RE = re.compile(
     r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
-    r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+) "
+    r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+)"
+    r"(?: subject:(?P<subject>[a-zA-Z0-9_-]+))? "
     r"date:(?P<date>\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?) -->\s*$"
 )
 
@@ -111,7 +112,7 @@ def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
                     text=m.group("text"),
                     kind=kind,
                     tag=m.group("tag"),
-                    subject=path.stem,
+                    subject=m.group("subject") or path.stem,
                     writer=m.group("source"),
                     date=m.group("date"),
                 )

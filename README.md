@@ -128,10 +128,10 @@ sequenceDiagram
 - 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_forget`, `memory_supersede`, `memory_audit`, `memory_reindex`, `memory_policy`
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
-- 🔁 **Deduplication & conflict detection** by subject — scoped to singleton-fact kinds (`profile`, `preference`), so log-like kinds (`project`, `topic`, `person`, `decision`) can accumulate many distinct facts about the same subject without tripping false-positive conflicts — with one-click supersede
+- 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
 - 🗃️ **Fragmentation-resistant project routing** — a new subject that's a hyphen-prefixed variant of an existing project file (e.g. `widget-app-ui` → `widget-app.md`) is folded into it instead of forking a new file
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
-- 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals in place of browser `prompt()`/`confirm()`, toast feedback on every action, kind-based filter chips, subject-grouped and chronologically sorted memory lists with a "most recent" badge on conflicts, and a readable audit view instead of raw JSON
+- 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped chronological lists with one most-recent marker per group, and a readable audit view
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
@@ -217,6 +217,12 @@ These are all developer CLIs that launch the server themselves as a **local stdi
 
 Every tool above reads its MCP server list once, when that session starts — none of them watch their config file for changes mid-session. So after running `connect-ai-tools.ps1` (or `connect-chatgpt-tunnel.ps1`), **any Claude Code, Gemini CLI, Qwen Code, Codex CLI, or Kimi Code window you already had open needs a new session** before it can see `ai-memory-hub` — close that chat and run the same command again to start a fresh one. This isn't reinstalling or restarting an application, just starting a new conversation; a session you open *after* running the script picks it up immediately, no action needed. ChatGPT is the exception — there's no "session" to restart, just enable the connector once in Settings as described above and the running tunnel stays connected.
 
+### Refresh revised instructions
+
+After updating this project, rerun `connect-ai-tools.ps1` to replace the managed AI Memory Hub instruction block in each detected CLI's global instructions file. Then start a new session in Claude Code, Codex, Qwen, Gemini, or Kimi Code. For ChatGPT, paste the current `client-prompts/chatgpt.md` into Custom Instructions and begin a new conversation. Manually configured MCP hosts likewise need their updated prompt saved and a new session or reload.
+
+`vault_template/` is used only when a vault is initialized; it never overwrites existing vault files. To adopt a revised `AI_INSTRUCTIONS.md` in an existing vault, review the template and merge its guidance into your vault's copy without replacing your memory content.
+
 ### ChatGPT (desktop app)
 
 ChatGPT's connector protocol itself only speaks Streamable HTTP — but OpenAI now ships an official, first-party bridge called **[Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)** that connects Developer Mode directly to a local **stdio** server like this one, outbound-only, with nothing exposed to the public internet. That's the supported way to get ChatGPT calling `memory_search`/`memory_propose` live, and `connect-ai-tools.ps1` can't set it up on its own because the last mile — creating a tunnel ID and an API key — happens in your browser, against your OpenAI account.
@@ -239,12 +245,12 @@ flowchart LR
 ```powershell
 .\connect-chatgpt-tunnel.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
     -TunnelId "tunnel_0123456789abcdef0123456789abcd12" `
-    -ApiKey "sk-..."
+    -ApiKey (Read-Host "Runtime API key")
 ```
 
 This configures a `tunnel-client` profile that launches `memory_hub.mcp_server` as a stdio subprocess (the same way the other tools do it), runs `doctor` to validate it, and starts the tunnel. Leave the window open — closing it disconnects ChatGPT. Re-running the script updates the same profile (`--force`), so it's safe to use again after changing your vault path or write mode. Then in ChatGPT: **Settings → Connectors → Advanced → Developer mode → + → Connection: Tunnel →** select `ai-memory-hub`.
 
-Give it the behavior prompt the same way as any other tool: [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md), pasted into ChatGPT's custom instructions.
+Give it the behavior prompt the same way as any other tool: [`client-prompts/chatgpt.md`](client-prompts/chatgpt.md), pasted into ChatGPT's custom instructions. Start a new ChatGPT conversation afterward so the revised instructions are in its context.
 
 > Verified against `tunnel-client` v0.0.14 on Windows. If OpenAI changes the CLI, re-check the flags with `tunnel-client init --help` / `doctor --help` / `run --help`.
 
@@ -258,25 +264,7 @@ Cursor, Windsurf, VS Code extensions, JetBrains AI Assistant, your own agent, wh
 
 Anything that can launch an MCP server over stdio can join the same shared memory. There's no CLI automation for these (each has its own settings UI/file), but the setup is always the same three steps:
 
-1. **Point it at the server.** In that tool's MCP settings, add a server with:
-
-   ```json
-   {
-     "mcpServers": {
-       "ai-memory-hub": {
-         "command": "<this-repo>\\.venv\\Scripts\\python.exe",
-         "args": ["-m", "memory_hub.mcp_server"],
-         "env": {
-           "AI_MEMORY_VAULT": "<absolute path to your vault>",
-           "MEMORY_WRITER": "<a short id for this tool, e.g. cursor>",
-           "MEMORY_WRITE_MODE": "review"
-         }
-       }
-     }
-   }
-   ```
-
-   A ready-to-copy version of this is at [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json).
+1. **Point it at the server.** Copy [`examples/mcp-host-config.example.json`](examples/mcp-host-config.example.json), then set only your Python path, vault path, writer identity, and write mode in the host's MCP settings. The configuration contains no credentials.
 
 2. **Give it the behavior prompt.** Paste [`client-prompts/generic.md`](client-prompts/generic.md) into that tool's system/custom-instructions field, and swap the `MEMORY_WRITER` value at the bottom to match what you set above. If the tool is one already listed in `client-prompts/` (Claude, Codex, Qwen, Gemini, Kimi), use its dedicated file instead — it's identical except for the writer identity.
 
@@ -292,7 +280,7 @@ python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer ch
 
 Copy a conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a local model (see [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio) below), and candidates get extracted and validated exactly like anything proposed over MCP — nothing leaves your machine.
 
-`--writer` accepts any short id, not just `chatgpt` (`gemini`, `cursor`, whatever the transcript came from) — it's a free-form string used purely for provenance, so the stored memory's `source:` tag stays accurate.
+`--writer` preserves the built-in client identities (`chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `user`, or `other`) in the stored `source:` tag. Unknown values are recorded as `other`.
 
 ## Connect Ollama or LM Studio
 
@@ -314,7 +302,6 @@ flowchart LR
 ```powershell
 $env:MEMORY_LLM_BASE_URL = "http://localhost:11434/v1"
 $env:MEMORY_LLM_MODEL    = "llama3.1"          # any model you've pulled with `ollama pull`
-$env:MEMORY_LLM_API_KEY  = ""                   # Ollama ignores this; leave it blank
 
 python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
 ```
@@ -324,7 +311,6 @@ python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer ch
 ```powershell
 $env:MEMORY_LLM_BASE_URL = "http://localhost:1234/v1"
 $env:MEMORY_LLM_MODEL    = "<the model name shown in LM Studio's local server tab>"
-$env:MEMORY_LLM_API_KEY  = "lm-studio"          # any non-empty string works
 
 python -m memory_hub.cli --vault "<vault>" ingest .\conversation.txt --writer chatgpt
 ```
@@ -365,14 +351,16 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 
 Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. It's organized as a sidebar with live counts per section, and from there you can:
 
-- browse everything stored, grouped by subject and sorted chronologically within each group
+- browse everything stored, grouped by subject and sorted chronologically within each group, with the clock marker only on that group's newest entry
 - search across the vault
 - edit a stored fact in place, via an in-page modal (no browser `prompt()`/`confirm()` popups)
-- one-click forget, with toast feedback on success/failure
+- forget an entry after a confirmation, with toast feedback on success/failure
 - filter by kind using the filter chips
 - review and approve/reject queued proposals
 - see likely conflicts (same subject, competing facts, flagged only for singleton-fact kinds like `profile`/`preference`) with a "🕐 Most recent" badge, and resolve them by choosing the current version
-- run a vault/index audit, shown as a readable summary instead of raw JSON, or force a reindex
+- run a vault/index audit, shown as a readable summary instead of raw JSON
+
+Run a reindex through `memory_reindex()` or `python -m memory_hub.cli --vault "<vault>" reindex`.
 
 `-VaultPath` is optional — omit it and the script defaults to `%USERPROFILE%\OneDrive\Documents\Memory`.
 
@@ -404,21 +392,21 @@ Every write acquires a per-file lock, re-reads the current file, applies a surgi
 Each stored fact carries a stable ID and provenance so any tool can later update or forget the exact entry without relying on fuzzy text matching:
 
 ```markdown
-- [preference] Prefers detailed financial analysis with explicit valuation comparisons. <!-- mem:9f831ab2c7e1 source:chatgpt date:2026-09-04 -->
+- [preference] Prefers detailed financial analysis with explicit valuation comparisons. <!-- mem:9f831ab2c7e1 source:chatgpt subject:financial-analysis date:2026-09-04T14:30:00 -->
 ```
 
 Facts are routed to one canonical home by kind:
 
 | Kind | File |
 |---|---|
-| profile / identity | `/profile.md` |
-| preferences | `/preferences.md` |
+| profile | `/profile.md` |
+| preference | `/preferences.md` |
 | person | `/people/<subject>.md` |
 | project | `/projects/<subject>.md` |
 | topic | `/topics/<subject>.md` |
 | decision | `/decisions/<subject>.md` |
 
-A caller may request a custom `target_path`, but it's validated to stay inside the vault.
+New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. A project first uses an exact matching file. Otherwise, a hyphen-segment prefix match routes to the shortest existing project file (`widget-app-ui` routes to `widget-app.md`); unrelated shared-prefix projects stay separate. A caller may explicitly set `target_path`, which is validated to stay inside the vault and bypasses automatic routing. Existing fragmented files are not merged automatically.
 
 ## Safety
 
