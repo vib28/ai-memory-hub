@@ -1,15 +1,21 @@
+<div align="center">
+
 # AI Memory Hub
 
-**One shared, persistent memory for every AI tool you use — Claude, ChatGPT, Gemini, Qwen, Kimi, Codex, Cursor, and anything else that speaks MCP.**
+### One governed memory layer for every AI tool you use
 
-Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them one governed, human-readable memory store that lives in a plain Obsidian vault on your own machine — no cloud account, no vendor lock-in, nothing leaves your computer unless you connect a remote model yourself.
+Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
-![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
-![PowerShell: 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE.svg)
-![Tests: 37 passing](https://img.shields.io/badge/tests-37%20passing-brightgreen.svg)
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
+![Tests: 37 passing](https://img.shields.io/badge/tests-37%20passing-brightgreen.svg)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Connect your tools](#connect-your-ai-tools) · [Roadmap](#roadmap-and-planning)
+
+</div>
+
+> **The promise:** one memory store, many AI clients, and you remain in control of what gets saved.
 
 ---
 
@@ -162,6 +168,15 @@ sequenceDiagram
 
 ## Quick start
 
+### Choose your path
+
+| If you want to… | Start here |
+|---|---|
+| Install from scratch | Run the one-line installer below |
+| Install from a clone | Run `setup.ps1`, then `connect-ai-tools.ps1` |
+| Use a custom vault | Pass `-VaultPath` to the setup and connection scripts |
+| Preview writes safely | Use the default `review` mode, then approve entries in the dashboard |
+
 **One line**, if you don't have a copy of the repo yet — downloads it (via `git clone` if you have git, otherwise a plain zip, no dependencies either way), then runs setup and connects every AI CLI it finds, using the default paths (`%USERPROFILE%\ai-memory-hub` and `%USERPROFILE%\Documents\Obsidian\AI-Memory`):
 
 ```powershell
@@ -193,6 +208,8 @@ cd ai-memory-hub
 ```
 
 Either way, that's it — start a new conversation in Claude Code, Codex, Qwen Code, or Kimi Code and mention a durable fact about yourself. It'll show up in the dashboard's review queue.
+
+> **Recommended first run:** stay in `review` mode until you have confirmed that the clients are proposing the right memories. Switch to `auto` only when that behavior is trusted.
 
 Already have a copy and just want the latest version? Re-run the one-liner (or `& ([scriptblock]::Create(...))` form) with the same `-InstallPath` — it updates a git-based install in place instead of re-downloading.
 
