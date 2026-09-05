@@ -154,6 +154,7 @@ sequenceDiagram
 
 - Windows 10/11 (macOS/Linux work via `setup.sh`, but the automation scripts here target Windows)
 - Python 3.10+ (3.12 recommended)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for creating the environment and installing dependencies
 - PowerShell — either the Windows PowerShell 5.1 that ships with Windows, or PowerShell 7+; every `.ps1` script here is written to run on both
 - An Obsidian vault, or any plain folder you're willing to treat as one
 - The official Python MCP SDK v2 (`mcp>=2,<3`, installed automatically)
@@ -644,8 +645,16 @@ python -m memory_hub.cli --vault "<vault>" reindex
 **Want to verify the install** — run the test suite:
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python -m unittest discover -s tests -v
+uv run pytest -v
 ```
+
+**Want to check code quality** — run linting and the advisory type checker:
+```powershell
+uv run ruff check .
+uv run ty check
+```
+
+The project keeps dependencies in `pyproject.toml` and the committed `uv.lock` file. Use `uv sync --extra dev` for development dependencies; CI uses the lockfile for repeatable installs. `ty` is currently advisory while type coverage is introduced incrementally.
 
 ## Contributing
 

@@ -1371,10 +1371,10 @@ make sure the virtual environment is active:
 .\.venv\Scripts\Activate.ps1
 ```
 
-Then reinstall:
+Then reinstall with uv:
 
 ```powershell
-pip install -e .
+uv sync
 ```
 
 ---

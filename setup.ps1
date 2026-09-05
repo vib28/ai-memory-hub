@@ -7,8 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python was not found on PATH. Install Python 3.10+ (see README.md / INSTALLATION_GUIDE.md), open a new terminal, then re-run this script."
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    throw "uv was not found on PATH. Install uv (see README.md / INSTALLATION_GUIDE.md), open a new terminal, then re-run this script."
 }
 
 # Run everything relative to the script's own directory, not the caller's
@@ -16,27 +16,15 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 # creates .venv in the wrong place.
 Push-Location $PSScriptRoot
 try {
-    Write-Host "Creating virtual environment..."
-    python -m venv .venv
+    Write-Host "Creating virtual environment and installing dependencies with uv..."
+    uv sync
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create the virtual environment (python -m venv exited with code $LASTEXITCODE)."
+        throw "uv dependency installation failed (exit code $LASTEXITCODE). Check the output above."
     }
 
     $Python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-    $Pip = Join-Path $PSScriptRoot ".venv\Scripts\pip.exe"
     if (-not (Test-Path $Python)) {
         throw "Virtual environment creation reported success, but $Python is missing."
-    }
-
-    Write-Host "Installing dependencies..."
-    & $Python -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) {
-        throw "Upgrading pip failed (exit code $LASTEXITCODE)."
-    }
-
-    & $Pip install -e .
-    if ($LASTEXITCODE -ne 0) {
-        throw "Dependency installation failed (pip install -e . exited with code $LASTEXITCODE). Check the output above."
     }
 
     Write-Host "Initializing vault..."

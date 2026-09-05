@@ -10,7 +10,7 @@ dist/
 .pytest_cache/
 .DS_Store
 .memory_index.sqlite3
-*.lock
+# Keep uv.lock committed for reproducible dependency resolution.
 .env
 *.local.json
 .claude/
