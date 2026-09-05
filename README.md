@@ -16,11 +16,11 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 
 | Tool | Transport | Connected by | Notes |
 |---|---|---|---|
-| Claude Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
-| Codex CLI | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
-| Qwen Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | |
-| Gemini CLI | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | if installed |
-| Kimi Code | stdio | [`connect-ai-tools.ps1`](#connect-your-ai-tools) | edits `mcp.json` directly — no CLI command for this yet |
+| Claude Code | stdio | [`connect-ai-tools.ps1`](#claude-code) | |
+| Codex CLI | stdio | [`connect-ai-tools.ps1`](#codex-cli) | |
+| Qwen Code | stdio | [`connect-ai-tools.ps1`](#qwen-code) | |
+| Gemini CLI | stdio | [`connect-ai-tools.ps1`](#gemini-cli) | if installed |
+| Kimi Code | stdio | [`connect-ai-tools.ps1`](#kimi-code) | edits `mcp.json` directly — no CLI command for this yet |
 | Hermes Agent | stdio | [`connect-ai-tools.ps1`](#hermes-agent) | registers the MCP server **and** installs the behavioral skill |
 | ChatGPT (desktop app) | Streamable HTTP, via OpenAI's Secure MCP Tunnel | [`connect-chatgpt-tunnel.ps1`](#chatgpt-desktop-app) | needs a one-time OpenAI account setup first |
 | Cursor, Windsurf, JetBrains AI, or anything else MCP-capable | stdio | [manual, 3 steps](#connect-any-other-mcp-tool) | |
@@ -37,7 +37,12 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Connect your AI tools](#connect-your-ai-tools)
-  - [Connected automatically by `connect-ai-tools.ps1`](#connected-automatically-by-connect-ai-toolsps1)
+  - [Overview](#overview)
+  - [Claude Code](#claude-code)
+  - [Gemini CLI](#gemini-cli)
+  - [Qwen Code](#qwen-code)
+  - [Codex CLI](#codex-cli)
+  - [Kimi Code](#kimi-code)
   - [Hermes Agent](#hermes-agent)
   - [Already have a session open?](#already-have-a-session-open)
   - [ChatGPT (desktop app)](#chatgpt-desktop-app)
@@ -188,7 +193,7 @@ Want the click-by-click version, including installing Python and Obsidian from s
 
 ## Connect your AI tools
 
-### Connected automatically by `connect-ai-tools.ps1`
+### Overview
 
 `connect-ai-tools.ps1` is the one-shot setup script. Run it after `setup.ps1` and it will:
 
@@ -203,18 +208,42 @@ Want the click-by-click version, including installing Python and Obsidian from s
 .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -WriteMode auto
 ```
 
+The script is **idempotent** — re-running it never double-registers, and an already-registered server is reported as `[connected]`, not an error. Every supported tool is attempted independently, so one failure never blocks the rest.
+
 | Tool | Auto-connected by the script? | Instructions file written |
 |---|---|---|
 | **Claude Code** | ✅ | `~/.claude/CLAUDE.md` |
 | **Codex CLI** | ✅ | `~/.codex/AGENTS.md` |
 | **Qwen Code** | ✅ | `~/.qwen/QWEN.md` |
-| **Gemini CLI** | ✅ (if installed) — see the workspace-trust note below | `~/.gemini/GEMINI.md` |
-| **Kimi Code** | ✅ (edits `~/.kimi-code/mcp.json` directly — Kimi has no `mcp add` CLI command yet) | `~/.kimi-code/AGENTS.md` |
-| **Hermes Agent** | ✅ (if installed) — registers the server *and* installs the [`ai-memory-hub` skill](#hermes-agent) | `<Hermes-home>/skills/productivity/ai-memory-hub/SKILL.md` |
+| **Gemini CLI** | ✅ (if installed) | `~/.gemini/GEMINI.md` |
+| **Kimi Code** | ✅ | `~/.kimi-code/AGENTS.md` |
+| **Hermes Agent** | ✅ (if installed) — also installs a [skill](#hermes-agent) | `<Hermes-home>/skills/productivity/ai-memory-hub/SKILL.md` |
 
-These are all developer CLIs that launch the server themselves as a **local stdio subprocess** — the script just tells each one what command to run. ChatGPT's desktop app works differently; see below.
+Most of these launch the server themselves as a **local stdio subprocess** — the script just tells each one what command to run. Their installs differ in a few small but real ways; the per-tool sections below call out what's unique to each. ChatGPT's desktop app is the one that works fundamentally differently (a network tunnel rather than a local subprocess); see [ChatGPT (desktop app)](#chatgpt-desktop-app).
 
-> **Gemini CLI only:** it disables *all* MCP servers — including user-level ones like this one — in any folder it doesn't yet trust, to prevent an untrusted project from silently running tools. The first time you launch `gemini` in a given folder, answer its workspace-trust prompt (or pass `--skip-trust` for a one-off session). Run `gemini mcp list` any time to check whether `ai-memory-hub` shows as enabled or disabled for the folder you're in.
+### Claude Code
+
+The standard stdio case. The script runs Claude Code's own `mcp add` with `-s user` (global scope) so the server is available from any directory, then appends the [`claude.md`](client-prompts/claude.md) instructions block to `~/.claude/CLAUDE.md` under a managed `AI_MEMORY_HUB_PROMPT` marker. Writer identity is `claude`.
+
+If Claude Code is already registered, its CLI exits non-zero with "already exists" — the script recognizes that and reports `[connected]` rather than a failure. Nothing to do on your end beyond running the script and starting a new session.
+
+### Gemini CLI
+
+Gemini is wired up the same way as Claude Code — its `mcp add` is invoked and [`gemini.md`](client-prompts/gemini.md) is written to `~/.gemini/GEMINI.md`, writer identity `gemini`. One difference matters in practice:
+
+> **Workspace trust.** Gemini disables *all* MCP servers — including user-level ones like this one — in any folder it doesn't yet trust, to prevent an untrusted project from silently running tools. The first time you launch `gemini` in a given folder, answer its workspace-trust prompt (or pass `--skip-trust` for a one-off session). Run `gemini mcp list` any time to check whether `ai-memory-hub` shows as enabled or disabled for the folder you're in.
+
+### Qwen Code
+
+Also the standard stdio path — `qwen mcp add` plus [`qwen.md`](client-prompts/qwen.md) written to `~/.qwen/QWEN.md`, writer identity `qwen`. No tool-specific quirks.
+
+### Codex CLI
+
+Codex accepts its environment differently from the other CLIs, so the script invokes it with repeated `--env KEY=VALUE` flags rather than `-e`, and it locates the `codex.exe` binary explicitly (the bare `codex` command on Windows is a `.ps1` wrapper that mangles a literal `--`). [`codex.md`](client-prompts/codex.md) is written to `~/.codex/AGENTS.md`, writer identity `codex`.
+
+### Kimi Code
+
+Kimi is the outlier: it has **no `mcp add` CLI command yet**, so the script edits `~/.kimi-code/mcp.json` directly — inserting an `ai-memory-hub` entry with the Python command, args, and env. Because it edits a config file rather than calling a command, re-running simply overwrites that one entry. [`kimi.md`](client-prompts/kimi.md) is written to `~/.kimi-code/AGENTS.md`, writer identity `kimi`. If an existing `mcp.json` isn't valid JSON, the script backs it up to a timestamped `.bak` before rebuilding, rather than crashing.
 
 ### Hermes Agent
 
