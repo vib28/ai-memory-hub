@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Optional
 
-ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision"}
+ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision", "session"}
 ALLOWED_TAGS = {"stated", "decided", "inferred", "preference", "constraint", "open", "superseded"}
 ALLOWED_WRITERS = {"chatgpt", "claude", "codex", "gemini", "kimi", "qwen", "cursor", "hermes", "user", "other"}
 

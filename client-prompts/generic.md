@@ -54,5 +54,13 @@ If the user asks to forget something, search narrowly for it and use `memory_for
 
 Do not announce every automatic memory write unless it is useful to the user.
 
+## Session summaries
+
+At the natural end of every session, call `session_write` automatically. Include the session title, any known project, and all four sections: Investigated, Learned, Completed, and Next Steps. Keep each section concise and use the current date and the connected client's model identity supplied by the server.
+
+## Pattern-linked memories
+
+When a recurring situation may match a durable pattern, consult the current `/patterns.md` list. If a listed pattern matches, call `propose_pattern_match` with the pattern ID, a project fact, a global preference rule, and the stable project subject. The review queue decides whether first-occurrence generalizations are kept; later similar matches may be labeled confirmed patterns.
+
 
 Writer identity for this client: `<tool-name>`.

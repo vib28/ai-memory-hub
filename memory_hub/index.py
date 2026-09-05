@@ -51,6 +51,10 @@ class MemoryIndex:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(pending)")}
+        if "payload" not in columns:
+            self.conn.execute("ALTER TABLE pending ADD COLUMN payload TEXT")
+            self.conn.commit()
         try:
             self.conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(memory_id UNINDEXED, text, path, kind, tag, subject)"
@@ -138,14 +142,14 @@ class MemoryIndex:
 
     # ---- review queue ----
 
-    def enqueue(self, candidate: dict) -> dict:
+    def enqueue(self, candidate: dict, payload: dict | None = None) -> dict:
         proposal_id = uuid.uuid4().hex[:12]
         created_at = datetime.now(timezone.utc).isoformat()
         with self.conn:
             self.conn.execute(
                 """INSERT INTO pending
-                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,created_at,status)
-                   VALUES (?,?,?,?,?,?,?,?,?,'pending')""",
+                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,created_at,status,payload)
+                   VALUES (?,?,?,?,?,?,?,?,?,'pending',?)""",
                 (
                     proposal_id,
                     candidate["text"],
@@ -156,6 +160,7 @@ class MemoryIndex:
                     candidate.get("target_path"),
                     candidate.get("supersedes_id"),
                     created_at,
+                    json.dumps(payload, ensure_ascii=False) if payload is not None else None,
                 ),
             )
         return self.pending_by_id(proposal_id)
@@ -164,11 +169,17 @@ class MemoryIndex:
         row = self.conn.execute("SELECT * FROM pending WHERE proposal_id=?", (proposal_id,)).fetchone()
         return dict(row) if row else None
 
-    def list_pending(self, status: str = "pending", limit: int = 200) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM pending WHERE status=? ORDER BY created_at DESC LIMIT ?",
-            (status, max(1, min(limit, 1000))),
-        ).fetchall()
+    def list_pending(self, status: str | None = "pending", limit: int = 200) -> list[dict]:
+        if status is None:
+            rows = self.conn.execute(
+                "SELECT * FROM pending ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(limit, 1000)),),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM pending WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                (status, max(1, min(limit, 1000))),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def set_pending_status(self, proposal_id: str, status: str, note: str | None = None) -> None:

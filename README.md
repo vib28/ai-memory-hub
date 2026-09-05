@@ -133,7 +133,9 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_forget`, `memory_supersede`, `memory_audit`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
+- 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
+- 🐛 **Issue tracking** — GitHub issues #2–#11 are closed; the current test suite contains 34 tests
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts

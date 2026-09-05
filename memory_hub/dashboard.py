@@ -153,7 +153,8 @@ details.issue .body div{padding:6px 0;border-top:1px solid var(--line)}
 </section>
 
 <section id="pending" class="panel hidden">
- <div class="section-title"><h2>Pending review</h2><span class="sub" style="color:var(--muted);font-size:12.5px">Proposals waiting for your approval before they're written to the vault</span></div>
+ <div class="section-title"><h2>Review &amp; history</h2><span class="sub" style="color:var(--muted);font-size:12.5px">Pending proposals and the outcomes of earlier reviews</span></div>
+ <div class="chips" id="reviewStatusChips"></div>
  <div id="pendingList" class="grid"><div class="skeleton">Loading…</div></div>
 </section>
 
@@ -175,7 +176,7 @@ details.issue .body div{padding:6px 0;border-top:1px solid var(--line)}
 <script>
 const $=id=>document.getElementById(id);
 const TITLES={memories:['Memories','Everything currently stored in your vault'],pending:['Review queue','Proposals waiting for approval'],conflicts:['Conflicts','Memories that disagree with each other'],audit:['Vault health','Consistency check across files and index']};
-let currentTab='memories', memoryRows=[], activeKind=null, searchTimer=null;
+let currentTab='memories', memoryRows=[], activeKind=null, searchTimer=null, reviewStatuses=['pending','rejected','approved'];
 
 const LAUNCH_TOKEN='__LAUNCH_TOKEN__';
 async function api(path,method='GET',body=null){
@@ -325,23 +326,36 @@ async function forgetMemory(id){
   await loadMemories(); await loadConflicts();
 }
 async function loadPending(){
-  const rows=await guarded(()=>api('/api/pending'));
-  $('c-pending').textContent=rows.length;
-  $('pendingList').innerHTML = rows.length ? rows.map(r=>`
+  const rows=await guarded(()=>api('/api/pending?history=1'));
+  const pending=rows.filter(r=>r.status==='pending');
+  $('c-pending').textContent=pending.length;
+  renderReviewStatusChips();
+  const visible=rows.filter(r=>reviewStatuses.includes(r.status));
+  $('pendingList').innerHTML = visible.length ? visible.map(r=>`
     <div class="card">
       <div class="row space">
         <span class="row" style="gap:6px">
           <span class="tag-chip kind" style="background:${kindColor(r.kind)}22;color:${kindColor(r.kind)}">${esc(r.kind)}</span>
           <span class="tag-chip">${esc(r.tag)}</span>
+          <span class="tag-chip" style="color:${r.status==='pending'?'var(--warn)':'var(--muted)'}">${esc(r.status==='pending'?'open':r.status)}</span>
         </span>
       </div>
       <p class="memory-text">${esc(r.text)}</p>
       <div class="meta"><span>${esc(r.subject)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><span>🕐 ${formatWhen(r.created_at)}</span></div>
-      <div class="card-actions">
+      ${r.status==='pending'?`<div class="card-actions">
         <button class="good-outline" onclick="approve('${r.proposal_id}')">✓ Approve</button>
         <button class="danger-outline" onclick="rejectP('${r.proposal_id}')">✕ Reject</button>
-      </div>
-    </div>`).join('') : `<div class="empty"><span class="big">✅</span>Queue is empty. The memory goblins are behaving.</div>`;
+      </div>`:''}
+    </div>`).join('') : `<div class="empty"><span class="big">✅</span>No ${reviewStatuses.map(s=>s==='pending'?'open':s).join(' or ')} proposals found.</div>`;
+}
+function renderReviewStatusChips(){
+  const statuses=[['pending','Open'],['rejected','Rejected'],['approved','Approved']];
+  $('reviewStatusChips').innerHTML=statuses.map(([status,label])=>`<button class="chip${reviewStatuses.includes(status)?' active':''}" onclick="toggleReviewStatus('${status}')">${label}</button>`).join('');
+}
+function toggleReviewStatus(status){
+  reviewStatuses=reviewStatuses.includes(status)?reviewStatuses.filter(s=>s!==status):reviewStatuses.concat(status);
+  if(!reviewStatuses.length) reviewStatuses=['pending'];
+  loadPending();
 }
 async function approve(id){await guarded(()=>api('/api/pending/'+id+'/approve','POST',{}),'Approved and stored');await loadPending();await loadConflicts()}
 async function rejectP(id){await guarded(()=>api('/api/pending/'+id+'/reject','POST',{}),'Rejected');await loadPending()}
@@ -478,6 +492,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 q = parse_qs(u.query).get("q", [""])[0]
                 return self._json(memory_rows_for_dashboard(self.manager, q))
             if u.path == "/api/pending":
+                if parse_qs(u.query).get("history", ["0"])[0] == "1":
+                    return self._json(self.manager.list_proposal_history())
                 return self._json(self.manager.list_pending())
             if u.path == "/api/conflicts":
                 return self._json(self.manager.conflicts())

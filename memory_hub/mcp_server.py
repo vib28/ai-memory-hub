@@ -91,6 +91,26 @@ def memory_reindex() -> dict:
     """Rebuild the disposable SQLite search index from the Markdown vault."""
     return {"indexed": manager.reindex()}
 
+@mcp.tool()
+def session_write(
+    title: str, investigated: list[str], learned: list[str], completed: list[str],
+    next_steps: list[str], project: str | None = None, session_date: str | None = None,
+) -> dict:
+    """Write a four-section session summary for the current client/model."""
+    return manager.propose_session({
+        "model": WRITER, "title": title, "date": session_date,
+        "project": project, "investigated": investigated, "learned": learned,
+        "completed": completed, "next_steps": next_steps,
+    }, write_mode=WRITE_MODE)
+
+@mcp.tool()
+def propose_pattern_match(
+    pattern_id: str, project_fact_text: str, preference_rule_text: str, subject: str,
+) -> dict:
+    """Propose the linked project fact and global preference rule for a recognized pattern."""
+    return manager.propose_pattern_match(pattern_id, project_fact_text, preference_rule_text,
+                                         subject, write_mode=WRITE_MODE, writer=WRITER)
+
 def main():
     mcp.run()
 

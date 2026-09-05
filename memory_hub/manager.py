@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+import json
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -107,14 +108,14 @@ class MemoryManager:
         """Returns (status_dict, near_update_row_or_None). status_dict is set only
         for a genuine, hard-blocking duplicate; near_update_row is set when a close
         but not identical match exists so the caller can route it for review."""
+        if candidate.supersedes_id:
+            return None, None
         exact = self.index.exact_hash(text_hash(candidate.text), candidate.kind)
         if exact:
             return {"status": "duplicate", "memory": exact}, None
         match, score = self._best_match(candidate.text, candidate.kind)
         if match and score >= self.TRUE_DUPLICATE_THRESHOLD:
             return {"status": "duplicate", "similarity": round(score, 3), "memory": match}, None
-        if candidate.supersedes_id:
-            return None, None
         if match and score >= self.DUPLICATE_UPDATE_BAND:
             return None, (match, score)
         return None, None
@@ -137,6 +138,115 @@ class MemoryManager:
             return {"status": "already_pending", "proposal": dup}
         row = self.index.enqueue(candidate.to_dict())
         return {"status": "queued", "proposal": row}
+
+    def _session_payload(self, data: dict) -> dict:
+        required = ("model", "title", "investigated", "learned", "completed", "next_steps")
+        missing = [key for key in required if key not in data]
+        if missing:
+            raise ValueError("missing session fields: " + ", ".join(missing))
+        clean = {key: data[key] for key in required}
+        clean["project"] = data.get("project")
+        clean["date"] = data.get("date") or now_stamp()
+        for key in required:
+            if key in {"model", "title"}:
+                if not str(clean[key]).strip():
+                    raise ValueError(f"session {key} must not be empty")
+            else:
+                value = clean[key]
+                if isinstance(value, str):
+                    value = [value]
+                clean[key] = [" ".join(str(item).strip().split()) for item in value if str(item).strip()]
+        clean["model"] = str(clean["model"]).strip().lower()
+        clean["title"] = str(clean["title"]).strip()
+        clean["project"] = str(clean["project"]).strip() if clean["project"] else None
+        return clean
+
+    def _session_block(self, data: dict, memory_id: str) -> tuple[str, str]:
+        slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
+        tags = f"#{slugify(data['model'])} #{str(data['date'])[:10]}"
+        project = f"[[{slugify(data['project'])}]]" if data.get("project") else "None"
+        lines = [f"## {slug}", f"**Model:** {data['model']}", f"**Session title:** {data['title']}",
+                 f"**Date:** {data['date']}", f"**Project:** {project}", f"**Tags:** {tags}", ""]
+        for heading, key in (("Investigated", "investigated"), ("Learned", "learned"),
+                             ("Completed", "completed"), ("Next Steps", "next_steps")):
+            lines.append(f"### {heading}")
+            lines.extend(f"- {item}" for item in data[key])
+            lines.append("")
+        lines.append(f"<!-- session:{memory_id} -->")
+        return slug, "\n".join(lines).rstrip()
+
+    def propose_session(self, data: dict, *, write_mode: str = "auto") -> dict:
+        try:
+            data = self._session_payload(data)
+        except (TypeError, ValueError) as exc:
+            return {"status": "rejected", "reason": str(exc)}
+        if data["model"] not in ALLOWED_WRITERS:
+            data["model"] = "other"
+        for key in ("investigated", "learned", "completed", "next_steps"):
+            security = check_text(" ".join(data[key]))
+            if not security.safe:
+                return {"status": "rejected", "reason": security.reason}
+        subject = slugify(f"{data['model']}-{data['title']}-{data['date']}")
+        candidate = MemoryCandidate(" ".join(sum((data[k] for k in ("investigated", "learned", "completed", "next_steps")), [])),
+                                    "session", "stated", subject, data["model"])
+        if write_mode == "review":
+            row = self.index.enqueue(candidate.to_dict(), payload={"type": "session", "data": data})
+            return {"status": "queued", "proposal": row, "label": "session summary"}
+        memory_id = uuid.uuid4().hex[:12]
+        slug, block = self._session_block(data, memory_id)
+        relative = self.vault.canonical_path("session", data["model"])
+        self.vault.append_session_block(relative, block, writer=data["model"])
+        self.vault.ensure_index_entry(relative, "session", f"Session summaries for {data['model']}")
+        record = MemoryRecord(memory_id, relative, candidate.text, "session", "stated", slug, data["model"], data["date"])
+        self.index.upsert(record)
+        linked = None
+        if data.get("project"):
+            linked = self.propose(MemoryCandidate(
+                text=f"Session summary [[{slug}]]: {candidate.text}", kind="project", tag="stated",
+                subject=data["project"], writer=data["model"]))
+        return {"status": "stored", "memory": record.to_dict(), "project": linked}
+
+    def _patterns(self) -> dict:
+        path = self.vault.resolve("/patterns.md")
+        if not path.exists():
+            return {}
+        content = path.read_text(encoding="utf-8")
+        found = {}
+        for match in re.finditer(r"^## (?P<id>[a-zA-Z0-9_-]+)\s*$\n(?P<body>.*?)(?=^## |\Z)", content, re.M | re.S):
+            body = match.group("body")
+            fields = {}
+            for line in body.splitlines():
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    fields[key.strip().lower()] = value.strip()
+            found[match.group("id")] = fields
+        return found
+
+    def propose_pattern_match(self, pattern_id: str, project_fact_text: str, preference_rule_text: str,
+                              subject: str, *, write_mode: str = "auto", writer: str = "other") -> dict:
+        if pattern_id not in self._patterns():
+            return {"status": "rejected", "reason": f"unknown pattern: {pattern_id}"}
+        subject = slugify(subject)
+        link = f"[[{subject}]]"
+        project_text = f"{project_fact_text.strip()} {link}"
+        preference_text = f"{preference_rule_text.strip()} {link}"
+        existing, score = self._best_match(preference_text, "preference")
+        confirmed = bool(existing and score >= self.DUPLICATE_UPDATE_BAND)
+        label = "confirmed pattern" if confirmed else "first occurrence"
+        payload = {"type": "pattern", "pattern_id": pattern_id, "project_fact_text": project_fact_text,
+                   "preference_rule_text": preference_rule_text, "subject": subject, "writer": writer, "label": label,
+                   "preference_supersedes": existing["memory_id"] if confirmed else None}
+        if write_mode == "review":
+            candidate = MemoryCandidate(project_text, "project", "stated", subject, writer)
+            row = self.index.enqueue(candidate.to_dict(), payload=payload)
+            return {"status": "queued", "proposal": row, "label": label}
+        project = self.propose(MemoryCandidate(project_text, "project", "stated", subject, writer))
+        if project.get("status") not in {"stored", "duplicate"}:
+            return project
+        preference = self.propose(MemoryCandidate(preference_text, "preference", "preference", subject, writer,
+                                                  supersedes_id=existing["memory_id"] if confirmed else None))
+        return {"status": "stored" if preference.get("status") in {"stored", "duplicate"} else preference.get("status"),
+                "label": label, "project": project, "preference": preference}
 
     def propose(self, candidate: MemoryCandidate) -> dict:
         problem = self._validate(candidate)
@@ -183,6 +293,17 @@ class MemoryManager:
         row = self.index.pending_by_id(proposal_id)
         if not row or row["status"] != "pending":
             return {"status": "not_found", "proposal_id": proposal_id}
+        if row.get("payload"):
+            payload = json.loads(row["payload"])
+            if payload.get("type") == "session":
+                result = self.propose_session(payload["data"], write_mode="auto")
+                self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
+                return result
+            if payload.get("type") == "pattern":
+                result = self.propose_pattern_match(payload["pattern_id"], payload["project_fact_text"],
+                    payload["preference_rule_text"], payload["subject"], write_mode="auto", writer=payload["writer"])
+                self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
+                return result
         candidate = MemoryCandidate(
             text=row["text"], kind=row["kind"], tag=row["tag"], subject=row["subject"],
             writer=row["writer"], target_path=row["target_path"], supersedes_id=row["supersedes_id"]
@@ -200,6 +321,9 @@ class MemoryManager:
 
     def list_pending(self) -> list[dict]:
         return self.index.list_pending("pending")
+
+    def list_proposal_history(self) -> list[dict]:
+        return self.index.list_pending(None)
 
     def _covers(self, candidate: MemoryCandidate) -> str:
         if candidate.kind == "profile":

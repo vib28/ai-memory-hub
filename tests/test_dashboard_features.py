@@ -37,6 +37,20 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertEqual(approved["status"], "stored")
         self.assertEqual(len(self.manager.list_pending()), 0)
 
+    def test_proposal_history_includes_non_pending_outcomes(self):
+        queued = self.manager.queue(MemoryCandidate(
+            text="A proposal that was rejected.", kind="preference", tag="preference",
+            subject="history-check", writer="chatgpt",
+        ))
+        self.manager.reject(queued["proposal"]["proposal_id"])
+        history = self.manager.list_proposal_history()
+        self.assertEqual(history[0]["status"], "rejected")
+        self.assertEqual(self.manager.list_pending(), [])
+        self.assertIn("/api/pending?history=1", HTML)
+        self.assertIn("Review &amp; history", HTML)
+        self.assertIn("reviewStatuses=['pending','rejected','approved']", HTML)
+        self.assertNotIn("Possible update", HTML)
+
     def test_edit(self):
         stored = self.manager.propose(MemoryCandidate(
             text="Uses Python for automation.",

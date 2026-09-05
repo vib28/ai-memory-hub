@@ -20,6 +20,8 @@ ENTRY_RE = re.compile(
     r"(?: subject:(?P<subject>[a-zA-Z0-9_-]+))? "
     r"date:(?P<date>\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?) -->\s*$"
 )
+SESSION_RE = re.compile(r"^## (?P<slug>[a-zA-Z0-9_-]+)\s*\n(?P<body>.*?)(?=^## |\Z)", re.M | re.S)
+SESSION_ID_RE = re.compile(r"<!-- session:(?P<id>[a-zA-Z0-9_-]+) -->")
 
 def today() -> str:
     return date.today().isoformat()
@@ -106,6 +108,20 @@ def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
     meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
     kind = str(meta.get("type", "topic"))
     records = []
+    if kind == "session":
+        for block in SESSION_RE.finditer(body):
+            session_id = SESSION_ID_RE.search(block.group("body"))
+            if not session_id:
+                continue
+            lines = [line.strip() for line in block.group("body").splitlines()]
+            digest = " ".join(line[2:].strip() for line in lines if line.startswith("- "))
+            date_match = re.search(r"^\*\*Date:\*\*\s*(\d{4}-\d{2}-\d{2}(?:T[^\s]+)?)", block.group("body"), re.M)
+            records.append(MemoryRecord(
+                memory_id=session_id.group("id"), path=relative, text=digest or block.group("slug"),
+                kind="session", tag="stated", subject=block.group("slug"),
+                writer=path.stem, date=(date_match.group(1) if date_match else today()),
+            ))
+        return records
     for line in body.splitlines():
         m = ENTRY_RE.match(line)
         if m:
@@ -171,6 +187,8 @@ class Vault:
             return f"/projects/{self._merge_into_existing_project(subject_slug)}.md"
         if kind == "decision":
             return f"/decisions/{subject_slug}.md"
+        if kind == "session":
+            return f"/sessions/{slugify(subject.split('-', 1)[0] or 'other')}.md"
         return f"/topics/{subject_slug}.md"
 
     def _merge_into_existing_project(self, subject_slug: str) -> str:
@@ -215,6 +233,16 @@ class Vault:
                     current += "\n"
                 current += line.rstrip() + "\n"
             atomic_write(p, current)
+
+    def append_session_block(self, relative: str, block: str, *, writer: str) -> None:
+        p = self.resolve(relative)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(p):
+            current = p.read_text(encoding="utf-8") if p.exists() else ""
+            current = ensure_metadata(current, kind="session", writer=writer).rstrip()
+            if current:
+                current += "\n\n"
+            atomic_write(p, current + block.rstrip() + "\n")
 
     def replace_entry_line(self, relative: str, memory_id: str, transform) -> bool:
         p = self.resolve(relative)
