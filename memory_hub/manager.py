@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 
 from .index import MemoryIndex
-from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, MemoryCandidate, MemoryRecord
+from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
 from .utils import normalize_text, text_hash
-from .vault import Vault, ENTRY_RE, parse_records, ensure_metadata
+from .vault import Vault, ENTRY_RE, parse_records, ensure_metadata, now_stamp
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -132,7 +131,7 @@ class MemoryManager:
             self._mark_superseded(old)
 
         memory_id = uuid.uuid4().hex[:12]
-        stamp = date.today().isoformat()
+        stamp = now_stamp()
         line = f"- [{candidate.tag}] {candidate.text} <!-- mem:{memory_id} source:{candidate.writer} date:{stamp} -->"
         self.vault.append_entry(relative, line, kind=candidate.kind, writer=candidate.writer)
         self.vault.ensure_index_entry(relative, candidate.kind, self._covers(candidate))
@@ -199,7 +198,7 @@ class MemoryManager:
             content = p.read_text(encoding="utf-8")
             lines = content.splitlines()
             changed = False
-            stamp = date.today().isoformat()
+            stamp = now_stamp()
             for i, line in enumerate(lines):
                 m = ENTRY_RE.match(line)
                 if m and m.group("id") == memory_id:
@@ -241,8 +240,11 @@ class MemoryManager:
             groups.setdefault(key, []).append(row)
         out = []
         for (kind, subject), rows in groups.items():
+            if kind not in SINGLETON_KINDS:
+                continue
             unique = {normalize_text(r["text"]) for r in rows}
             if len(rows) > 1 and len(unique) > 1:
+                rows = sorted(rows, key=lambda r: (r["date"], r["memory_id"]))
                 out.append({"kind": kind, "subject": subject, "memories": rows})
         return out
 

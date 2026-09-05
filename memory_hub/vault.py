@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -12,11 +12,17 @@ from .utils import atomic_write, file_lock, safe_join, slugify
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 ENTRY_RE = re.compile(
     r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
-    r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+) date:(?P<date>\d{4}-\d{2}-\d{2}) -->\s*$"
+    r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+) "
+    r"date:(?P<date>\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?) -->\s*$"
 )
 
 def today() -> str:
     return date.today().isoformat()
+
+def now_stamp() -> str:
+    """Full local timestamp for new/edited entries. Older entries on disk keep their
+    date-only stamp untouched — ENTRY_RE accepts both, so nothing needs migrating."""
+    return datetime.now().isoformat(timespec="seconds")
 
 def parse_frontmatter(content: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(content)
@@ -157,10 +163,35 @@ class Vault:
         if kind == "person":
             return f"/people/{subject_slug}.md"
         if kind == "project":
-            return f"/projects/{subject_slug}.md"
+            return f"/projects/{self._merge_into_existing_project(subject_slug)}.md"
         if kind == "decision":
             return f"/decisions/{subject_slug}.md"
         return f"/topics/{subject_slug}.md"
+
+    def _merge_into_existing_project(self, subject_slug: str) -> str:
+        """Route a new project subject onto an existing project file when the two
+        are clearly the same project under different naming (e.g. 'ai-memory-hub'
+        and 'ai-memory-hub-dashboard'), so writers proposing slightly different
+        subject strings for one project don't fork it into separate files.
+
+        Only merges on a hyphen-segment prefix relationship (one slug plus a
+        trailing '-something'), never on loose similarity, so distinct projects
+        that merely share a word (e.g. 'app-frontend' vs 'app-backend') are left
+        as separate files.
+        """
+        projects_dir = self.root / "projects"
+        if not projects_dir.exists():
+            return subject_slug
+        existing_slugs = [p.stem for p in projects_dir.glob("*.md")]
+        if subject_slug in existing_slugs:
+            return subject_slug
+        related = [
+            s for s in existing_slugs
+            if s != subject_slug and (subject_slug.startswith(s + "-") or s.startswith(subject_slug + "-"))
+        ]
+        if not related:
+            return subject_slug
+        return min(related, key=len)
 
     def ensure_file(self, relative: str, kind: str, writer: str) -> Path:
         p = self.resolve(relative)
