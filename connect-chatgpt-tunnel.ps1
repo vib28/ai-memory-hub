@@ -32,7 +32,8 @@
 
 .EXAMPLE
     .\connect-chatgpt-tunnel.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
-        -TunnelId "tunnel_0123456789abcdef0123456789abcdef" -ApiKey "sk-..."
+        -TunnelId "tunnel_0123456789abcdef0123456789abcdef" `
+        -ApiKey (Read-Host "Runtime API key")
 #>
 
 param(

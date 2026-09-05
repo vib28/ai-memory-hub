@@ -45,8 +45,9 @@ class ManagerTests(unittest.TestCase):
         self.assertIsNone(self.manager.index.by_id(mid))
 
     def test_secret_rejected(self):
+        key_like_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         result = self.manager.propose(MemoryCandidate(
-            text="My API key = sk-abcdefghijklmnopqrstuvwxyz123456",
+            text=f"My API key = {key_like_value}",
             kind="profile",
             tag="stated",
             subject="credentials",
