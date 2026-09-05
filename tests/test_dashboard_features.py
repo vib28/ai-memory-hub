@@ -72,7 +72,7 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertIn("${isMostRecent?'<span class=\"recent-badge\">🕐 Most recent</span>':''}", HTML)
         self.assertIn("<span class=\"meta\" style=\"margin:0\">${formatWhen(r.date)}</span>", HTML)
         self.assertIn("const key = isProject ? `project:${r.path}` : `${r.kind}:${r.subject || 'general'}`;", HTML)
-        self.assertIn("a.memory_id<b.memory_id?-1:a.memory_id>b.memory_id?1:0", HTML)
+        self.assertIn("a.memory_id>b.memory_id?-1:a.memory_id<b.memory_id?1:0", HTML)
 
     def test_dashboard_recency_uses_the_full_canonical_project_group(self):
         with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):

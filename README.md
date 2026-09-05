@@ -138,7 +138,7 @@ sequenceDiagram
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
 - 🗃️ **Fragmentation-resistant project routing** — a new subject that's a hyphen-prefixed variant of an existing project file (e.g. `widget-app-ui` → `widget-app.md`) is folded into it instead of forking a new file
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
-- 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped chronological lists with one most-recent marker per group, and a readable audit view
+- 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped lists with the newest entry first in each group and one most-recent marker per group, and a readable audit view
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
@@ -413,7 +413,7 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 
 Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your network. It's organized as a sidebar with live counts per section, and from there you can:
 
-- browse everything stored, grouped by subject and sorted chronologically within each group, with the clock marker only on that group's newest entry
+- browse everything stored, grouped by subject with the newest entry listed first within each group, and the clock marker only on that group's newest entry
 - search across the vault
 - edit a stored fact in place, via an in-page modal (no browser `prompt()`/`confirm()` popups)
 - forget an entry after a confirmation, with toast feedback on success/failure

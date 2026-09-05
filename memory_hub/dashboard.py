@@ -280,7 +280,7 @@ function renderMemories(){
   }
   // Group projects by their canonical file, since routing may place several
   // related subjects in one file. Other kinds are grouped by kind + subject.
-  // Oldest first within a group — the order they actually happened in.
+  // Newest first within a group — the latest entry at the top.
   const groups = new Map();
   for(const r of rows){
     const isProject = r.kind === 'project';
@@ -289,12 +289,13 @@ function renderMemories(){
     if(!groups.has(key)) groups.set(key, {label,items:[]});
     groups.get(key).items.push(r);
   }
-  const compareRows=(a,b)=>a.date<b.date?-1:a.date>b.date?1:a.memory_id<b.memory_id?-1:a.memory_id>b.memory_id?1:0;
+  // Newest first: descending date within each group.
+  const compareRows=(a,b)=>a.date>b.date?-1:a.date<b.date?1:a.memory_id>b.memory_id?-1:a.memory_id<b.memory_id?1:0;
   for(const g of groups.values()) g.items.sort(compareRows);
-  // Most recently active project first.
+  // Most recently active project first (the newest item of a group is now its first).
   const ordered = [...groups.values()].sort((a,b)=>{
-    const la=a.items[a.items.length-1], lb=b.items[b.items.length-1];
-    return compareRows(lb,la);
+    const la=a.items[0], lb=b.items[0];
+    return compareRows(la,lb);
   });
   $('memoryList').innerHTML = ordered.map(({label,items})=>`
     <div class="project-group">
