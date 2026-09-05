@@ -656,6 +656,8 @@ uv run ty check
 
 The project keeps dependencies in `pyproject.toml` and the committed `uv.lock` file. Use `uv sync --extra dev` for development dependencies; CI uses the lockfile for repeatable installs. `ty` is currently advisory while type coverage is introduced incrementally.
 
+**uv reports an access-denied error inside `.venv`** — another process may be holding files open, especially when the repository is inside a OneDrive-synced folder. Pause or exit OneDrive, close IDE terminals using this environment, and rerun `uv sync`. The repository itself does not require OneDrive to be running.
+
 ## Contributing
 
 Issues and pull requests are welcome. Please don't include real personal data, credentials, or vault contents in any issue, PR, or test fixture — use the placeholder conventions already in `examples/` and `client-prompts/`.
