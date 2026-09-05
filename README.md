@@ -52,6 +52,7 @@ Stop re-explaining who you are to every AI assistant. AI Memory Hub gives them o
 - [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
 - [Session summaries](#session-summaries)
+- [Issue tracking](#issue-tracking)
 - [Roadmap and planning](#roadmap-and-planning)
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
@@ -137,7 +138,6 @@ sequenceDiagram
 
 - 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
-- 🐛 **Issue tracking** — GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track bug fixes, with #12 covering session-write validation; planned improvements are tracked in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13) and issues #14–#18
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
@@ -418,6 +418,12 @@ Clients can write a four-section session summary with `session_write`: `Investig
 Session summaries are stored in a running file per writer, such as `/sessions/codex.md`, and are searchable through the same SQLite-backed `memory_search` index. If a project is supplied, the summary also creates a linked project entry.
 
 Session writes follow the global write mode. In `review` mode, `session_write` returns `status: queued` and the summary must be approved in the dashboard before it appears in the vault. In `auto` mode, it returns `status: stored` and writes immediately. Always inspect the application-level status; a successful MCP transport call alone does not mean that memory was persisted. Rejected writes now surface their reason as an MCP tool error.
+
+## Issue tracking
+
+GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track the original bug-fix work, including [#12](https://github.com/vib28/ai-memory-hub/issues/12) for session-write validation. Follow-up defects are tracked in [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#20](https://github.com/vib28/ai-memory-hub/issues/20), and [#21](https://github.com/vib28/ai-memory-hub/issues/21).
+
+Planned improvements are tracked in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13) and its workstream issues [#14–#18](https://github.com/vib28/ai-memory-hub/issues).
 
 ## Roadmap and planning
 
