@@ -10,7 +10,8 @@ from .index import MemoryIndex
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
 from .utils import normalize_text, slugify, text_hash
-from .vault import Vault, ENTRY_RE, RESERVED_FILENAMES, parse_records, ensure_metadata, now_stamp
+from .vault import (Vault, ENTRY_RE, RESERVED_FILENAMES, parse_frontmatter, parse_records,
+                    ensure_metadata, now_stamp)
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -175,6 +176,26 @@ class MemoryManager:
         lines.append(f"<!-- session:{memory_id} -->")
         return slug, "\n".join(lines).rstrip()
 
+    def _duplicate_session(self, model: str, title: str, text: str) -> dict | None:
+        """An already-stored session by the same writer, under the same title, with a
+        byte-identical body.
+
+        The date is deliberately excluded: `session_write` stamps `now` whenever the
+        client omits one, so a retry after a transport timeout carries a *different*
+        date than the call it repeats. Matching on it would miss the one case this
+        exists to catch. Distinct sessions that merely resemble each other are
+        untouched — this is a log kind, not a singleton kind.
+        """
+        target = text_hash(text)
+        prefix = slugify(f"{model}-{title}") + "-"
+        for row in self.index.all_rows():
+            if row["kind"] != "session" or row["tag"] == "superseded":
+                continue
+            if (row["writer"] == model and row["normalized_hash"] == target
+                    and str(row["subject"]).startswith(prefix)):
+                return row
+        return None
+
     def propose_session(self, data: dict, *, write_mode: str = "auto") -> dict:
         try:
             data = self._session_payload(data)
@@ -195,6 +216,12 @@ class MemoryManager:
         subject = slugify(f"{data['model']}-{data['title']}-{data['date']}")
         candidate = MemoryCandidate(" ".join(sum((data[k] for k in ("investigated", "learned", "completed", "next_steps")), [])),
                                     "session", "stated", subject, data["model"])
+        # Sessions are a log kind, so near-matches must still both be stored — but an
+        # identical payload is a retry (client timeout, or a crash sweep re-firing a
+        # completed session), not a second session. Key on identity, not similarity (#25).
+        duplicate = self._duplicate_session(data["model"], data["title"], candidate.text)
+        if duplicate:
+            return {"status": "duplicate", "memory": duplicate}
         if write_mode == "review":
             row = self.index.enqueue(candidate.to_dict(), payload={"type": "session", "data": data})
             return {"status": "queued", "proposal": row, "label": "session summary"}
@@ -394,7 +421,12 @@ class MemoryManager:
         old = self.index.by_id(memory_id)
         if not old:
             return {"status": "not_found", "memory_id": memory_id}
-        changed = self.vault.delete_entry(old["path"], memory_id)
+        # Sessions are heading blocks, not entry lines, and need their own deletion
+        # path — dispatching on kind is what makes them removable at all (#20).
+        if old["kind"] == "session":
+            changed = self.vault.delete_session_block(old["path"], memory_id)
+        else:
+            changed = self.vault.delete_entry(old["path"], memory_id)
         if changed:
             self.index.remove(memory_id)
             return {"status": "forgotten", "memory_id": memory_id, "path": old["path"]}
@@ -449,13 +481,21 @@ class MemoryManager:
         file_ids = {r.memory_id for r in records}
         missing_from_index = sorted(file_ids - indexed_ids)
         stale_in_index = sorted(indexed_ids - file_ids)
+        orphan_sessions = []
         for p in self.vault.all_memory_files():
             if p.name in {"MEMORY.md", "AI_INSTRUCTIONS.md"}:
                 continue
-            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1):
+            relative = "/" + p.relative_to(self.vault.root).as_posix()
+            content = p.read_text(encoding="utf-8")
+            for i, line in enumerate(content.splitlines(), start=1):
                 if line.startswith("- [") and not ENTRY_RE.match(line):
-                    malformed_files.append({"path": "/" + p.relative_to(self.vault.root).as_posix(),
-                                            "line": i, "text": line[:200]})
+                    malformed_files.append({"path": relative, "line": i, "text": line[:200]})
+            # A session block whose id marker was lost (a hand edit in Obsidian will do
+            # it) is invisible to parse_records, so neither side of the file/index
+            # reconciliation above can see it. Check the files directly (#24).
+            meta, _ = parse_frontmatter(content)
+            if str(meta.get("type", "")) == "session":
+                orphan_sessions.extend(self.vault.orphan_session_blocks(relative))
         return {
             "records_in_files": len(records),
             "records_in_index": len(indexed_ids),
@@ -465,5 +505,7 @@ class MemoryManager:
             "missing_from_index": missing_from_index,
             "stale_in_index": stale_in_index,
             "malformed_memory_lines": malformed_files,
-            "healthy": not (duplicate_ids or missing_from_index or stale_in_index or malformed_files),
+            "orphan_session_blocks": orphan_sessions,
+            "healthy": not (duplicate_ids or missing_from_index or stale_in_index
+                            or malformed_files or orphan_sessions),
         }

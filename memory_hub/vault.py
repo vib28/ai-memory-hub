@@ -288,6 +288,47 @@ class Vault:
                 atomic_write(p, "\n".join(out) + "\n")
             return changed
 
+    def delete_session_block(self, relative: str, memory_id: str) -> bool:
+        """Remove the `## <slug>` block carrying `<!-- session:<id> -->`.
+
+        Session records are heading blocks, not single lines, so `delete_entry`'s
+        ENTRY_RE scan can never match them (#20). Frontmatter is left intact.
+        """
+        p = self.resolve(relative)
+        if not p.exists():
+            return False
+        with file_lock(p):
+            meta, body = parse_frontmatter(p.read_text(encoding="utf-8"))
+            kept, changed = [], False
+            for block in SESSION_RE.finditer(body):
+                found = SESSION_ID_RE.search(block.group("body"))
+                if found and found.group("id") == memory_id:
+                    changed = True
+                    continue
+                kept.append(block.group(0).rstrip())
+            if changed:
+                rebuilt = dump_frontmatter(meta) if meta else ""
+                if kept:
+                    rebuilt += ("\n" if rebuilt else "") + "\n\n".join(kept) + "\n"
+                atomic_write(p, rebuilt)
+            return changed
+
+    def orphan_session_blocks(self, relative: str) -> list[dict]:
+        """Session heading blocks with no parseable `<!-- session:<id> -->` marker.
+
+        `parse_records` skips these, so they are unindexed, unsearchable and
+        undeletable while still sitting in the vault (#24).
+        """
+        p = self.resolve(relative)
+        if not p.exists():
+            return []
+        _, body = parse_frontmatter(p.read_text(encoding="utf-8"))
+        return [
+            {"path": relative, "heading": block.group("slug")}
+            for block in SESSION_RE.finditer(body)
+            if not SESSION_ID_RE.search(block.group("body"))
+        ]
+
     def ensure_index_entry(self, relative: str, kind: str, covers: str) -> None:
         idx = self.resolve("/MEMORY.md")
         link = relative.lstrip("/")
