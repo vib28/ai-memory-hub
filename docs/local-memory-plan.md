@@ -1,8 +1,55 @@
-# Local Memory v1 implementation plan
+# Local Memory implementation roadmap
 
 This is the tracked implementation plan for the `enhancements/roadmap` branch. The
 private working copy may contain additional notes, but this document is the source of
 truth for the public repository roadmap.
+
+## First priority: automatic session continuity
+
+The user's current first priority is automatic periodic session saves and cross-client
+handoff, with shared metadata, forward/backward links and tags. This takes precedence
+over embedding improvements and unrelated documentation cleanup.
+
+- **Where:** the client-hook → capture → consolidation → session → startup-context path.
+- **Why:** continue in Codex after Claude stops without manually saving or re-explaining;
+  measure reduced context/repetition rather than promise a token-saving percentage.
+- **How:** fix native capture and queue correctness, add linked checkpoints and a local
+  worker, then install automatic startup handoff. GitHub publishing follows local continuity.
+- **Reproduction:** current hooks only buffer observations; there is no scheduled worker,
+  batch chain or guaranteed startup injection. Confirmed defects are tracked in #52–#56.
+- **Acceptance:** unattended checkpoints and final rollup, valid links/tags, bidirectional
+  Claude/Codex handoff, crash/retry safety, strict scope/budget and measured token/quality results.
+- **Required benchmark acceptance (#62):** compare matched Claude→Codex and Codex→Claude
+  sessions with automatic context passing ON versus OFF. Count both tools' usage,
+  checkpoint/summary overhead and clarification/re-explanation; publish absolute and
+  percentage savings alongside completion and essential-fact retention. Do not claim
+  success from fewer tokens with worse task results. Positive median end-to-end savings
+  without a lower completion/essential-fact retention rate is required to claim benefit
+  in the measured suite; otherwise the gate remains open.
+- **Implementation:** #52/#53 → #54/#55 → #57 → #58 → #56/#59 → #60, with closeout in
+  [#61](https://github.com/vib28/ai-memory-hub/issues/61). #56 can be prepared earlier.
+- **Verification:** design and disposable reproductions only; these runtime changes are
+  not implemented. Existing suite had 148 passes and two temp-folder setup errors; those
+  two tests passed in a fresh folder. No real-client handoff has been certified.
+
+Full design, evidence and acceptance tests:
+[`automatic-session-continuity.md`](automatic-session-continuity.md).
+The prescribed seven-section [benchmark protocol](session-handoff-benchmark.md) explains
+the test in full. In brief: snapshot one source session; fork identical destination
+states into ON/OFF arms; send the same continuation request; automatically answer
+clarifications from the same factual fixture; collect usage; run the same completion
+tests; repeat five pairs across three task types and both directions (30 pairs);
+report every result and its actual/estimated/unavailable counter status. Use disposable
+worktrees/vaults and a predeclared live-run budget. Current packet-size tests alone do
+not satisfy this cross-tool acceptance gate. No result is available yet.
+One-time setup is required; routine saves, finalization and restoration must need no
+manual trigger. Explicit session-auto and GitHub export permissions remain separate.
+
+Existing open work is retained: #40 (section embeddings), #41/#42 (readable templates
+and project cross-links), #46/#47 (vault cleanup), #48/#49 (index/audit improvements),
+#50/#51 (companion-block safety and format decision). Coordinate #42 with checkpoint
+links; the rest does not block this first-priority phase. Closed #13 records the earlier
+v1 scope, not completion of the new unattended workflow.
 
 ## Goal
 
@@ -13,7 +60,8 @@ path and human-readable Obsidian vault.
 ## Design principles
 
 - Obsidian Markdown remains the canonical source of truth.
-- SQLite indexes and capture buffers are disposable and rebuildable.
+- Accepted-memory search indexes are rebuildable. Capture buffers and pending review
+  payloads contain operational data that cannot be rebuilt from accepted Markdown alone.
 - Hooks never write directly to the vault.
 - New memory reaches the vault through the existing MCP/session-write policy.
 - Review and auto modes are both supported; review is the safe default.
@@ -60,8 +108,9 @@ path and human-readable Obsidian vault.
   ([#29](https://github.com/vib28/ai-memory-hub/issues/29),
   [#14](https://github.com/vib28/ai-memory-hub/issues/14)).
 - Documentation and tests for the above paths.
-- Bounded session-start context priming through the `memory_context` MCP tool; it returns
-  selected records only and never injects the whole vault.
+- On-demand context priming through `memory_context`; selected records only. The first
+  item can exceed the requested budget and project isolation needs correction (#56).
+  This is not an installed startup-injection hook (#59).
 - Historical session import through the public `session_write` boundary, with dry-run,
   duplicate-safe reruns, and post-import `memory_audit()` verification.
 - Read-only semantic candidate reporting through `subject_audit()` when local embeddings
@@ -71,7 +120,8 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Per-turn context priming beyond the bounded session-start `memory_context` packet.
+- Reliable startup and per-turn priming beyond the current on-demand `memory_context`
+  packet, including the scope/budget correction in #56.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
   remain advisory for search and audit; they do not silently change write decisions
   ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
@@ -267,6 +317,8 @@ review-safe writes, and the backfill client uses the public MCP proposal boundar
 writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
 rejection reasons remain visible to callers.
 
-No Local Memory v1 roadmap issues remain open. Future scoring, graph retrieval, broader
-benchmarking, and migration work remain explicitly listed as future scope rather than
-being silently claimed as implemented.
+The original Local Memory v1 tracking issues are closed. The first-priority continuity
+phase (#61, #52–#60), required paired benchmark (#62), and the open documentation/retrieval
+items listed above remain open.
+Scoring, graph retrieval and broader benchmarking remain future scope; none is silently
+claimed as implemented.

@@ -2,6 +2,10 @@
 
 This guide gets AI Memory Hub running on Windows with a local Obsidian vault.
 
+Current setup connects shared memory tools; it does not install an unattended session
+checkpoint service. [Automatic linked saves and cross-client handoff](automatic-session-continuity.md)
+are the first-priority planned phase. No new worker/setup commands are available yet.
+
 ## What you need
 
 - Windows PowerShell

@@ -6,8 +6,18 @@ AI Memory Hub follows a simple loop:
 capture → validate → review or store → search → reuse
 ```
 
-The Obsidian Markdown vault is the readable source of truth. SQLite indexes and local
-capture buffers are disposable and can be rebuilt.
+The Obsidian Markdown vault is the readable source of accepted memories. The search
+index can be rebuilt; unsummarized capture evidence and pending review payloads cannot
+be reconstructed from the vault. Do not treat those operational databases as disposable.
+
+## Automatic session handoff: planned first priority
+
+Automatic token/time checkpoints, linked final summaries and Claude/Codex startup
+handoff are not implemented yet. Current client instructions ask the model to call
+memory tools; that is not guaranteed hook-based saving or context injection.
+The [tracked design](automatic-session-continuity.md) requires no routine manual triggers
+after one-time setup. Optional GitHub publishing follows local handoff, with a separate
+sanitized-export permission.
 
 ## Everyday use
 
@@ -16,7 +26,8 @@ In review mode, open the dashboard and approve or reject the proposal. Start a n
 conversation and ask about the same topic to verify retrieval.
 
 At session start, a connected client may call `memory_context` with the current project and
-task. It returns a small bounded packet; use `memory_search` or `memory_read` for deeper
+task. It aims to return a small packet; strict budget and project isolation are pending
+corrections in #56. Use `memory_search` or `memory_read` for deeper
 follow-up instead of injecting the whole vault.
 
 Session summaries use four sections:

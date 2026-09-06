@@ -44,6 +44,20 @@ python -m memory_hub.cli --vault "<vault>" reindex
 No. Hook installation and automatic vault writes are opt-in safety decisions. Read
 [`ARCHITECTURE.md`](../ARCHITECTURE.md) before enabling them.
 
+## Will Codex automatically continue where Claude stopped?
+
+Not reliably today. Shared stored summaries can be retrieved, but periodic automatic
+checkpoints and startup handoff are the [first-priority planned work](automatic-session-continuity.md).
+The design saves locally throughout the session and injects the latest compact state
+when a supported client starts. Vectors are optional retrieval aids, not the transfer
+mechanism. No routine manual save/restore command should be needed after setup.
+
+## Will all session content be uploaded to GitHub?
+
+No. Planned automatic publishing uses permitted, sanitized checkpoint and final summaries
+after one-time destination approval, not raw transcripts. Local handoff will work without
+GitHub. Existing issue/roadmap templates remain unchanged.
+
 ## Where are bugs and future work tracked?
 
 GitHub issues and roadmap entries use a separate structured format for implementation

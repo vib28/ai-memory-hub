@@ -2,6 +2,12 @@
 
 This guide walks you through installing **AI Memory Hub v0.2** from scratch.
 
+Current-state note: shared memory access is available, but automatic periodic session
+checkpoints and cross-client startup handoff are not yet implemented. See the
+[first-priority continuity plan](docs/automatic-session-continuity.md) and its required
+[two-tool token benchmark](docs/session-handoff-benchmark.md). This guide does not yet
+install the proposed worker or automatic GitHub session publisher.
+
 You do **not** need to be a Python expert.
 
 The goal is to end up with one shared memory system that can be used by:

@@ -147,6 +147,16 @@ sequenceDiagram
 
 ## Features
 
+**Next, first priority:** automatic linked session checkpoints and Claude ↔ Codex
+handoff, without routine save/restore commands. This is **planned, not yet available**.
+Current hooks buffer observations; consolidation and context retrieval are separate
+MCP calls. See the [design and verified gaps](docs/automatic-session-continuity.md)
+and [tracking issue #61](https://github.com/vib28/ai-memory-hub/issues/61).
+Local handoff comes before optional automatic GitHub session publishing. Token savings
+will be measured alongside retention of decisions and unfinished work.
+The required [two-tool ON/OFF benchmark](docs/session-handoff-benchmark.md) compares
+similar Claude/Codex sessions, including summarization and re-explanation costs.
+
 - 🔌 **MCP server** — `memory_context`, `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `entity_alias_link`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
@@ -617,7 +627,13 @@ Also open, from the retrieval work above: [#40](https://github.com/vib28/ai-memo
 (chunked per-section session embeddings, tracked separately since it needs a schema-light
 design decision rather than a same-session fix).
 
-Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#14](https://github.com/vib28/ai-memory-hub/issues/14), [#27](https://github.com/vib28/ai-memory-hub/issues/27), and [#29](https://github.com/vib28/ai-memory-hub/issues/29) are closed. #27 records the accepted lexical write boundary: safe length-bound pruning is implemented, while embeddings remain advisory for search/audit and never change write decisions.
+The original v1 tracking issues are closed, and their buffer, consolidation, retrieval,
+import and hook-configuration primitives exist. They are not certification of unattended
+session continuity: [#52–#56](docs/automatic-session-continuity.md#reproduction-steps)
+record current adapter, preservation, queue, identity and context-budget defects.
+The first-priority next phase is [#61](https://github.com/vib28/ai-memory-hub/issues/61),
+with the required [#62 ON/OFF benchmark](docs/session-handoff-benchmark.md).
+Embeddings remain advisory for search/audit and never change write decisions.
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
 
@@ -693,7 +709,7 @@ at the moment you click, even if the page is still open and showing data from be
 
 | Tool | Purpose |
 |---|---|
-| `memory_context(project, query, limit, max_chars)` | Return a bounded session-start context packet |
+| `memory_context(project, query, limit, max_chars)` | Return selected context on demand; strict budget/project fixes tracked in #56 |
 | `memory_search(query, limit=10)` | Search the vault without reading everything |
 | `memory_read(path)` | Read one indexed memory file |
 | `memory_propose(...)` | Propose a durable memory; written immediately or queued, depending on write mode |

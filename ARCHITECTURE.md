@@ -179,21 +179,30 @@ existing four-section session contract.
 
 ## Current implementation gates
 
-The buffer, local consolidation, optional hybrid retrieval, and vault Git history/hook
-install-uninstall are all implemented on the enhancement branch — #29 is closed, so that
-safety gate is cleared. That is still not the same as enabling automatic capture in every
-client. What remains:
+Buffering, local consolidation, optional hybrid retrieval, history, hook configuration
+helpers and historical import exist. They do not yet form a supervised automatic
+checkpoint/handoff service. Current connection code installs only PostToolUse (AfterTool
+for Gemini), and native payload/schema gaps remain (#52). Hook reinstall can remove
+unrelated sibling handlers (#53). Queue pagination/claim safety (#54), cross-project
+session deduplication (#55) and context scope/budget (#56) also need correction.
 
-1. client-specific lifecycle-hook adapters beyond Claude Code — `install_hook()` targets
-   Claude Code's `PostToolUse` schema specifically; other clients' settings paths and event
-   schemas are not guessed (#14);
-2. session-import verification — a supported migration utility for historical records with
-   post-import vault/index verification (#15);
-3. the write-path performance half of #27 — `MemoryManager._best_match()` still scans every
-   same-kind row with `SequenceMatcher` on each proposal; only the *search* half moved to
-   cosine similarity. This is what turns expensive once hook capture (#14) makes every
-   session a burst of proposals, and its benchmark is what the roadmap's "keep new capture
-   in review mode until benchmark results are trusted" gate is waiting on.
+The first-priority next phase is [automatic session continuity](docs/automatic-session-continuity.md),
+tracked by [#61](https://github.com/vib28/ai-memory-hub/issues/61): linked checkpoints and
+final rollups (#57), a local worker (#58), automatic lifecycle/startup handoff (#59),
+then optional sanitized GitHub publication (#60). No routine manual trigger is allowed.
+One-time setup and separate persistence/export permissions remain explicit.
+
+Capture evidence and pending proposals are durable operational data, not rebuildable
+search indexes. A worker must preserve them across restarts, and claim work with leases
+rather than treating every processing row as a crashed job. The local handoff packet
+must remain usable without GitHub, embeddings, or MCP being ready at client startup.
+
+Accepted memories still cross the public MCP write-policy boundary; the local packet
+may expose pending operational evidence only with an explicit unreviewed label. Automatic
+session saving does not authorize automatic merging or deleting durable preferences.
+
+Required evaluation: [paired two-tool ON/OFF benchmark](docs/session-handoff-benchmark.md)
+(#62), counting total workflow overhead and task quality, not just packet length.
 
 Confidence and importance scores are planned ranking metadata. They may prioritize review
 and retrieval, but they must never bypass validation, secret rejection, deduplication, or

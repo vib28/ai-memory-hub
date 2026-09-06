@@ -2,6 +2,9 @@
 
 For the full walkthrough, read `INSTALLATION_GUIDE.md`.
 
+This installs shared memory access, not yet unattended session handoff. Automatic linked
+checkpoints and Claude/Codex restoration are the [first-priority plan](docs/automatic-session-continuity.md).
+
 ## 1. Install Python
 
 ```powershell
