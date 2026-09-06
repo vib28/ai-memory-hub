@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 141 passing](https://img.shields.io/badge/tests-141%20passing-brightgreen.svg)
+![Tests: 146 passing](https://img.shields.io/badge/tests-146%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
@@ -27,7 +27,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 | Codex CLI | stdio | [`connect-ai-tools.ps1`](#codex-cli) | |
 | Qwen Code | stdio | [`connect-ai-tools.ps1`](#qwen-code) | |
 | Gemini CLI | stdio | [`connect-ai-tools.ps1`](#gemini-cli) | if installed |
-| Kimi Code | stdio | [`connect-ai-tools.ps1`](#kimi-code) | edits `mcp.json` directly — no CLI command for this yet |
+| Kimi Code | stdio | [`connect-ai-tools.ps1`](#kimi-code) | edits `mcp.json` and optional hooks in `config.toml` |
 | Hermes Agent | stdio | [`connect-ai-tools.ps1`](#hermes-agent) | registers the MCP server **and** installs the behavioral skill |
 | ChatGPT (desktop app) | Streamable HTTP, via OpenAI's Secure MCP Tunnel | [`connect-chatgpt-tunnel.ps1`](#chatgpt-desktop-app) | needs a one-time OpenAI account setup first |
 | Cursor, Windsurf, JetBrains AI, or anything else MCP-capable | stdio | [manual, 3 steps](#connect-any-other-mcp-tool) | |
@@ -162,7 +162,7 @@ sequenceDiagram
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
-- ✅ **141 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, lifecycle-event normalization, and safe duplicate-scan pruning, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **146 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, lifecycle-event normalization, safe duplicate-scan pruning, and all verified client hook formats, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Documentation
 
@@ -334,7 +334,7 @@ Every tool above reads its MCP server list once, when that session starts — no
 
 ### Refresh revised instructions
 
-After updating this project, rerun `connect-ai-tools.ps1` — it replaces the managed AI Memory Hub instruction block in each detected CLI's global instructions file *and* refreshes Hermes' installed skill. Then start a new session in Claude Code, Codex, Qwen, Gemini, Kimi Code, or Hermes Agent. For ChatGPT, paste the current `client-prompts/chatgpt.md` into Custom Instructions and begin a new conversation. Manually configured MCP hosts likewise need their updated prompt saved and a new session or reload.
+After updating this project, rerun `connect-ai-tools.ps1` — it replaces the managed AI Memory Hub instruction block in each detected CLI's global instructions file, refreshes Hermes' installed skill, and updates requested hook settings. Then start a new session in Claude Code, Codex, Qwen, Gemini, Kimi Code, or Hermes Agent. For ChatGPT, paste the current `client-prompts/chatgpt.md` into Custom Instructions and begin a new conversation. Manually configured MCP hosts likewise need their updated prompt saved and a new session or reload.
 
 `vault_template/` is used only when a vault is initialized; it never overwrites existing vault files. To adopt a revised `AI_INSTRUCTIONS.md` in an existing vault, review the template and merge its guidance into your vault's copy without replacing your memory content.
 
@@ -560,7 +560,7 @@ GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track th
 
 Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#16](https://github.com/vib28/ai-memory-hub/issues/16), [#18](https://github.com/vib28/ai-memory-hub/issues/18), [#19–#26](https://github.com/vib28/ai-memory-hub/issues), [#28–#37](https://github.com/vib28/ai-memory-hub/issues) — pattern-linked memories and historical backfill (#16, #18, #28), vault history and hook install/uninstall (#29), the compression-engine decision (#30), the history/index isolation fix (#31), lifecycle-event normalization (#32), project entity identity, audit, and reversible linking (#33), subject-sprawl auditing generalized to every kind (#34), the same identity model extended to shared-file kinds with dashboard grouping (#35), MCP rejection reasons preserved across the tool boundary (#36), and the identity-less prefix-merge fix (#37).
 
-Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout), [#14](https://github.com/vib28/ai-memory-hub/issues/14) (remaining Codex hook verification and end-to-end adapters), and [#27](https://github.com/vib28/ai-memory-hub/issues/27) (remaining worst-case write-path duplicate-scan performance).
+Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout), [#14](https://github.com/vib28/ai-memory-hub/issues/14) (real host-client end-to-end verification), and [#27](https://github.com/vib28/ai-memory-hub/issues/27) (remaining worst-case write-path duplicate-scan performance).
 
 ## Roadmap and planning
 

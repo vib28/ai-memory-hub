@@ -235,9 +235,9 @@ Do not claim a fixed percentage saving until these measurements exist.
   implementation details, and verification results, not inferring missing evidence.
   Applied to #13, #14, #15, #16, #17, #18, #27, #28, #29, #33, #34, #35, #36, #37 and the
   #13 roadmap body itself.
-- [ ] Extend the same treatment to **closed** issues from the original bug-fix pass
-  (#2–#12, #19–#26, #30, #31, #32) — not yet done; those issues predate this
-  documentation standard and were closed under the previous format.
+- [x] Extend the same treatment to **closed** issues from the original bug-fix pass
+  (#2–#12, #19–#26, #30, #31, #32). Historical verification that was not present in the
+  issue records is explicitly labeled unavailable; no results were invented.
 
 ## Issue mapping
 
@@ -265,7 +265,7 @@ review-safe writes, and the backfill client uses the public MCP proposal boundar
 writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
 rejection reasons remain visible to callers.
 
-Five issues remain open: #13, #14, #15, #17, #27 — see [README.md's roadmap
+Three issues remain open: #13, #14, #27 — see [README.md's roadmap
 table](../README.md#roadmap-and-planning) for what specifically blocks each, and [roadmap
 #13](https://github.com/vib28/ai-memory-hub/issues/13) for the recommended fix order and
 its rationale.
