@@ -418,6 +418,18 @@ This generic layer does not guess a client-specific settings path or event schem
 adapters will call it with the correct path and event name. That prevents an installer
 from silently editing the wrong application configuration.
 
+`connect-ai-tools.ps1` is that adapter for Claude Code:
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath "<vault>" -InstallHooks
+.\connect-ai-tools.ps1 -VaultPath "<vault>" -RemoveHooks
+```
+
+It resolves Claude Code's `settings.json` from `$env:CLAUDE_CONFIG_DIR` (falling back to
+`~/.claude`) and points the hook at the venv's own `ai-memory-hook.exe`, so it works without
+relying on PATH. Both flags are idempotent and mutually exclusive with each other; neither
+touches the vault. Other clients' hook schemas are not wired up yet.
+
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
 
 ### Opt-in vault history

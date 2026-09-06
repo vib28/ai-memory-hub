@@ -23,11 +23,29 @@
     "review" (default) queues AI-proposed memories in the dashboard for approval.
     "auto" writes valid proposals straight to the vault.
 
+.PARAMETER InstallHooks
+    Also install the generic ai-memory-hook PostToolUse receiver into Claude Code's
+    settings.json (see #14/#29). Idempotent: safe to pass on every run. Takes a
+    timestamped backup of settings.json before writing and touches only the single
+    entry it owns — every other hook and setting is left exactly as found. Applies
+    to Claude Code only; other clients' hook schemas are not yet wired up (#29).
+
+.PARAMETER RemoveHooks
+    Remove the ai-memory-hook entry this script installed from Claude Code's
+    settings.json, leaving every unrelated hook and setting untouched. Safe to run
+    even if no hook was ever installed. Mutually exclusive with -InstallHooks.
+
 .EXAMPLE
     .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 
 .EXAMPLE
     .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -WriteMode auto
+
+.EXAMPLE
+    .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -InstallHooks
+
+.EXAMPLE
+    .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -RemoveHooks
 #>
 
 param(
@@ -36,8 +54,16 @@ param(
     [string]$VaultPath,
 
     [ValidateSet("review", "auto")]
-    [string]$WriteMode = "review"
+    [string]$WriteMode = "review",
+
+    [switch]$InstallHooks,
+
+    [switch]$RemoveHooks
 )
+
+if ($InstallHooks -and $RemoveHooks) {
+    throw "-InstallHooks and -RemoveHooks are mutually exclusive; pass at most one."
+}
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -92,6 +118,56 @@ function Install-Instructions {
     }
 }
 
+# Claude Code's PostToolUse hooks are the only lifecycle-hook schema this script
+# wires up (#29). $CLAUDE_CONFIG_DIR overrides the settings.json location; Claude
+# Code itself falls back to ~/.claude when it is unset, so this mirrors that.
+function Get-ClaudeSettingsPath {
+    $configDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
+    return Join-Path $configDir "settings.json"
+}
+
+# The receiver has no `python -m memory_hub.capture` entry point (only the
+# `ai-memory-hook` console script does), so this points at the venv's own copy
+# directly rather than trusting a PATH lookup a hook runner might not have.
+function Get-HookCommandPath {
+    $hookExe = Join-Path $Root ".venv\Scripts\ai-memory-hook.exe"
+    if (-not (Test-Path $hookExe)) {
+        throw "ai-memory-hook not found at $hookExe. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
+    }
+    return $hookExe
+}
+
+function Install-ClaudeHook {
+    $settingsPath = Get-ClaudeSettingsPath
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --event PostToolUse --command $hookCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Claude Code hook install: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    switch ($status) {
+        "installed"         { $results.Add("[hooks]     Claude Code hook installed ($settingsPath)") }
+        "already_installed" { $results.Add("[hooks]     Claude Code hook already installed ($settingsPath)") }
+        default             { $results.Add("[hooks]     Claude Code hook install: $status ($settingsPath)") }
+    }
+}
+
+function Remove-ClaudeHook {
+    $settingsPath = Get-ClaudeSettingsPath
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Claude Code hook removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    switch ($status) {
+        "removed"   { $results.Add("[hooks]     Claude Code hook removed ($settingsPath)") }
+        "not_found" { $results.Add("[hooks]     Claude Code hook already absent ($settingsPath)") }
+        default     { $results.Add("[hooks]     Claude Code hook removal: $status ($settingsPath)") }
+    }
+}
+
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Source) { return $cmd.Source }
@@ -132,6 +208,8 @@ if ($claudeLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.claude\CLAUDE.md" "claude.md"
             $results.Add("[connected] Claude Code")
+            if ($InstallHooks) { Install-ClaudeHook }
+            if ($RemoveHooks) { Remove-ClaudeHook }
         }
         else {
             $results.Add("[failed]    Claude Code (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -141,6 +219,8 @@ if ($claudeLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.claude\CLAUDE.md" "claude.md"
             $results.Add("[connected] Claude Code")
+            if ($InstallHooks) { Install-ClaudeHook }
+            if ($RemoveHooks) { Remove-ClaudeHook }
         }
         else {
             $results.Add("[failed]    Claude Code ($($_.Exception.Message))")
@@ -149,6 +229,9 @@ if ($claudeLauncher) {
 }
 else {
     $results.Add("[skipped]   Claude Code (not found on PATH)")
+    if ($InstallHooks -or $RemoveHooks) {
+        $results.Add("[skipped]   Claude Code hooks (Claude Code CLI not found on PATH)")
+    }
 }
 
 # --- Gemini CLI ----------------------------------------------------------
