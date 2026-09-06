@@ -81,6 +81,11 @@ textarea{min-height:110px;resize:vertical;line-height:1.5}
 .section-title{display:flex;justify-content:space-between;align-items:center;margin:0 0 14px}
 .section-title h2{margin:0;font-size:16px}
 .memory-text{white-space:pre-wrap;margin:0 0 4px;line-height:1.5}
+.proposal-sections{display:flex;flex-direction:column;gap:8px;margin:0 0 4px}
+.proposal-section h4{margin:0 0 3px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.proposal-section ul{margin:0;padding-left:18px}
+.proposal-section li{line-height:1.5}
+.proposal-section p{margin:0;line-height:1.5;white-space:pre-wrap}
 .card-actions{margin-top:12px;display:flex;gap:8px;justify-content:flex-end}
 .skeleton{color:var(--muted);padding:30px;text-align:center}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
@@ -328,6 +333,30 @@ async function forgetMemory(id){
   await guarded(()=>api('/api/memory/'+id+'/forget','POST',{}),'Memory forgotten');
   await loadMemories(); await loadConflicts();
 }
+// A session/pattern proposal's `text` is a single string flattened for hashing
+// and dedup (see MemoryManager.propose_session/propose_pattern_match) -- render
+// the structured payload instead when one is present, so a review-queue card
+// shows the same Investigated/Learned/Completed/Next-steps sections (or a
+// pattern's two named halves) the approved vault entry will have, rather than
+// one run-on paragraph. Every other kind, and any row with no payload (every
+// proposal that existed before this feature), falls through unchanged (#38).
+function pendingBody(r){
+  const p = r.payload;
+  if(p && p.type === 'session' && p.data){
+    const sections = [['Investigated',p.data.investigated],['Learned',p.data.learned],
+      ['Completed',p.data.completed],['Next steps',p.data.next_steps]].filter(([,items])=>items && items.length);
+    if(sections.length) return `<div class="proposal-sections">${sections.map(([label,items])=>
+      `<div class="proposal-section"><h4>${esc(label)}</h4><ul>${items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul></div>`
+    ).join('')}</div>`;
+  }
+  if(p && p.type === 'pattern'){
+    const halves = [['Project fact',p.project_fact_text],['Preference rule',p.preference_rule_text]].filter(([,text])=>text);
+    if(halves.length) return `<div class="proposal-sections">${halves.map(([label,text])=>
+      `<div class="proposal-section"><h4>${esc(label)}</h4><p>${esc(text)}</p></div>`
+    ).join('')}</div>`;
+  }
+  return `<p class="memory-text">${esc(r.text)}</p>`;
+}
 async function loadPending(){
   const rows=await guarded(()=>api('/api/pending?history=1'));
   const pending=rows.filter(r=>r.status==='pending');
@@ -343,7 +372,7 @@ async function loadPending(){
           <span class="tag-chip" style="color:${r.status==='pending'?'var(--warn)':'var(--muted)'}">${esc(r.status==='pending'?'open':r.status)}</span>
         </span>
       </div>
-      <p class="memory-text">${esc(r.text)}</p>
+      ${pendingBody(r)}
       <div class="meta"><span>${esc(r.subject)}</span><span>·</span><span>${esc(r.writer)}</span><span>·</span><span>🕐 ${formatWhen(r.created_at)}</span></div>
       ${r.status==='pending'?`<div class="card-actions">
         <button class="good-outline" onclick="approve('${r.proposal_id}')">✓ Approve</button>
@@ -439,6 +468,26 @@ def _dashboard_group(row: dict, registry: dict[str, dict[str, str]]) -> tuple[st
         subject = resolve_subject(registry, kind, slugify(subject))
     return f"{kind}:{subject}", subject
 
+def _pending_rows_for_dashboard(rows: list[dict]) -> list[dict]:
+    """Parse each row's stored `payload` (a JSON *string* column, per
+    MemoryIndex.enqueue) into a nested object so the review-queue card can
+    render a session's four sections or a pattern's two halves structurally,
+    instead of only the single flattened `text` field every kind already has.
+
+    Backward compatible by construction: a row with no payload, or a payload
+    that fails to parse, is returned with `payload: None` untouched -- exactly
+    what every pre-existing proposal (and every non-session/non-pattern kind)
+    already looks like. This never touches the database; MemoryManager.approve()
+    reads its own row via a separate fetch and is unaffected (#38).
+    """
+    for row in rows:
+        raw = row.get("payload")
+        try:
+            row["payload"] = json.loads(raw) if raw else None
+        except (TypeError, ValueError):
+            row["payload"] = None
+    return rows
+
 def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[dict]:
     """Return visible dashboard rows with recency calculated from the full index."""
     registry = manager.entity_registry()
@@ -519,8 +568,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(memory_rows_for_dashboard(self.manager, q))
             if u.path == "/api/pending":
                 if parse_qs(u.query).get("history", ["0"])[0] == "1":
-                    return self._json(self.manager.list_proposal_history())
-                return self._json(self.manager.list_pending())
+                    return self._json(_pending_rows_for_dashboard(self.manager.list_proposal_history()))
+                return self._json(_pending_rows_for_dashboard(self.manager.list_pending()))
             if u.path == "/api/conflicts":
                 return self._json(self.manager.conflicts())
             if u.path == "/api/audit":

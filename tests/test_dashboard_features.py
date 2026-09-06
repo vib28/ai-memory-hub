@@ -9,7 +9,7 @@ from pathlib import Path
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
-from memory_hub.dashboard import HTML, DashboardHandler, memory_rows_for_dashboard
+from memory_hub.dashboard import HTML, DashboardHandler, memory_rows_for_dashboard, _pending_rows_for_dashboard
 
 class DashboardFeatureTests(unittest.TestCase):
     def setUp(self):
@@ -50,6 +50,53 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertIn("Review &amp; history", HTML)
         self.assertIn("reviewStatuses=['pending','rejected','approved']", HTML)
         self.assertNotIn("Possible update", HTML)
+
+    def test_pending_session_proposal_exposes_structured_payload(self):
+        """#38: a queued session_write's review-queue row should carry its
+        four sections as a real object, not only the flattened `text` string
+        the card previously had to render as one paragraph."""
+        result = self.manager.propose_session({
+            "model": "claude", "title": "demo", "date": None, "project": None,
+            "investigated": ["Read the docs"], "learned": ["The gap was real"],
+            "completed": ["Shipped the fix"], "next_steps": ["Write tests"],
+        }, write_mode="review")
+        self.assertEqual(result["status"], "queued")
+        rows = _pending_rows_for_dashboard(self.manager.list_pending())
+        self.assertEqual(len(rows), 1)
+        payload = rows[0]["payload"]
+        self.assertEqual(payload["type"], "session")
+        self.assertEqual(payload["data"]["investigated"], ["Read the docs"])
+        self.assertEqual(payload["data"]["next_steps"], ["Write tests"])
+
+    def test_pending_pattern_proposal_exposes_structured_payload(self):
+        result = self.manager.propose_pattern_match(
+            "regression", "A prior change caused a regression.",
+            "Add a regression check.", "demo-subject", write_mode="review", writer="claude",
+        )
+        self.assertEqual(result["status"], "queued")
+        rows = _pending_rows_for_dashboard(self.manager.list_pending())
+        self.assertEqual(len(rows), 1)
+        payload = rows[0]["payload"]
+        self.assertEqual(payload["type"], "pattern")
+        self.assertEqual(payload["project_fact_text"], "A prior change caused a regression.")
+
+    def test_ordinary_proposal_has_no_payload_backward_compatible(self):
+        """Every proposal that existed before #38, and every non-session/
+        non-pattern kind, must render exactly as before: payload stays None,
+        and the card falls back to the flat text field."""
+        self.manager.queue(MemoryCandidate(
+            text="An ordinary preference.", kind="preference", tag="preference",
+            subject="plain", writer="chatgpt",
+        ))
+        rows = _pending_rows_for_dashboard(self.manager.list_pending())
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["payload"])
+        self.assertEqual(rows[0]["text"], "An ordinary preference.")
+
+    def test_pending_rows_never_raise_on_malformed_payload(self):
+        rows = [{"payload": "{not valid json"}, {"payload": None}, {}]
+        result = _pending_rows_for_dashboard(rows)
+        self.assertEqual([r["payload"] for r in result], [None, None, None])
 
     def test_edit(self):
         stored = self.manager.propose(MemoryCandidate(

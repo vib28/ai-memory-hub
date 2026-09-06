@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 127 passing](https://img.shields.io/badge/tests-127%20passing-brightgreen.svg)
+![Tests: 131 passing](https://img.shields.io/badge/tests-131%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
@@ -162,7 +162,7 @@ sequenceDiagram
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
-- ✅ **127 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **131 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Documentation
 
@@ -595,7 +595,7 @@ Opens `http://127.0.0.1:8765` — bound to localhost only, never exposed to your
 - edit a stored fact in place, via an in-page modal (no browser `prompt()`/`confirm()` popups)
 - forget an entry after a confirmation, with toast feedback on success/failure
 - filter by kind using the filter chips
-- review and approve/reject queued proposals
+- review and approve/reject queued proposals — a pending `session_write` or `propose_pattern_match` renders its actual Investigated/Learned/Completed/Next-steps sections (or the pattern's two named halves), not the single flattened paragraph used for hashing; every other proposal kind is unaffected (#38)
 - see likely conflicts (same subject, competing facts, flagged only for singleton-fact kinds like `profile`/`preference`) with a "🕐 Most recent" badge, and resolve them by choosing the current version
 - run a vault/index audit, shown as a readable summary instead of raw JSON
 
