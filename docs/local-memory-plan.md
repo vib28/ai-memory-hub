@@ -81,6 +81,10 @@ path and human-readable Obsidian vault.
 - A repeatable benchmark now reports `SequenceMatcher` comparisons at multiple vault sizes;
   the tested varied-length dataset reduced comparisons to 2 at 100, 500, and 1,000 records.
   This is a safe reduction, not proof that worst-case linear scaling has been eliminated.
+- `scripts/benchmark_context.py` measures full-vault versus bounded context size, latency,
+  and precision@3/precision@10. It reports exact `tiktoken` counts when that optional
+  package is installed and explicitly reports token counts as unavailable otherwise; it
+  does not claim a universal savings percentage.
 
 ### Safety gate — complete
 
@@ -89,19 +93,20 @@ path and human-readable Obsidian vault.
 - Session-ID commit support for successful automated consolidation.
 - Provider-neutral hook installation/removal with timestamped backups and managed-entry
   preservation, **now wired into the default connection script** for Claude Code, Gemini CLI,
-  Qwen Code, and Kimi Code (`-InstallHooks`/`-RemoveHooks`).
+  Qwen Code, Kimi Code, and Codex CLI (`-InstallHooks`/`-RemoveHooks`).
 
 Automated commits refuse to mix with pre-staged user changes.
 
 [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed: this safety gate is
-cleared. What still gates automatic capture shipping *by default* is client-specific
-adapter coverage (#14) and the write-path benchmark (#27), not this gate.
+cleared. What still gates automatic capture shipping *by default* is the remaining
+write-path performance work (#27), not this gate.
 
 ### Not yet implemented
 
 - Confidence and importance scoring.
 - Graph-aware retrieval and reranking.
-- Full token-savings benchmark.
+- A benchmark result broad enough to justify a universal token-savings percentage; the
+  reproducible context-size/retrieval harness exists, but claims remain workload-specific.
 - Automatic hook enablement in the default installer.
 - A migration/backfill that scans `subject_audit()` candidates and proposes
   `entity_alias_link()`/`project_link()` calls automatically — linking stays a one-at-a-time,
