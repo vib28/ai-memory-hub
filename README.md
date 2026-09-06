@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 138 passing](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)
+![Tests: 141 passing](https://img.shields.io/badge/tests-141%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
@@ -579,7 +579,7 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | 4 | Patterns | ✅ [#16](https://github.com/vib28/ai-memory-hub/issues/16) → ✅ [#28](https://github.com/vib28/ai-memory-hub/issues/28) → ✅ [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
 | 5 | Retrieval, identity, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
-Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, and hook install/uninstall are all implemented — [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed, so that safety gate is cleared. What remains before automatic capture ships by default: client-specific lifecycle-hook adapters beyond Claude Code ([#14](https://github.com/vib28/ai-memory-hub/issues/14)), session-import verification ([#15](https://github.com/vib28/ai-memory-hub/issues/15)), and the write-path duplicate-scan performance work plus its benchmark ([#27](https://github.com/vib28/ai-memory-hub/issues/27)) — `_best_match()` still scans every same-kind row with `SequenceMatcher` on every proposal; only the *search* half of #27 moved to cosine similarity.
+Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed, so that safety gate is cleared. What remains before automatic capture ships by default: Kimi/Codex hook adapters whose configuration can be safely preserved ([#14](https://github.com/vib28/ai-memory-hub/issues/14)), and the remaining worst-case write-path duplicate-scan performance work ([#27](https://github.com/vib28/ai-memory-hub/issues/27)). The safe length-bound pruning and benchmark are already landed; embeddings still affect search/audit only, never write decisions.
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
 
