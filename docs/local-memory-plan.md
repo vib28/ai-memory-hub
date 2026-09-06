@@ -35,6 +35,10 @@ path and human-readable Obsidian vault.
 - Optional local OpenAI-compatible embeddings.
 - Hybrid semantic plus SQLite FTS search with FTS fallback.
 - Normalized lifecycle events in the local observation buffer with additive SQLite migration.
+- Embeddings are treated as optional duplicate-candidate and retrieval support; changing
+  the embedding model does not replace stable project identity, canonical routing, or
+  human-reviewed merge rules ([#27](https://github.com/vib28/ai-memory-hub/issues/27),
+  [#33](https://github.com/vib28/ai-memory-hub/issues/33)).
 - Documentation and tests for the above paths.
 
 ### In progress
