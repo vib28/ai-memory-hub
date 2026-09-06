@@ -436,10 +436,12 @@ python -m memory_hub.cli hooks-uninstall `
 ```
 
 This generic layer does not guess a client-specific settings path or event schema. Client
-adapters will call it with the correct path and event name. That prevents an installer
-from silently editing the wrong application configuration.
+adapters call it with the correct path and event name. The connection script now wires the
+verified nested schemas for Gemini CLI (`AfterTool`) and Qwen Code (`PostToolUse`) when
+`-InstallHooks` is supplied. Kimi Code and Codex hook adapters remain manual until their
+schemas are verified.
 
-`connect-ai-tools.ps1` is that adapter for Claude Code:
+`connect-ai-tools.ps1` is that adapter for Claude Code, Gemini CLI, and Qwen Code:
 
 ```powershell
 .\connect-ai-tools.ps1 -VaultPath "<vault>" -InstallHooks
@@ -449,7 +451,8 @@ from silently editing the wrong application configuration.
 It resolves Claude Code's `settings.json` from `$env:CLAUDE_CONFIG_DIR` (falling back to
 `~/.claude`) and points the hook at the venv's own `ai-memory-hook.exe`, so it works without
 relying on PATH. Both flags are idempotent and mutually exclusive with each other; neither
-touches the vault. Other clients' hook schemas are not wired up yet.
+touches the vault. Existing settings are backed up before modification and unrelated
+settings and hook groups are preserved.
 
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
 

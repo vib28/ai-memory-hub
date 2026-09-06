@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memory_hub.hooks import HookConfigError, install_hook, uninstall_hook
+from memory_hub.hooks import (HookConfigError, install_hook, install_nested_hook,
+                              uninstall_hook, uninstall_nested_hook)
 
 
 class HookConfigTests(unittest.TestCase):
@@ -56,6 +57,20 @@ class HookConfigTests(unittest.TestCase):
             install_hook(self.settings, event="PostToolUse", command="ai-memory-hook")
         self.assertEqual(self.settings.read_text(encoding="utf-8"), original)
         self.assertEqual(len(list(self.settings.parent.glob("settings.json.bak-*"))), 1)
+
+    def test_nested_hook_preserves_unrelated_groups(self):
+        self.settings.write_text(json.dumps({"theme": "dark", "hooks": {
+            "AfterTool": [{"matcher": "Other", "hooks": [{"type": "command", "command": "other"}]}]
+        }}), encoding="utf-8")
+        result = install_nested_hook(self.settings, event="AfterTool", command="ai-memory-hook")
+        config = json.loads(self.settings.read_text(encoding="utf-8"))
+        self.assertEqual(result["status"], "installed")
+        self.assertEqual(config["theme"], "dark")
+        self.assertEqual(len(config["hooks"]["AfterTool"]), 2)
+        removed = uninstall_nested_hook(self.settings)
+        self.assertEqual(removed["status"], "removed")
+        config = json.loads(self.settings.read_text(encoding="utf-8"))
+        self.assertEqual(len(config["hooks"]["AfterTool"]), 1)
 
 
 if __name__ == "__main__":

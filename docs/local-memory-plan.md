@@ -54,9 +54,11 @@ path and human-readable Obsidian vault.
   caller; a plain `ValueError` was silently discarded by the MCP SDK's crash-handling path,
   reaching the caller as a bare `Error executing tool <name>` with no reason
   ([#36](https://github.com/vib28/ai-memory-hub/issues/36)).
-- Generic hook install/removal wired into the default connection script for Claude Code:
-  `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`, idempotent, with a timestamped
-  backup before each write ([#29](https://github.com/vib28/ai-memory-hub/issues/29)).
+- Generic hook install/removal wired into the default connection script for Claude Code,
+  Gemini CLI, and Qwen Code: `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`,
+  idempotent, with a timestamped backup before each write
+  ([#29](https://github.com/vib28/ai-memory-hub/issues/29),
+  [#14](https://github.com/vib28/ai-memory-hub/issues/14)).
 - Documentation and tests for the above paths.
 - Bounded session-start context priming through the `memory_context` MCP tool; it returns
   selected records only and never injects the whole vault.
@@ -67,7 +69,8 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Client-specific lifecycle-hook adapters for clients beyond Claude Code.
+- Client-specific lifecycle-hook adapters for Kimi Code and Codex CLI; Gemini CLI and
+  Qwen Code adapters are verified and installed by the connection script.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - End-to-end host-client adapters.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
@@ -80,8 +83,8 @@ path and human-readable Obsidian vault.
 - Disposable index, WAL/SHM, lock, and temporary-file ignores.
 - Session-ID commit support for successful automated consolidation.
 - Provider-neutral JSON hook installation/removal with timestamped backups and managed-entry
-  preservation, **now wired into the default connection script** for Claude Code
-  (`-InstallHooks`/`-RemoveHooks`) — this was the missing piece that kept #29 open.
+  preservation, **now wired into the default connection script** for Claude Code, Gemini CLI,
+  and Qwen Code (`-InstallHooks`/`-RemoveHooks`).
 
 Automated commits refuse to mix with pre-staged user changes.
 

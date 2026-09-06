@@ -28,7 +28,8 @@
     settings.json (see #14/#29). Idempotent: safe to pass on every run. Takes a
     timestamped backup of settings.json before writing and touches only the single
     entry it owns — every other hook and setting is left exactly as found. Applies
-    to Claude Code only; other clients' hook schemas are not yet wired up (#29).
+    to Claude Code, Gemini CLI, and Qwen Code when those clients are detected. Kimi and
+    Codex hook schemas are not installed automatically until their adapters are verified.
 
 .PARAMETER RemoveHooks
     Remove the ai-memory-hook entry this script installed from Claude Code's
@@ -168,6 +169,32 @@ function Remove-ClaudeHook {
     }
 }
 
+function Install-NestedClientHook {
+    param([string]$Client, [string]$SettingsPath, [string]$Event)
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $SettingsPath --format nested --event $Event --command $hookCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    $Client hook install: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
+}
+
+function Remove-NestedClientHook {
+    param([string]$Client, [string]$SettingsPath)
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $SettingsPath --format nested 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    $Client hook removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
+}
+
+function Get-GeminiSettingsPath { return Join-Path $HOME ".gemini\settings.json" }
+function Get-QwenSettingsPath { return Join-Path $HOME ".qwen\settings.json" }
+
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Source) { return $cmd.Source }
@@ -246,6 +273,8 @@ if ($geminiLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
+            if ($InstallHooks) { Install-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) "AfterTool" }
+            if ($RemoveHooks) { Remove-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) }
         }
         else {
             $results.Add("[failed]    Gemini CLI (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -255,6 +284,8 @@ if ($geminiLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
+            if ($InstallHooks) { Install-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) "AfterTool" }
+            if ($RemoveHooks) { Remove-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) }
         }
         else {
             $results.Add("[failed]    Gemini CLI ($($_.Exception.Message))")
@@ -263,6 +294,7 @@ if ($geminiLauncher) {
 }
 else {
     $results.Add("[skipped]   Gemini CLI (not found on PATH)")
+    if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Gemini CLI hooks (Gemini CLI not found on PATH)") }
 }
 
 # --- Qwen Code -----------------------------------------------------------
@@ -277,17 +309,28 @@ if ($qwenLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
             $results.Add("[connected] Qwen Code")
+            if ($InstallHooks) { Install-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) "PostToolUse" }
+            if ($RemoveHooks) { Remove-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) }
         }
         else {
             $results.Add("[failed]    Qwen Code (exit ${LASTEXITCODE}): $($output.Trim())")
         }
     }
     catch {
-        $results.Add("[failed]    Qwen Code ($($_.Exception.Message))")
+        if (Test-AlreadyRegistered $_.Exception.Message) {
+            Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
+            $results.Add("[connected] Qwen Code")
+            if ($InstallHooks) { Install-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) "PostToolUse" }
+            if ($RemoveHooks) { Remove-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) }
+        }
+        else {
+            $results.Add("[failed]    Qwen Code ($($_.Exception.Message))")
+        }
     }
 }
 else {
     $results.Add("[skipped]   Qwen Code (not found on PATH)")
+    if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Qwen Code hooks (Qwen Code CLI not found on PATH)") }
 }
 
 # --- Codex CLI -------------------------------------------------------------
