@@ -56,7 +56,9 @@ Do not announce every automatic memory write unless it is useful to the user.
 
 ## Session summaries
 
-At the natural end of every session, call `session_write` automatically. Include the session title, any known project, and all four sections: Investigated, Learned, Completed, and Next Steps. Keep each section concise and use the current date and the connected client's model identity supplied by the server.
+At the natural end of every session, call `session_write` automatically. Include the session title, any known project, and all four sections: Investigated, Learned, Completed, and Next Steps. Use the current date and the connected client's model identity supplied by the server.
+
+Keep the four sections combined under 1500 characters. Longer submissions are rejected outright, not truncated, so summarize rather than transcribe: short bullet-style statements of fact, not full sentences or pasted output.
 
 Always read the status the call returns. A successful tool call does not by itself mean the summary was persisted:
 

@@ -1,7 +1,10 @@
 import ast
+import asyncio
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 
 from memory_hub import mcp_server
 
@@ -10,7 +13,7 @@ class McpServerTests(unittest.TestCase):
     def test_session_write_surfaces_application_rejection(self):
         rejected = {"status": "rejected", "reason": "empty memory"}
         with patch.object(mcp_server.manager, "propose_session", return_value=rejected):
-            with self.assertRaisesRegex(ValueError, "session write rejected: empty memory"):
+            with self.assertRaisesRegex(ToolError, "session write rejected: empty memory"):
                 mcp_server.session_write(
                     title="test",
                     investigated=["evidence"],
@@ -18,6 +21,24 @@ class McpServerTests(unittest.TestCase):
                     completed=["result"],
                     next_steps=["next"],
                 )
+
+    def test_session_write_rejection_reason_survives_the_mcp_boundary(self):
+        """#36: a plain ValueError is swallowed by the SDK into a generic
+        "Error executing tool <name>" with the reason discarded (UnexpectedToolError).
+        ToolError is the SDK's "anticipated failure" channel, whose message reaches
+        the caller intact even after tool_manager.call_tool() re-wraps it. Exercise the
+        real registered tool through mcp.call_tool(), not the bare function, since the
+        bug lives entirely in which exception type crosses that boundary.
+        """
+        rejected = {"status": "rejected", "reason": "empty memory"}
+        with patch.object(mcp_server.manager, "propose_session", return_value=rejected):
+            with self.assertRaises(ToolError) as ctx:
+                asyncio.run(mcp_server.mcp.call_tool("session_write", {
+                    "title": "test", "investigated": ["evidence"], "learned": ["finding"],
+                    "completed": ["result"], "next_steps": ["next"],
+                }))
+            self.assertNotIsInstance(ctx.exception, UnexpectedToolError)
+            self.assertIn("session write rejected: empty memory", str(ctx.exception))
 
     def test_session_write_returns_queued_result(self):
         queued = {"status": "queued", "proposal": {"proposal_id": "p1"}}
@@ -36,10 +57,22 @@ class McpServerTests(unittest.TestCase):
         """Same contract as session_write: a rejection must not look like success (#23)."""
         rejected = {"status": "rejected", "reason": "secret detected", "half": "preference"}
         with patch.object(mcp_server.manager, "propose_pattern_match", return_value=rejected):
-            with self.assertRaisesRegex(ValueError, r"pattern match rejected \(preference half\)"):
+            with self.assertRaisesRegex(ToolError, r"pattern match rejected \(preference half\)"):
                 mcp_server.propose_pattern_match(
                     pattern_id="regression", project_fact_text="fact",
                     preference_rule_text="rule", subject="demo")
+
+    def test_pattern_match_rejection_reason_survives_the_mcp_boundary(self):
+        """#36, same contract as the session_write boundary test above."""
+        rejected = {"status": "rejected", "reason": "secret detected", "half": "preference"}
+        with patch.object(mcp_server.manager, "propose_pattern_match", return_value=rejected):
+            with self.assertRaises(ToolError) as ctx:
+                asyncio.run(mcp_server.mcp.call_tool("propose_pattern_match", {
+                    "pattern_id": "regression", "project_fact_text": "fact",
+                    "preference_rule_text": "rule", "subject": "demo",
+                }))
+            self.assertNotIsInstance(ctx.exception, UnexpectedToolError)
+            self.assertIn("pattern match rejected (preference half): secret detected", str(ctx.exception))
 
     def test_pattern_match_returns_queued_result(self):
         queued = {"status": "queued", "proposal": {"proposal_id": "p1"}, "label": "first occurrence"}

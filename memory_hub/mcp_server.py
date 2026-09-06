@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from .manager import AUTO_POLICY, MemoryManager
 from .models import MemoryCandidate
@@ -122,8 +123,12 @@ def session_write(
     # MCP transports can return a successful tool call even when the
     # application-level operation was rejected. Surface that distinction to
     # callers so they cannot mistake a rejected write for persisted memory.
+    # ToolError (not ValueError/RuntimeError) is required here: the SDK treats a
+    # plain exception raised from a tool body as a crash and discards its message,
+    # replacing it with a bare "Error executing tool <name>". ToolError is the
+    # "anticipated failure" channel whose message reaches the caller intact (#36).
     if result.get("status") == "rejected":
-        raise ValueError(f"session write rejected: {result.get('reason', 'unknown reason')}")
+        raise ToolError(f"session write rejected: {result.get('reason', 'unknown reason')}")
     return result
 
 @mcp.tool()
@@ -156,10 +161,11 @@ def propose_pattern_match(
     result = manager.propose_pattern_match(pattern_id, project_fact_text, preference_rule_text,
                                            subject, write_mode=WRITE_MODE, writer=WRITER)
     # Same contract as session_write: a rejected pattern must not reach the caller
-    # looking like a successful tool call.
+    # looking like a successful tool call. Must be ToolError, not ValueError — see
+    # the comment on session_write's raise (#36).
     if result.get("status") == "rejected":
         half = f" ({result['half']} half)" if result.get("half") else ""
-        raise ValueError(
+        raise ToolError(
             f"pattern match rejected{half}: {result.get('reason', 'unknown reason')}")
     return result
 
