@@ -34,15 +34,12 @@ path and human-readable Obsidian vault.
 - Review and auto write-mode propagation.
 - Optional local OpenAI-compatible embeddings.
 - Hybrid semantic plus SQLite FTS search with FTS fallback.
+- Normalized lifecycle events in the local observation buffer with additive SQLite migration.
 - Documentation and tests for the above paths.
 
 ### In progress
 
 - Client-specific lifecycle-hook adapters and installation/removal wiring.
-- Normalize resilient lifecycle events using the external reference project's useful
-  patterns—event naming, fail-open behavior, bounded delivery, and retry awareness—
-  while keeping AI Memory Hub's local SQLite buffer and avoiding a required HTTP server
-  dependency ([#32](https://github.com/vib28/ai-memory-hub/issues/32)).
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
 
