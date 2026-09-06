@@ -39,6 +39,10 @@ path and human-readable Obsidian vault.
 ### In progress
 
 - Client-specific lifecycle-hook adapters and installation/removal wiring.
+- Normalize resilient lifecycle events using the external reference project's useful
+  patterns—event naming, fail-open behavior, bounded delivery, and retry awareness—
+  while keeping AI Memory Hub's local SQLite buffer and avoiding a required HTTP server
+  dependency ([#32](https://github.com/vib28/ai-memory-hub/issues/32)).
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
 
@@ -196,6 +200,7 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #15 — local session consolidation and verification
 - #27 — optional local embeddings and hybrid memory search
 - #29 — vault undo plus hook install/uninstall safety gate
+- #32 — normalized resilient lifecycle events without an HTTP hook dependency
 - #17 — client prompts and integration documentation
 - #13 — parent roadmap and closeout
 

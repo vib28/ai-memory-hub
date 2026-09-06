@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import uuid
@@ -19,6 +20,38 @@ from typing import Any, Iterable
 
 DEFAULT_MAX_TEXT = 4000
 DEFAULT_MAX_FILES = 100
+
+
+_EVENT_ALIASES = {
+    "sessionstart": "session-start",
+    "session-start": "session-start",
+    "sessionend": "session-end",
+    "session-end": "session-end",
+    "userpromptsubmit": "user-prompt-submit",
+    "user-prompt-submit": "user-prompt-submit",
+    "user-prompt": "user-prompt-submit",
+    "pretooluse": "pre-tool-use",
+    "pre-tool-use": "pre-tool-use",
+    "posttooluse": "post-tool-use",
+    "post-tool-use": "post-tool-use",
+    "posttoolusefailure": "post-tool-use-failure",
+    "post-tool-use-failure": "post-tool-use-failure",
+    "precompact": "pre-compact",
+    "pre-compact": "pre-compact",
+    "postcompaction": "post-compaction",
+    "post-compaction": "post-compaction",
+    "stop": "stop",
+}
+
+
+def normalize_event(value: Any) -> str:
+    """Map common client lifecycle spellings to one stable local name."""
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return "observation"
+    kebab = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", raw).replace("_", "-").replace(" ", "-")
+    kebab = re.sub(r"-+", "-", kebab).strip("-").lower()
+    return _EVENT_ALIASES.get(kebab, _EVENT_ALIASES.get(kebab.replace("-", ""), kebab[:80]))
 
 
 def default_buffer_path() -> Path:
@@ -52,6 +85,7 @@ class Observation:
     git_commit: str
     created_at: str
     source: str
+    event: str
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "Observation":
@@ -75,6 +109,9 @@ class Observation:
             git_commit=_bounded_text(payload.get("git_commit"), 200).strip(),
             created_at=created_at,
             source=_bounded_text(payload.get("source"), 100).strip() or "generic-hook",
+            event=normalize_event(
+                payload.get("event", payload.get("event_name", payload.get("hook_event")))
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -90,6 +127,7 @@ class Observation:
             "git_commit": self.git_commit,
             "created_at": self.created_at,
             "source": self.source,
+            "event": self.event,
         }
 
 
@@ -116,6 +154,7 @@ class ObservationBuffer:
                 git_commit TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 source TEXT NOT NULL,
+                event TEXT NOT NULL DEFAULT 'observation',
                 status TEXT NOT NULL DEFAULT 'pending',
                 attempts INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT
@@ -126,6 +165,10 @@ class ObservationBuffer:
                 ON observations(status, created_at);
             """
         )
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(observations)")}
+        if "event" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN event TEXT NOT NULL DEFAULT 'observation'")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_event ON observations(event, created_at)")
         self.conn.commit()
 
     def close(self) -> None:
@@ -137,8 +180,8 @@ class ObservationBuffer:
             cursor = self.conn.execute(
                 """INSERT OR IGNORE INTO observations
                 (observation_id, session_id, project, cwd, tool, files_json,
-                 input_summary, output_summary, git_commit, created_at, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 input_summary, output_summary, git_commit, created_at, source, event)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     observation.observation_id,
                     observation.session_id,
@@ -151,6 +194,7 @@ class ObservationBuffer:
                     observation.git_commit,
                     observation.created_at,
                     observation.source,
+                    observation.event,
                 ),
             )
         row = self.conn.execute(
