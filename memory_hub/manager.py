@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from .index import MemoryIndex
+from .embeddings import LocalEmbeddingProvider
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
 from .utils import normalize_text, slugify, text_hash
@@ -43,7 +44,7 @@ class MemoryManager:
     def __init__(self, vault_root: str | Path):
         self.vault = Vault(Path(vault_root))
         self.vault.root.mkdir(parents=True, exist_ok=True)
-        self.index = MemoryIndex(self.vault.root)
+        self.index = MemoryIndex(self.vault.root, LocalEmbeddingProvider.from_environment())
 
     def close(self):
         self.index.close()

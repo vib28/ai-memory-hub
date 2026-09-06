@@ -9,6 +9,7 @@ from typing import Iterable
 
 from .models import MemoryRecord
 from .utils import text_hash
+from .embeddings import LocalEmbeddingProvider, cosine_similarity
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -46,11 +47,21 @@ CREATE INDEX IF NOT EXISTS idx_pending_status ON pending(status, created_at);
 """
 
 class MemoryIndex:
-    def __init__(self, vault_root: Path):
+    def __init__(self, vault_root: Path, embedding_provider: LocalEmbeddingProvider | None = None):
         self.path = Path(vault_root) / ".memory_index.sqlite3"
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self.embedding_provider = embedding_provider
         self.conn.executescript(SCHEMA)
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS memory_embeddings (
+                memory_id TEXT PRIMARY KEY,
+                vector_json TEXT NOT NULL,
+                model TEXT NOT NULL,
+                content_hash TEXT NOT NULL
+            )"""
+        )
+        self.conn.commit()
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(pending)")}
         if "payload" not in columns:
             self.conn.execute("ALTER TABLE pending ADD COLUMN payload TEXT")
@@ -70,6 +81,7 @@ class MemoryIndex:
         records = list(records)
         with self.conn:
             self.conn.execute("DELETE FROM memories")
+            self.conn.execute("DELETE FROM memory_embeddings")
             if self.has_fts:
                 self.conn.execute("DELETE FROM memory_fts")
             for r in records:
@@ -91,10 +103,25 @@ class MemoryIndex:
             )
         if commit:
             self.conn.commit()
+        self._embed_record(r)
+
+    def _embed_record(self, record: MemoryRecord) -> None:
+        if not self.embedding_provider:
+            return
+        try:
+            vector = self.embedding_provider.embed([record.text])[0]
+        except Exception:
+            return
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)",
+                (record.memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(record.text)),
+            )
 
     def remove(self, memory_id: str) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM memories WHERE memory_id=?", (memory_id,))
+            self.conn.execute("DELETE FROM memory_embeddings WHERE memory_id=?", (memory_id,))
             if self.has_fts:
                 self.conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (memory_id,))
 
@@ -114,6 +141,7 @@ class MemoryIndex:
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         limit = max(1, min(int(limit), 50))
+        fts_rows: list[dict] = []
         if self.has_fts:
             tokens = [t for t in query.replace('"', ' ').split() if t]
             if tokens:
@@ -128,17 +156,41 @@ class MemoryIndex:
                         (safe, limit),
                     ).fetchall()
                     if rows:
-                        return [dict(r) for r in rows]
+                        fts_rows = [dict(r) for r in rows]
                 except sqlite3.OperationalError:
                     pass
-        like = f"%{query}%"
-        rows = self.conn.execute(
-            """SELECT * FROM memories
-               WHERE text LIKE ? OR path LIKE ? OR subject LIKE ?
-               ORDER BY date DESC LIMIT ?""",
-            (like, like, like, limit),
+        if not fts_rows:
+            like = f"%{query}%"
+            rows = self.conn.execute(
+                """SELECT * FROM memories
+                   WHERE text LIKE ? OR path LIKE ? OR subject LIKE ?
+                   ORDER BY date DESC LIMIT ?""",
+                (like, like, like, limit),
+            ).fetchall()
+            fts_rows = [dict(r) for r in rows]
+        if not self.embedding_provider:
+            return fts_rows[:limit]
+        try:
+            query_vector = self.embedding_provider.embed([query])[0]
+        except Exception:
+            return fts_rows[:limit]
+        vector_rows = self.conn.execute(
+            "SELECT memory_id, vector_json FROM memory_embeddings"
         ).fetchall()
-        return [dict(r) for r in rows]
+        scores = {}
+        for row in vector_rows:
+            try:
+                scores[row["memory_id"]] = cosine_similarity(query_vector, json.loads(row["vector_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        vector_ids = [memory_id for memory_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:limit * 3]]
+        rows_by_id = {row["memory_id"]: row for row in self.all_rows()}
+        ranked: dict[str, float] = {}
+        for rank, row in enumerate(fts_rows):
+            ranked[row["memory_id"]] = ranked.get(row["memory_id"], 0.0) + 1.0 / (rank + 1)
+        for rank, memory_id in enumerate(vector_ids):
+            ranked[memory_id] = ranked.get(memory_id, 0.0) + scores[memory_id] + 0.5 / (rank + 1)
+        return [rows_by_id[memory_id] for memory_id, _ in sorted(ranked.items(), key=lambda item: item[1], reverse=True)[:limit] if memory_id in rows_by_id]
 
     # ---- review queue ----
 

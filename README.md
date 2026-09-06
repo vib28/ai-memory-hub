@@ -398,6 +398,8 @@ Run it from any hook system that can execute a command and pipe JSON to stdin:
 
 Set `MEMORY_CAPTURE_DB` to choose the buffer location. The default is `%USERPROFILE%\\.ai-memory-hub\\observations.sqlite3`. Repeated observation IDs are idempotent, long text and file lists are bounded, and the buffer can later be consolidated by the local SLM through the existing `session_write` path.
 
+For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
+
 ## Connect Ollama or LM Studio
 
 Ollama and LM Studio aren't AI *agents* — they're local model servers, so they don't call MCP tools on their own. What they're for here is powering the **optional transcript extractor**, which lets a tool that can't call MCP directly (a chat UI you just copy/paste from, for example) still get memories out of a conversation — entirely on your machine, with nothing sent anywhere.
