@@ -71,8 +71,8 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- End-to-end host-client tests; Claude, Gemini, Qwen, Kimi, and Codex adapters are verified
-  and installed by the connection script.
+- Worst-case write-path duplicate-scan performance (#27); safe length-window pruning and
+  benchmarking are complete, but same-length worst cases remain linear.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - End-to-end host-client adapters.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
@@ -265,7 +265,7 @@ review-safe writes, and the backfill client uses the public MCP proposal boundar
 writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
 rejection reasons remain visible to callers.
 
-Three issues remain open: #13, #14, #27 — see [README.md's roadmap
+Two issues remain open: #13 and #27 — see [README.md's roadmap
 table](../README.md#roadmap-and-planning) for what specifically blocks each, and [roadmap
 #13](https://github.com/vib28/ai-memory-hub/issues/13) for the recommended fix order and
 its rationale.
