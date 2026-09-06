@@ -208,5 +208,7 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #17 — client prompts and integration documentation
 - #13 — parent roadmap and closeout
 
-Pattern issues #16, #18, and #28 remain separate work and do not block the core local
-capture pipeline except where they depend on the established MCP write boundary.
+Pattern issues #16, #28, and #18 are implemented as a separate parallel track. They do
+not block the core local capture pipeline. Pattern configuration is validated through a
+supported loader, historical backfill supports dry-run and idempotent review-safe writes,
+and the backfill client uses the public MCP proposal boundary.

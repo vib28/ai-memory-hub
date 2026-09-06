@@ -11,6 +11,7 @@ from pathlib import Path
 from .index import MemoryIndex
 from .embeddings import LocalEmbeddingProvider
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
+from .patterns import load_patterns
 from .security import check_text
 from .utils import atomic_write, file_lock, normalize_text, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, RESERVED_FILENAMES, parse_frontmatter, parse_records,
@@ -258,25 +259,21 @@ class MemoryManager:
                               "project_link_supersedes to apply it.")
         return result
 
+    def patterns(self) -> dict:
+        """Return validated user-configured patterns for supported callers."""
+        return load_patterns(self.vault.resolve("/patterns.md"))
+
     def _patterns(self) -> dict:
-        path = self.vault.resolve("/patterns.md")
-        if not path.exists():
-            return {}
-        content = path.read_text(encoding="utf-8")
-        found = {}
-        for match in re.finditer(r"^## (?P<id>[a-zA-Z0-9_-]+)\s*$\n(?P<body>.*?)(?=^## |\Z)", content, re.M | re.S):
-            body = match.group("body")
-            fields = {}
-            for line in body.splitlines():
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    fields[key.strip().lower()] = value.strip()
-            found[match.group("id")] = fields
-        return found
+        """Compatibility wrapper for internal callers."""
+        return self.patterns()
 
     def propose_pattern_match(self, pattern_id: str, project_fact_text: str, preference_rule_text: str,
                               subject: str, *, write_mode: str = "auto", writer: str = "other") -> dict:
-        if pattern_id not in self._patterns():
+        try:
+            patterns = self.patterns()
+        except ValueError as exc:
+            return {"status": "rejected", "reason": str(exc)}
+        if pattern_id not in patterns:
             return {"status": "rejected", "reason": f"unknown pattern: {pattern_id}"}
         subject = slugify(subject)
         link = f"[[{subject}]]"

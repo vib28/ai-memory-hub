@@ -61,7 +61,6 @@ class McpBoundaryTests(unittest.TestCase):
 
     CLIENT_SCRIPTS = {"backfill_patterns.py"}
 
-    @unittest.expectedFailure  # #28: backfill_patterns.py still drives the manager
     def test_client_scripts_do_not_import_the_manager(self):
         scripts = Path(__file__).resolve().parent.parent / "scripts"
         offenders = []

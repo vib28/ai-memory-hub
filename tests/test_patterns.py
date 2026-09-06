@@ -57,6 +57,18 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(result["status"], "rejected")
         self.assertIn("unknown pattern", result["reason"])
 
+    def test_malformed_pattern_is_rejected_loudly(self):
+        path = self.manager.vault.root / "patterns.md"
+        path.write_text(
+            "## broken\nTrigger: regression\nProject fact: record it\n",
+            encoding="utf-8",
+        )
+        result = self.manager.propose_pattern_match(
+            "broken", "fact", "rule", "demo", writer="codex"
+        )
+        self.assertEqual(result["status"], "rejected")
+        self.assertIn("preference rule", result["reason"])
+
     def test_later_match_is_confirmed_and_updates_preference(self):
         first = self.manager.propose_pattern_match("regression", "First regression.",
                                                    "Check regression coverage.", "demo-project", writer="codex")
