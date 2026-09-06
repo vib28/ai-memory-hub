@@ -55,6 +55,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
   - [ChatGPT (desktop app)](#chatgpt-desktop-app)
 - [Connect any other MCP tool](#connect-any-other-mcp-tool)
 - [Transcript ingestion (no live MCP connection needed)](#transcript-ingestion-no-live-mcp-connection-needed)
+- [Generic local observation hooks](#generic-local-observation-hooks)
 - [Connect Ollama or LM Studio](#connect-ollama-or-lm-studio)
 - [Write modes: review vs. auto](#write-modes-review-vs-auto)
 - [Session summaries](#session-summaries)
@@ -154,6 +155,7 @@ sequenceDiagram
 - 🧰 **System-tray launcher** for Windows
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
+- 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - ✅ **37 unit tests** covering the manager, dashboard workflows, session summaries, pattern-linked memories, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
@@ -368,6 +370,34 @@ Copy a conversation into `conversation.txt`, point `MEMORY_LLM_BASE_URL` at a lo
 
 `--writer` preserves the built-in client identities (`chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `hermes`, `user`, or `other`) in the stored `source:` tag. Unknown values are recorded as `other`.
 
+## Generic local observation hooks
+
+The generic hook receiver accepts one observation, a JSON list, or an object with an `observations` array on stdin. It writes to a local SQLite buffer outside the vault and always exits successfully so a capture failure cannot block the host AI tool.
+
+```json
+{
+  "observation_id": "optional-stable-id",
+  "session_id": "host-session-123",
+  "project": "ai-memory-hub",
+  "cwd": "C:/work/ai-memory-hub",
+  "tool": "Edit",
+  "files": ["memory_hub/capture.py"],
+  "input_summary": "Added the observation buffer",
+  "output_summary": "Tests passed",
+  "git_commit": "optional-commit-sha",
+  "source": "my-client-hook"
+}
+```
+
+Run it from any hook system that can execute a command and pipe JSON to stdin:
+
+```powershell
+'{"session_id":"demo","tool":"Read","files":["README.md"]}' |
+  ai-memory-hook
+```
+
+Set `MEMORY_CAPTURE_DB` to choose the buffer location. The default is `%USERPROFILE%\\.ai-memory-hub\\observations.sqlite3`. Repeated observation IDs are idempotent, long text and file lists are bounded, and the buffer can later be consolidated by the local SLM through the existing `session_write` path.
+
 ## Connect Ollama or LM Studio
 
 Ollama and LM Studio aren't AI *agents* — they're local model servers, so they don't call MCP tools on their own. What they're for here is powering the **optional transcript extractor**, which lets a tool that can't call MCP directly (a chat UI you just copy/paste from, for example) still get memories out of a conversation — entirely on your machine, with nothing sent anywhere.
@@ -549,6 +579,7 @@ at the moment you click, even if the page is still open and showing data from be
 | `memory_read(path)` | Read one indexed memory file |
 | `memory_propose(...)` | Propose a durable memory; written immediately or queued, depending on write mode |
 | `session_write(...)` | Write a four-section session summary; stored immediately or queued, depending on write mode |
+| `session_consolidate(session_id)` | Consolidate buffered local observations and submit them through the session write policy |
 | `propose_pattern_match(...)` | Propose a linked project fact and global preference rule for a configured pattern |
 | `memory_forget(memory_id)` | Delete a specific memory by its stable ID, including session summary blocks |
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |

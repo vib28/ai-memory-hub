@@ -7,6 +7,8 @@ from mcp.server import MCPServer
 
 from .manager import AUTO_POLICY, MemoryManager
 from .models import MemoryCandidate
+from .capture import ObservationBuffer, default_buffer_path
+from .session_capture import consolidate_buffered_session
 
 VAULT = os.environ.get("AI_MEMORY_VAULT") or str(Path.cwd() / "memory-vault")
 WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
@@ -108,6 +110,17 @@ def session_write(
     if result.get("status") == "rejected":
         raise ValueError(f"session write rejected: {result.get('reason', 'unknown reason')}")
     return result
+
+@mcp.tool()
+def session_consolidate(session_id: str) -> dict:
+    """Consolidate local hook observations and submit them through session_write policy."""
+    buffer = ObservationBuffer(os.environ.get("MEMORY_CAPTURE_DB") or default_buffer_path())
+    try:
+        return consolidate_buffered_session(
+            buffer, manager, session_id, writer=WRITER, write_mode=WRITE_MODE,
+        )
+    finally:
+        buffer.close()
 
 @mcp.tool()
 def propose_pattern_match(

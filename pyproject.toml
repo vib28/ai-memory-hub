@@ -31,6 +31,7 @@ ai-memory = "memory_hub.cli:main"
 ai-memory-mcp = "memory_hub.mcp_server:main"
 ai-memory-dashboard = "memory_hub.dashboard:main"
 ai-memory-tray = "memory_hub.tray:main"
+ai-memory-hook = "memory_hub.capture:hook_main"
 
 [tool.setuptools]
 packages = ["memory_hub"]

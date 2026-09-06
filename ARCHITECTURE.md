@@ -96,3 +96,23 @@ so they are not rediscovered:
 Observations are buffered **outside** the vault and consolidated into the four-section
 session contract before any write. Compression runs locally with no credentials; the
 engine choice is settled inside #14.
+
+## Generic observation capture
+
+The first capture boundary is provider-neutral. A client lifecycle hook may send a JSON
+observation to `ai-memory-hook` over stdin. The receiver validates and bounds the payload,
+then stores it in a local SQLite buffer outside the Obsidian vault.
+
+The receiver is deliberately not a memory writer:
+
+```text
+client hook -> ai-memory-hook -> local observation SQLite
+                         (later)
+local SLM -> session_write MCP tool -> validation/review -> vault
+```
+
+The buffer is crash-safe and idempotent by `observation_id`. Duplicate retries do not
+replace the original observation. Hook failures return a structured rejection and exit
+successfully so a host AI tool is never blocked by memory capture. Raw observations are
+bounded and are not durable vault content until a later consolidation step creates the
+existing four-section session contract.
