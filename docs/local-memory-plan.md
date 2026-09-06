@@ -71,8 +71,6 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Worst-case write-path duplicate-scan performance (#27); safe length-window pruning and
-  benchmarking are complete, but same-length worst cases remain linear.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
   remain advisory for search and audit; they do not silently change write decisions
@@ -97,8 +95,8 @@ path and human-readable Obsidian vault.
 Automated commits refuse to mix with pre-staged user changes.
 
 [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed: this safety gate is
-cleared. What still gates automatic capture shipping *by default* is the remaining
-write-path performance work (#27), not this gate.
+cleared. The lexical write boundary and its safe candidate pruning are intentionally
+retained; embeddings remain advisory and do not change write decisions.
 
 ### Not yet implemented
 
@@ -249,8 +247,8 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #14 — generic lifecycle hooks and local observation buffering
 - #15 — local session consolidation and verification
 - #17 — client prompts and integration documentation
-- #27 — optional local embeddings and hybrid memory search; the write-path duplicate scan
-  and its benchmark are the part still open
+- #27 — optional local embeddings and hybrid memory search; closed with the safe lexical
+  write boundary explicitly retained and marked `wontfix` for semantic write replacement
 - #29 — vault undo plus hook install/uninstall safety gate — **closed**;
   `-InstallHooks`/`-RemoveHooks` wired into `connect-ai-tools.ps1` for Claude Code, Gemini,
   Qwen, Kimi, and Codex
@@ -269,7 +267,7 @@ review-safe writes, and the backfill client uses the public MCP proposal boundar
 writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
 rejection reasons remain visible to callers.
 
-Two issues remain open: #13 and #27 — see [README.md's roadmap
+One issue remains open: #13 — see [README.md's roadmap
 table](../README.md#roadmap-and-planning) for what specifically blocks each, and [roadmap
 #13](https://github.com/vib28/ai-memory-hub/issues/13) for the recommended fix order and
 its rationale.
