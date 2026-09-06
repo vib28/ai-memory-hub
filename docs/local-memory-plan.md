@@ -66,6 +66,8 @@ path and human-readable Obsidian vault.
   duplicate-safe reruns, and post-import `memory_audit()` verification.
 - Read-only semantic candidate reporting through `subject_audit()` when local embeddings
   are available; vectors do not affect write decisions.
+- Safe write-path duplicate pruning based only on a mathematical text-length bound; it
+  preserves the existing lexical thresholds and does not use embeddings for write decisions.
 
 ### In progress
 
@@ -76,6 +78,9 @@ path and human-readable Obsidian vault.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
   remain advisory for search and audit; they do not silently change write decisions
   ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
+- A repeatable benchmark now reports `SequenceMatcher` comparisons at multiple vault sizes;
+  the tested varied-length dataset reduced comparisons to 2 at 100, 500, and 1,000 records.
+  This is a safe reduction, not proof that worst-case linear scaling has been eliminated.
 
 ### Safety gate — complete
 

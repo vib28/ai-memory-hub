@@ -162,7 +162,7 @@ sequenceDiagram
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
-- ✅ **138 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **141 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, lifecycle-event normalization, and safe duplicate-scan pruning, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Documentation
 
