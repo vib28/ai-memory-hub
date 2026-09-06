@@ -409,6 +409,8 @@ Before enabling automatic consolidation writes, initialize Git history for the v
 ```powershell
 python -m memory_hub.cli --vault "<vault>" history-init
 python -m memory_hub.cli --vault "<vault>" history-status
+# Manual smoke-test commit for a known vault-relative Markdown path
+python -m memory_hub.cli --vault "<vault>" history-commit test-session-001 /sessions/test.md
 ```
 
 Set `MEMORY_VAULT_HISTORY=true` for the MCP server to commit successful automated

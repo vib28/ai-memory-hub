@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .extractor import extract_candidates
-from .history import history_status, initialize_history
+from .history import commit_vault_change, history_status, initialize_history
 from .manager import MemoryManager
 from .models import MemoryCandidate
 
@@ -22,6 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("reindex")
     sub.add_parser("history-init")
     sub.add_parser("history-status")
+    hc = sub.add_parser("history-commit")
+    hc.add_argument("session_id")
+    hc.add_argument("paths", nargs="+")
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -71,6 +74,8 @@ def main():
             jprint(initialize_history(args.vault))
         elif args.command == "history-status":
             jprint(history_status(args.vault))
+        elif args.command == "history-commit":
+            jprint(commit_vault_change(args.vault, args.session_id, args.paths))
         elif args.command == "search":
             jprint(manager.search(args.query, args.limit))
         elif args.command == "read":
