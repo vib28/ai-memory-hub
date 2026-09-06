@@ -51,6 +51,10 @@ The MCP command is:
 The repository also includes [`connect-ai-tools.ps1`](../connect-ai-tools.ps1) for
 connecting supported local clients automatically.
 
+After changing the MCP configuration or prompt instructions, start a new client session.
+Most AI tools read their MCP server list and instructions only when the session starts;
+an already-open conversation will continue using its previous configuration.
+
 ## Verify the installation
 
 ```powershell
