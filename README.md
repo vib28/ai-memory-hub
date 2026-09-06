@@ -504,6 +504,43 @@ Prefer a system-tray icon instead of a browser tab left open?
 
 (Same default applies here if `-VaultPath` is omitted.)
 
+### Troubleshooting: dashboard buttons fail with "Failed to fetch"
+
+This means the browser could not reach the server at all — not a 403, not a bug in the
+button you clicked. It almost always means the dashboard process is not actually running
+at the moment you click, even if the page is still open and showing data from before.
+
+1. **Check the server is actually up.** In a *different* terminal (don't touch the one
+   running the dashboard):
+   ```powershell
+   netstat -ano | findstr :8765
+   ```
+   Nothing printed → the server is down. Restart it with `.\start-dashboard.ps1` and leave
+   that window open; closing it, hitting Ctrl+C, or the terminal app crashing all stop the
+   server the same way.
+
+2. **More than one `LISTENING` line?** Two dashboard instances (or a leftover process from
+   a previous run that didn't exit cleanly) are fighting over the port. Find the offending
+   PID and stop it:
+   ```powershell
+   netstat -ano | findstr :8765
+   Get-Process -Id <PID>          # confirm what it is before stopping it
+   Stop-Process -Id <PID> -Force
+   ```
+
+3. **Server is up, but the page still fails?** The launch token embedded in the page is
+   generated fresh every time the server starts (`serve()` in `memory_hub/dashboard.py`).
+   A browser tab left open from a previous server instance is carrying a stale token, and
+   every state-changing request (`Approve`, `Reject`, `Forget`, `Edit`) will be rejected
+   once the server restarts. Reload the page — don't reuse an old tab.
+
+4. **Confirm the server actually responds**, independent of the browser:
+   ```powershell
+   Invoke-WebRequest -Uri "http://127.0.0.1:8765/" -UseBasicParsing
+   ```
+   `StatusCode 200` means the server is healthy and the problem is browser-side (stale
+   tab, cache — try a hard refresh). A connection error confirms the server is down.
+
 ## MCP tools exposed
 
 | Tool | Purpose |
