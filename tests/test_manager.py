@@ -45,6 +45,17 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(forgotten["status"], "forgotten")
         self.assertIsNone(self.manager.index.by_id(mid))
 
+    def test_context_prime_is_bounded(self):
+        self.manager.propose(MemoryCandidate(
+            text="The project uses a local-first Markdown vault.",
+            kind="project", tag="stated", subject="demo", writer="codex",
+        ))
+        result = self.manager.context_prime(project="demo", query="local vault", limit=5, max_chars=500)
+        self.assertEqual(result["status"], "ok")
+        self.assertLessEqual(result["characters"], 500)
+        self.assertLessEqual(len(result["memories"]), 5)
+        self.assertTrue(all("text" in item and "path" in item for item in result["memories"]))
+
     def test_secret_rejected(self):
         key_like_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         result = self.manager.propose(MemoryCandidate(

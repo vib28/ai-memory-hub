@@ -15,6 +15,10 @@ Ask a connected AI client to remember a durable preference, project decision, or
 In review mode, open the dashboard and approve or reject the proposal. Start a new AI
 conversation and ask about the same topic to verify retrieval.
 
+At session start, a connected client may call `memory_context` with the current project and
+task. It returns a small bounded packet; use `memory_search` or `memory_read` for deeper
+follow-up instead of injecting the whole vault.
+
 Session summaries use four sections:
 
 - Investigated
@@ -88,6 +92,20 @@ python -m memory_hub.cli --vault "<vault>" history-status
 
 Automatic consolidation commits only the Markdown paths it changed and refuses to mix with
 pre-staged user changes.
+
+## Import historical sessions
+
+Historical summaries can be imported from a JSON array or an object with a `sessions`
+array. Each session needs `title`, `investigated`, `learned`, `completed`, and `next_steps`,
+with optional `project` and `session_date` fields:
+
+```powershell
+python scripts/import_sessions.py --vault "<vault>" --input sessions.json --writer codex --dry-run
+python scripts/import_sessions.py --vault "<vault>" --input sessions.json --writer codex
+```
+
+The importer uses the public session-write boundary, follows review or auto mode, skips
+identical retries, and reports a post-import vault audit.
 
 ## More detailed references
 

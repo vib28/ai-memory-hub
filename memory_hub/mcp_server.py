@@ -42,6 +42,12 @@ def memory_search(query: str, limit: int = 10) -> list[dict]:
     return manager.search(query, limit)
 
 @mcp.tool()
+def memory_context(project: str | None = None, query: str | None = None,
+                   limit: int = 5, max_chars: int = 4000) -> dict:
+    """Return a small, bounded context packet for a new session or turn."""
+    return manager.context_prime(project=project, query=query, limit=limit, max_chars=max_chars)
+
+@mcp.tool()
 def memory_read(path: str) -> str:
     """Read exactly one memory Markdown file. Path must be inside the vault."""
     return manager.read(path)

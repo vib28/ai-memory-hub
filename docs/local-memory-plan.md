@@ -62,7 +62,7 @@ path and human-readable Obsidian vault.
 ### In progress
 
 - Client-specific lifecycle-hook adapters for clients beyond Claude Code.
-- Session-start and per-turn context priming.
+- Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - End-to-end host-client adapters.
 - The write-path optimization is now optional: when a complete embedding index exists,
   `_best_match()` narrows comparisons to bounded cosine candidates; missing, incomplete,

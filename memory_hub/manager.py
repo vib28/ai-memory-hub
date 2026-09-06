@@ -484,6 +484,37 @@ class MemoryManager:
     def search(self, query: str, limit: int = 10) -> list[dict]:
         return self.index.search(query, limit)
 
+    def context_prime(self, *, project: str | None = None, query: str | None = None,
+                      limit: int = 5, max_chars: int = 4000) -> dict:
+        """Return a bounded session-start context packet from durable memory."""
+        project = (project or "").strip()
+        query = (query or "").strip()
+        search_query = " ".join(part for part in (project, query) if part).strip() or "general"
+        rows = self.search(search_query, max(1, min(int(limit), 20)))
+        selected = []
+        used = 0
+        for row in rows:
+            item = {
+                "memory_id": row["memory_id"],
+                "path": row["path"],
+                "kind": row["kind"],
+                "subject": row["subject"],
+                "text": row["text"],
+            }
+            cost = len(json.dumps(item, ensure_ascii=False))
+            if selected and used + cost > max(500, min(int(max_chars), 12000)):
+                break
+            selected.append(item)
+            used += cost
+        return {
+            "status": "ok",
+            "project": project or None,
+            "query": query or None,
+            "memories": selected,
+            "characters": used,
+            "truncated": len(selected) < len(rows),
+        }
+
     def read(self, path: str) -> str:
         return self.vault.read(path)
 

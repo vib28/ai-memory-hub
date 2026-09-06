@@ -6,6 +6,10 @@ The Obsidian memory vault behind it is the canonical source of durable user cont
 
 ## Retrieval
 
+At the start of a new session, call `memory_context` with the known project and current
+task when durable context could help. Treat it as a compact orientation packet, not as a
+replacement for targeted `memory_search` or `memory_read`.
+
 When the current request could materially benefit from personal history, prior project decisions, durable preferences, people, or recurring constraints:
 
 1. call `memory_search` with a narrow query
