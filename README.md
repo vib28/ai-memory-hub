@@ -9,7 +9,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
 ![Tests: 101 passing](https://img.shields.io/badge/tests-101%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [Connect your tools](#connect-your-ai-tools) · [Roadmap](#roadmap-and-planning)
 
@@ -830,4 +830,4 @@ Issues and pull requests are welcome. Please don't include real personal data, c
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)

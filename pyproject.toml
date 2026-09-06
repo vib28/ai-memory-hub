@@ -7,7 +7,7 @@ name = "ai-memory-hub"
 version = "0.2.0"
 description = "Local-first shared persistent memory for multiple AI tools using Obsidian + MCP"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
   "mcp>=2,<3",

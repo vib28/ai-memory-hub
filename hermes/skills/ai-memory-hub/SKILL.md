@@ -3,7 +3,7 @@ name: ai-memory-hub
 description: "Use when an AI Memory Hub vault is connected."
 version: 0.1.0
 author: Hermes Agent + vib28
-license: MIT
+license: Apache-2.0
 platforms: [windows]
 ---
 
