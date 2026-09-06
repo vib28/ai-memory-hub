@@ -9,10 +9,12 @@ from .manager import AUTO_POLICY, MemoryManager
 from .models import MemoryCandidate
 from .capture import ObservationBuffer, default_buffer_path
 from .session_capture import consolidate_buffered_session
+from .history import commit_vault_change
 
 VAULT = os.environ.get("AI_MEMORY_VAULT") or str(Path.cwd() / "memory-vault")
 WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
 WRITE_MODE = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
+HISTORY_ENABLED = os.environ.get("MEMORY_VAULT_HISTORY", "false").strip().lower() in {"1", "true", "yes", "on"}
 if WRITE_MODE not in {"auto", "review"}:
     WRITE_MODE = "auto"
 
@@ -116,9 +118,20 @@ def session_consolidate(session_id: str) -> dict:
     """Consolidate local hook observations and submit them through session_write policy."""
     buffer = ObservationBuffer(os.environ.get("MEMORY_CAPTURE_DB") or default_buffer_path())
     try:
-        return consolidate_buffered_session(
+        result = consolidate_buffered_session(
             buffer, manager, session_id, writer=WRITER, write_mode=WRITE_MODE,
         )
+        if HISTORY_ENABLED and result.get("status") in {"stored", "stored_without_project_link"}:
+            written = result.get("write", {})
+            paths = []
+            if written.get("memory", {}).get("path"):
+                paths.append(written["memory"]["path"])
+            if written.get("project", {}).get("memory", {}).get("path"):
+                paths.append(written["project"]["memory"]["path"])
+            result["history"] = commit_vault_change(VAULT, session_id, paths)
+        else:
+            result["history"] = {"status": "disabled"}
+        return result
     finally:
         buffer.close()
 

@@ -132,3 +132,16 @@ project must ship the safety work in issue #29:
 Confidence and importance scores are planned ranking metadata. They may prioritize review
 and retrieval, but they must never bypass validation, secret rejection, deduplication, or
 the configured write mode.
+
+## Opt-in vault history
+
+Automated consolidation may commit only the Markdown files it changed, and only when
+`MEMORY_VAULT_HISTORY=true` is set for the MCP server. The user must first run
+`history-init` for the vault. Initialization is idempotent, sets a local Git identity,
+and adds disposable SQLite, lock, and temporary artifacts to `.gitignore`.
+
+History commits happen after the vault write and outside the vault file lock. A commit
+failure is surfaced in the consolidation result rather than silently reported as a clean
+history update. If the vault already has staged changes, the automated commit refuses to
+mix them with the session commit. Review-mode queueing does not create a history commit
+because no vault content has changed.

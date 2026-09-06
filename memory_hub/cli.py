@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .extractor import extract_candidates
+from .history import history_status, initialize_history
 from .manager import MemoryManager
 from .models import MemoryCandidate
 
@@ -19,6 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init")
     sub.add_parser("audit")
     sub.add_parser("reindex")
+    sub.add_parser("history-init")
+    sub.add_parser("history-status")
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -64,6 +67,10 @@ def main():
             jprint(manager.audit())
         elif args.command == "reindex":
             jprint({"indexed": manager.reindex()})
+        elif args.command == "history-init":
+            jprint(initialize_history(args.vault))
+        elif args.command == "history-status":
+            jprint(history_status(args.vault))
         elif args.command == "search":
             jprint(manager.search(args.query, args.limit))
         elif args.command == "read":

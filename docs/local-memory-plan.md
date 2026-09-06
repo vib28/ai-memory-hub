@@ -39,9 +39,19 @@ path and human-readable Obsidian vault.
 ### In progress
 
 - Generic lifecycle-hook installation and removal.
-- Vault Git history/undo for automated consolidation.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
+
+### Safety gate now implemented
+
+- Opt-in vault Git initialization and status inspection.
+- Disposable index, WAL/SHM, lock, and temporary-file ignores.
+- Session-ID commit support for successful automated consolidation.
+
+Automated commits refuse to mix with pre-staged user changes.
+
+Hook installation/uninstallation and end-to-end verification remain before automatic
+capture is enabled by default.
 
 ### Not yet implemented
 

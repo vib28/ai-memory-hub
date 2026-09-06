@@ -157,6 +157,7 @@ sequenceDiagram
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
+- 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
 - ✅ **76 passing tests plus 1 expected failure** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
@@ -400,6 +401,20 @@ Run it from any hook system that can execute a command and pipe JSON to stdin:
 Set `MEMORY_CAPTURE_DB` to choose the buffer location. The default is `%USERPROFILE%\\.ai-memory-hub\\observations.sqlite3`. Repeated observation IDs are idempotent, long text and file lists are bounded, and the buffer can later be consolidated by the local SLM through the existing `session_write` path.
 
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
+
+### Opt-in vault history
+
+Before enabling automatic consolidation writes, initialize Git history for the vault:
+
+```powershell
+python -m memory_hub.cli --vault "<vault>" history-init
+python -m memory_hub.cli --vault "<vault>" history-status
+```
+
+Set `MEMORY_VAULT_HISTORY=true` for the MCP server to commit successful automated
+consolidations. Each commit includes the session ID. The vault's `.gitignore` excludes
+the disposable SQLite index, SQLite WAL/SHM files, lock files, and temporary files.
+History is opt-in and does not initialize or commit anything until `history-init` is run.
 
 ## Connect Ollama or LM Studio
 
@@ -655,6 +670,10 @@ python -m memory_hub.cli --vault "<vault>" search "response style"
 # Audit / reindex
 python -m memory_hub.cli --vault "<vault>" audit
 python -m memory_hub.cli --vault "<vault>" reindex
+
+# Optional automated-write undo history
+python -m memory_hub.cli --vault "<vault>" history-init
+python -m memory_hub.cli --vault "<vault>" history-status
 
 # Optional: extract memories from a saved transcript via a local chat-completions server
 $env:MEMORY_LLM_BASE_URL = "http://localhost:11434/v1"
