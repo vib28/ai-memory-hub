@@ -537,7 +537,7 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | 0 | Decide before building | ✅ [#26](https://github.com/vib28/ai-memory-hub/issues/26), ✅ [#30](https://github.com/vib28/ai-memory-hub/issues/30) |
 | 1 | Vault integrity before hook volume | ✅ [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25) |
 | 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
-| 3 | Capture pipeline and safety gates | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
+| 3 | Capture pipeline and safety gates | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#32](https://github.com/vib28/ai-memory-hub/issues/32) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
 | 4 | Patterns | [#16](https://github.com/vib28/ai-memory-hub/issues/16) → [#28](https://github.com/vib28/ai-memory-hub/issues/28) → [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
 | 5 | Retrieval, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
