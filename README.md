@@ -63,6 +63,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 - [Issue tracking](#issue-tracking)
 - [Roadmap and planning](#roadmap-and-planning)
 - [Tracked local-memory plan](docs/local-memory-plan.md)
+- [Vault documentation standards](docs/vault-documentation-standards.md)
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
 - [Memory format & routing](#memory-format--routing)
@@ -569,6 +570,12 @@ Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/i
 All tracked Local Memory v1 roadmap issues are closed. Future work remains explicitly
 listed in `docs/local-memory-plan.md` and is not claimed as implemented.
 
+Open now: [#40](https://github.com/vib28/ai-memory-hub/issues/40) (chunked per-section
+session embeddings — #39, the kind/subject-context embedding fix, is closed) and
+[#41–#49](https://github.com/vib28/ai-memory-hub/issues), the vault documentation
+standards workstream tracked in
+[`docs/vault-documentation-standards.md`](docs/vault-documentation-standards.md).
+
 ## Roadmap and planning
 
 The tracked implementation plan is [`docs/local-memory-plan.md`](docs/local-memory-plan.md).
@@ -585,6 +592,29 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | 3 | Capture pipeline and safety gates | ✅ [#29](https://github.com/vib28/ai-memory-hub/issues/29) → ✅ [#32](https://github.com/vib28/ai-memory-hub/issues/32) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
 | 4 | Patterns | ✅ [#16](https://github.com/vib28/ai-memory-hub/issues/16) → ✅ [#28](https://github.com/vib28/ai-memory-hub/issues/28) → ✅ [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
 | 5 | Retrieval, identity, context, and closeout | ✅ [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), ✅ [#17](https://github.com/vib28/ai-memory-hub/issues/17), ✅ [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
+
+All five tiers of the original Local Memory v1 plan are complete.
+
+### Vault documentation standards (active workstream)
+
+A separate, active roadmap: [`docs/vault-documentation-standards.md`](docs/vault-documentation-standards.md)
+tracks bringing the *content* of a memory vault — not the capture pipeline above, but what
+actually gets written — up to the same documentation standard this project's own issues use.
+Raised from a review of a real, in-use vault: per-kind entry templates (modeled on
+Architecture Decision Records, style-guide rule+rationale, troubleshooting runbooks, and
+similar established patterns), a plain-language clause on every substantial entry, and
+fixes to specific readability and detection gaps found in that review.
+
+| Priority | Issues |
+|---|---|
+| Foundation | [#41](https://github.com/vib28/ai-memory-hub/issues/41) (per-kind templates) → [#42](https://github.com/vib28/ai-memory-hub/issues/42) (session cross-link structure) |
+| Vault hygiene | [#43](https://github.com/vib28/ai-memory-hub/issues/43) → [#44](https://github.com/vib28/ai-memory-hub/issues/44) → [#45](https://github.com/vib28/ai-memory-hub/issues/45) |
+| Content decisions | [#46](https://github.com/vib28/ai-memory-hub/issues/46), [#47](https://github.com/vib28/ai-memory-hub/issues/47) |
+| Detection/discoverability | [#48](https://github.com/vib28/ai-memory-hub/issues/48), [#49](https://github.com/vib28/ai-memory-hub/issues/49) |
+
+Also open, from the retrieval work above: [#40](https://github.com/vib28/ai-memory-hub/issues/40)
+(chunked per-section session embeddings, tracked separately since it needs a schema-light
+design decision rather than a same-session fix).
 
 Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#14](https://github.com/vib28/ai-memory-hub/issues/14), [#27](https://github.com/vib28/ai-memory-hub/issues/27), and [#29](https://github.com/vib28/ai-memory-hub/issues/29) are closed. #27 records the accepted lexical write boundary: safe length-bound pruning is implemented, while embeddings remain advisory for search/audit and never change write decisions.
 
