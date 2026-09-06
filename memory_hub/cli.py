@@ -8,9 +8,11 @@ from .extractor import extract_candidates
 from .history import commit_vault_change, history_status, initialize_history
 from .hooks import (
     install_hook,
+    install_codex_hook,
     install_nested_hook,
     install_toml_hook,
     uninstall_hook,
+    uninstall_codex_hook,
     uninstall_nested_hook,
     uninstall_toml_hook,
 )
@@ -51,11 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     hi.add_argument("--event", default="PostToolUse")
     hi.add_argument("--command", dest="hook_command", default="ai-memory-hook")
     hi.add_argument("--arg", action="append", default=[])
-    hi.add_argument("--format", choices=("claude", "nested", "kimi-toml"), default="claude")
+    hi.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
     hi.add_argument("--matcher", default="*")
     hu = sub.add_parser("hooks-uninstall")
     hu.add_argument("--settings", required=True)
-    hu.add_argument("--format", choices=("claude", "nested", "kimi-toml"), default="claude")
+    hu.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
+    hu.add_argument("--command", dest="hook_command", default="ai-memory-hook")
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -101,6 +104,9 @@ def main():
                                            command=args.hook_command, matcher=args.matcher))
             elif args.format == "kimi-toml":
                 jprint(install_toml_hook(args.settings, event=args.event, command=args.hook_command))
+            elif args.format == "codex":
+                jprint(install_codex_hook(args.settings, event=args.event,
+                                          command=args.hook_command, matcher=args.matcher))
             else:
                 jprint(install_hook(args.settings, event=args.event, command=args.hook_command, args=args.arg))
         else:
@@ -109,6 +115,8 @@ def main():
                 jprint(uninstall_nested_hook(args.settings))
             elif hook_format == "kimi-toml":
                 jprint(uninstall_toml_hook(args.settings))
+            elif hook_format == "codex":
+                jprint(uninstall_codex_hook(args.settings, command=args.hook_command))
             else:
                 jprint(uninstall_hook(args.settings))
         return

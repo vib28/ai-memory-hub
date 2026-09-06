@@ -437,9 +437,8 @@ python -m memory_hub.cli hooks-uninstall `
 
 This generic layer does not guess a client-specific settings path or event schema. Client
 adapters call it with the correct path and event name. The connection script now wires the
-verified schemas for Gemini CLI (`AfterTool`), Qwen Code (`PostToolUse`), and Kimi Code
-(`PostToolUse`) when `-InstallHooks` is supplied. Codex hook configuration remains manual
-until its schema is verified.
+verified schemas for Gemini CLI (`AfterTool`), Qwen Code (`PostToolUse`), Kimi Code
+(`PostToolUse`), and Codex CLI (`PostToolUse`) when `-InstallHooks` is supplied.
 
 `connect-ai-tools.ps1` is that adapter for Claude Code, Gemini CLI, and Qwen Code:
 
@@ -580,7 +579,7 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | 4 | Patterns | ✅ [#16](https://github.com/vib28/ai-memory-hub/issues/16) → ✅ [#28](https://github.com/vib28/ai-memory-hub/issues/28) → ✅ [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
 | 5 | Retrieval, identity, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
-Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed, so that safety gate is cleared. What remains before automatic capture ships by default: Kimi/Codex hook adapters whose configuration can be safely preserved ([#14](https://github.com/vib28/ai-memory-hub/issues/14)), and the remaining worst-case write-path duplicate-scan performance work ([#27](https://github.com/vib28/ai-memory-hub/issues/27)). The safe length-bound pruning and benchmark are already landed; embeddings still affect search/audit only, never write decisions.
+Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed, so that safety gate is cleared. What remains before automatic capture ships by default: end-to-end host-client verification ([#14](https://github.com/vib28/ai-memory-hub/issues/14)), and the remaining worst-case write-path duplicate-scan performance work ([#27](https://github.com/vib28/ai-memory-hub/issues/27)). The safe length-bound pruning and benchmark are already landed; embeddings still affect search/audit only, never write decisions.
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
 

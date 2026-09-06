@@ -74,7 +74,7 @@ what each connected client proposes.
 - Install generic hooks only after reading the safety gates in
   [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 - `connect-ai-tools.ps1 -InstallHooks` also installs verified hook entries for Gemini CLI,
-  Qwen Code, and Kimi Code. Kimi uses a marked block in `~/.kimi/config.toml`; Codex hook
-  configuration is not modified automatically until its schema is verified.
+  Qwen Code, Kimi Code, and Codex CLI. Kimi uses a marked block in `~/.kimi/config.toml`;
+  Codex uses `~/.codex/hooks.json`.
 
 For the full setup walkthrough, see [`INSTALLATION_GUIDE.md`](../INSTALLATION_GUIDE.md).

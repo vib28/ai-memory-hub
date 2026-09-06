@@ -71,9 +71,8 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Client-specific lifecycle-hook adapter for Codex CLI and end-to-end host-client tests;
-  Claude, Gemini, Qwen, and Kimi adapters are verified and installed by the connection
-  script.
+- End-to-end host-client tests; Claude, Gemini, Qwen, Kimi, and Codex adapters are verified
+  and installed by the connection script.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - End-to-end host-client adapters.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings

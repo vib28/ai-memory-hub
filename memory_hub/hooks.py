@@ -12,6 +12,7 @@ from typing import Any
 
 MANAGED_KEY = "ai_memory_hub_managed"
 TOML_MARKER = "# ai-memory-hub managed hook"
+CODEX_STATUS_MESSAGE = "AI Memory Hub capture"
 
 
 class HookConfigError(RuntimeError):
@@ -161,6 +162,84 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
         removed += len(groups) - len(kept)
         if kept:
             hooks[event] = kept
+        else:
+            hooks.pop(event)
+    if not removed:
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    backup = _backup(path)
+    _write(path, config)
+    return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
+
+
+def install_codex_hook(settings: Path | str, *, event: str, command: str,
+                       matcher: str = "*") -> dict[str, Any]:
+    """Install a Codex hook using only documented handler fields."""
+    path = Path(settings).expanduser().resolve()
+    config = _load(path)
+    hooks = config.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise HookConfigError("settings 'hooks' value must be an object")
+    groups = hooks.setdefault(event, [])
+    if not isinstance(groups, list):
+        raise HookConfigError(f"settings hook event '{event}' must be an array")
+    entry = {"type": "command", "command": command, "statusMessage": CODEX_STATUS_MESSAGE}
+    managed_group = {"matcher": matcher, "hooks": [entry]}
+
+    def is_managed(item: Any) -> bool:
+        return isinstance(item, dict) and any(
+            isinstance(hook, dict)
+            and hook.get("type") == "command"
+            and hook.get("command") == command
+            and hook.get("statusMessage") == CODEX_STATUS_MESSAGE
+            for hook in item.get("hooks", [])
+        )
+
+    matches = [index for index, item in enumerate(groups) if is_managed(item)]
+    if len(matches) == 1 and groups[matches[0]] == managed_group:
+        return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
+    if len(matches) > 1:
+        raise HookConfigError("multiple managed Codex hook groups found")
+    backup = _backup(path) if path.exists() else None
+    if matches:
+        groups[matches[0]] = managed_group
+    else:
+        groups.append(managed_group)
+    _write(path, config)
+    return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+
+def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any]:
+    """Remove only the Codex handler identified by its documented marker."""
+    path = Path(settings).expanduser().resolve()
+    if not path.exists():
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    config = _load(path)
+    hooks = config.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise HookConfigError("settings 'hooks' value must be an object")
+    removed = 0
+    for event, groups in list(hooks.items()):
+        if not isinstance(groups, list):
+            continue
+        kept_groups = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                kept_groups.append(group)
+                continue
+            kept_handlers = [handler for handler in group["hooks"] if not (
+                isinstance(handler, dict)
+                and handler.get("type") == "command"
+                and handler.get("command") == command
+                and handler.get("statusMessage") == CODEX_STATUS_MESSAGE
+            )]
+            removed += len(group["hooks"]) - len(kept_handlers)
+            if kept_handlers:
+                group["hooks"] = kept_handlers
+                kept_groups.append(group)
+            elif len(group["hooks"]) == 0:
+                kept_groups.append(group)
+        if kept_groups:
+            hooks[event] = kept_groups
         else:
             hooks.pop(event)
     if not removed:

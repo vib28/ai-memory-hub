@@ -29,7 +29,8 @@
     timestamped backup of settings.json before writing and touches only the single
     entry it owns — every other hook and setting is left exactly as found. Applies
     to Claude Code, Gemini CLI, Qwen Code, and Kimi Code when those clients are detected.
-    Codex hook schema is not installed automatically until its adapter is verified.
+    Codex hooks use ~/.codex/hooks.json and are installed with the documented PostToolUse
+    nested schema.
 
 .PARAMETER RemoveHooks
     Remove the ai-memory-hook entry this script installed from Claude Code's
@@ -215,12 +216,37 @@ function Remove-TomlClientHook {
     $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
 }
 
+function Install-CodexHook {
+    $settingsPath = Get-CodexSettingsPath
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event PostToolUse --command $hookCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Codex CLI hook install: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     Codex CLI hook $status ($settingsPath)")
+}
+
+function Remove-CodexHook {
+    $settingsPath = Get-CodexSettingsPath
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format codex --command $hookCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Codex CLI hook removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     Codex CLI hook $status ($settingsPath)")
+}
+
 function Get-GeminiSettingsPath { return Join-Path $HOME ".gemini\settings.json" }
 function Get-QwenSettingsPath { return Join-Path $HOME ".qwen\settings.json" }
 function Get-KimiSettingsPath {
     $kimiConfigHome = if ($env:KIMI_CONFIG_DIR) { $env:KIMI_CONFIG_DIR } else { Join-Path $HOME ".kimi" }
     return Join-Path $kimiConfigHome "config.toml"
 }
+function Get-CodexSettingsPath { return Join-Path $HOME ".codex\hooks.json" }
 
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
@@ -372,17 +398,28 @@ if ($codexExe) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.codex\AGENTS.md" "codex.md"
             $results.Add("[connected] Codex CLI")
+            if ($InstallHooks) { Install-CodexHook }
+            if ($RemoveHooks) { Remove-CodexHook }
         }
         else {
             $results.Add("[failed]    Codex CLI (exit ${LASTEXITCODE}): $($output.Trim())")
         }
     }
     catch {
-        $results.Add("[failed]    Codex CLI ($($_.Exception.Message))")
+        if (Test-AlreadyRegistered $_.Exception.Message) {
+            Install-Instructions "$HOME\.codex\AGENTS.md" "codex.md"
+            $results.Add("[connected] Codex CLI")
+            if ($InstallHooks) { Install-CodexHook }
+            if ($RemoveHooks) { Remove-CodexHook }
+        }
+        else {
+            $results.Add("[failed]    Codex CLI ($($_.Exception.Message))")
+        }
     }
 }
 else {
     $results.Add("[skipped]   Codex CLI (not found)")
+    if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Codex CLI hooks (Codex CLI not found)") }
 }
 
 # --- Kimi Code -------------------------------------------------------------

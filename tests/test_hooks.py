@@ -6,9 +6,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from memory_hub.hooks import (HookConfigError, install_hook, install_nested_hook,
-                              install_toml_hook, uninstall_hook, uninstall_nested_hook,
-                              uninstall_toml_hook)
+from memory_hub.hooks import (HookConfigError, install_codex_hook, install_hook,
+                              install_nested_hook, install_toml_hook, uninstall_codex_hook,
+                              uninstall_hook, uninstall_nested_hook, uninstall_toml_hook)
 
 
 class HookConfigTests(unittest.TestCase):
@@ -109,6 +109,31 @@ class HookConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(HookConfigError, "incomplete"):
             install_toml_hook(settings, event="PostToolUse", command="ai-memory-hook")
         self.assertEqual(settings.read_text(encoding="utf-8"), original)
+
+    def test_codex_hook_preserves_unrelated_handlers_and_is_idempotent(self):
+        settings = self.settings.with_name("hooks.json")
+        settings.write_text(json.dumps({"description": "keep", "hooks": {
+            "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "other"}]}]
+        }}), encoding="utf-8")
+        first = install_codex_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        second = install_codex_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        config = json.loads(settings.read_text(encoding="utf-8"))
+        self.assertEqual(first["status"], "installed")
+        self.assertEqual(second["status"], "already_installed")
+        self.assertEqual(config["description"], "keep")
+        self.assertEqual(len(config["hooks"]["PostToolUse"]), 2)
+        self.assertTrue(Path(first["backup"]).exists())
+
+    def test_codex_uninstall_removes_only_marked_handler(self):
+        settings = self.settings.with_name("hooks.json")
+        install_codex_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        config = json.loads(settings.read_text(encoding="utf-8"))
+        config["hooks"]["PostToolUse"][0]["hooks"].append({"type": "command", "command": "other"})
+        settings.write_text(json.dumps(config), encoding="utf-8")
+        result = uninstall_codex_hook(settings, command="ai-memory-hook")
+        config = json.loads(settings.read_text(encoding="utf-8"))
+        self.assertEqual(result["status"], "removed")
+        self.assertEqual(config["hooks"]["PostToolUse"][0]["hooks"], [{"type": "command", "command": "other"}])
 
 
 if __name__ == "__main__":
