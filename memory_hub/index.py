@@ -196,6 +196,38 @@ class MemoryIndex:
             ranked[memory_id] = ranked.get(memory_id, 0.0) + scores[memory_id] + 0.5 / (rank + 1)
         return [rows_by_id[memory_id] for memory_id, _ in sorted(ranked.items(), key=lambda item: item[1], reverse=True)[:limit] if memory_id in rows_by_id]
 
+    def semantic_candidates(self, kind: str, threshold: float = 0.85,
+                            limit: int = 200) -> list[dict]:
+        """Return semantic pairs for read-only audit and human review."""
+        if not self.embedding_provider:
+            return []
+        rows = self.conn.execute(
+            """SELECT m.*, e.vector_json FROM memories m
+               JOIN memory_embeddings e USING(memory_id)
+               WHERE m.kind=? AND m.tag!='superseded' ORDER BY m.memory_id""",
+            (kind,),
+        ).fetchall()
+        pairs = []
+        for index, left in enumerate(rows):
+            try:
+                left_vector = json.loads(left["vector_json"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            for right in rows[index + 1:]:
+                try:
+                    score = cosine_similarity(left_vector, json.loads(right["vector_json"]))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if score >= threshold and left["normalized_hash"] != right["normalized_hash"]:
+                    pairs.append({
+                        "kind": kind,
+                        "memory_ids": [left["memory_id"], right["memory_id"]],
+                        "subjects": [left["subject"], right["subject"]],
+                        "similarity": round(score, 4),
+                    })
+        pairs.sort(key=lambda item: item["similarity"], reverse=True)
+        return pairs[:max(1, limit)]
+
     # ---- review queue ----
 
     def enqueue(self, candidate: dict, payload: dict | None = None) -> dict:

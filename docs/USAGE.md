@@ -58,6 +58,10 @@ python -m memory_hub.cli --vault "<vault>" project-audit
 Search uses SQLite FTS5 and can optionally use local embeddings. The Markdown files remain
 authoritative if the disposable index must be rebuilt.
 
+When embeddings are available, `subject_audit` also reports semantic candidates for human
+review. These candidates never change the write path and never merge or delete memories
+automatically.
+
 ## Project identity
 
 Use an explicit `entity_id` when several names refer to the same project. Without one,

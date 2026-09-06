@@ -33,6 +33,18 @@ class EmbeddingTests(unittest.TestCase):
             self.assertEqual(index.search("database", 1)[0]["memory_id"], "two")
             index.close()
 
+    def test_semantic_candidates_are_read_only_audit_pairs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            index = MemoryIndex(Path(temp), FakeEmbeddingProvider())
+            index.upsert(MemoryRecord("one", "/one.md", "Authentication refresh decision",
+                                      "decision", "decided", "auth-one", "user", "2026-09-06"))
+            index.upsert(MemoryRecord("two", "/two.md", "Authentication migration decision",
+                                      "decision", "decided", "auth-two", "user", "2026-09-06"))
+            pairs = index.semantic_candidates("decision")
+            self.assertEqual(pairs[0]["memory_ids"], ["one", "two"])
+            self.assertGreaterEqual(pairs[0]["similarity"], 0.85)
+            index.close()
+
     def test_provider_sorts_response_by_index(self):
         class Response:
             def __enter__(self): return self

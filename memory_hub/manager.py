@@ -743,6 +743,9 @@ class MemoryManager:
                 if len(set(paths)) > 1:
                     alias_collisions.append({"kind": kind, "alias": alias, "paths": sorted(set(paths))})
 
+        semantic_candidates = []
+        for kind in target_kinds:
+            semantic_candidates.extend(self.index.semantic_candidates(kind))
         return {
             "kinds": target_kinds,
             "exact_duplicate_groups": exact_duplicate_groups,
@@ -750,8 +753,9 @@ class MemoryManager:
             "possible_file_splits": possible_file_splits,
             "alias_collisions": alias_collisions,
             "linked_entities": linked_entities,
+            "semantic_candidates": semantic_candidates,
             "healthy": not (exact_duplicate_groups or subject_variant_candidates
-                            or possible_file_splits or alias_collisions),
+                            or possible_file_splits or alias_collisions or semantic_candidates),
         }
 
     def project_link(self, source_path: str, target_path: str, *, apply: bool = False) -> dict:
