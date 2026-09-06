@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS pending (
     writer TEXT NOT NULL,
     target_path TEXT,
     supersedes_id TEXT,
+    entity_id TEXT,
     created_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     decision_note TEXT
@@ -65,6 +66,9 @@ class MemoryIndex:
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(pending)")}
         if "payload" not in columns:
             self.conn.execute("ALTER TABLE pending ADD COLUMN payload TEXT")
+            self.conn.commit()
+        if "entity_id" not in columns:
+            self.conn.execute("ALTER TABLE pending ADD COLUMN entity_id TEXT")
             self.conn.commit()
         try:
             self.conn.execute(
@@ -200,8 +204,8 @@ class MemoryIndex:
         with self.conn:
             self.conn.execute(
                 """INSERT INTO pending
-                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,created_at,status,payload)
-                   VALUES (?,?,?,?,?,?,?,?,?,'pending',?)""",
+                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,entity_id,created_at,status,payload)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?)""",
                 (
                     proposal_id,
                     candidate["text"],
@@ -211,6 +215,7 @@ class MemoryIndex:
                     candidate["writer"],
                     candidate.get("target_path"),
                     candidate.get("supersedes_id"),
+                    candidate.get("entity_id"),
                     created_at,
                     json.dumps(payload, ensure_ascii=False) if payload is not None else None,
                 ),

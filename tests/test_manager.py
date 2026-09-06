@@ -95,6 +95,18 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("id: vib28-ai-memory-hub", content)
         self.assertIn("repository-memory", content)
 
+    def test_review_queue_preserves_project_entity_id(self):
+        candidate = MemoryCandidate(
+            text="Review-mode project fact.", kind="project", tag="stated",
+            subject="friendly-name", writer="codex", entity_id="stable-project-id",
+        )
+        queued = self.manager.queue(candidate)
+        self.assertEqual(queued["status"], "queued")
+        self.assertEqual(queued["proposal"]["entity_id"], "stable-project-id")
+        approved = self.manager.approve(queued["proposal"]["proposal_id"])
+        self.assertEqual(approved["status"], "stored")
+        self.assertEqual(approved["memory"]["path"], "/projects/stable-project-id.md")
+
     def test_project_audit_reports_exact_duplicates_and_name_splits(self):
         first = self.manager.propose(MemoryCandidate(
             text="Same project fact.", kind="project", tag="stated",

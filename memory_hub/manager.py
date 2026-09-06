@@ -380,7 +380,8 @@ class MemoryManager:
                 return result
         candidate = MemoryCandidate(
             text=row["text"], kind=row["kind"], tag=row["tag"], subject=row["subject"],
-            writer=row["writer"], target_path=row["target_path"], supersedes_id=row["supersedes_id"]
+            writer=row["writer"], target_path=row["target_path"], supersedes_id=row["supersedes_id"],
+            entity_id=row.get("entity_id"),
         )
         result = self.propose(candidate)
         self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
