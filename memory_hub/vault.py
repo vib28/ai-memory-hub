@@ -175,7 +175,7 @@ class Vault:
                 continue
             yield p
 
-    def canonical_path(self, kind: str, subject: str) -> str:
+    def canonical_path(self, kind: str, subject: str, *, project: str | None = None) -> str:
         subject_slug = slugify(subject)
         if kind == "profile":
             return "/profile.md"
@@ -188,7 +188,14 @@ class Vault:
         if kind == "decision":
             return f"/decisions/{subject_slug}.md"
         if kind == "session":
-            return f"/sessions/{slugify(subject.split('-', 1)[0] or 'other')}.md"
+            # Sessions are project-major: hook capture is per-working-directory, so a
+            # writer-major layout would grow one unbounded file per agent spanning every
+            # project. Sessions naming no project stay at the writer-major root path.
+            model_slug = slugify(subject.split("-", 1)[0] or "other")
+            if project:
+                project_slug = self._merge_into_existing_project(slugify(project))
+                return f"/sessions/{project_slug}/{model_slug}.md"
+            return f"/sessions/{model_slug}.md"
         return f"/topics/{subject_slug}.md"
 
     def _merge_into_existing_project(self, subject_slug: str) -> str:

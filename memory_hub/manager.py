@@ -200,9 +200,12 @@ class MemoryManager:
             return {"status": "queued", "proposal": row, "label": "session summary"}
         memory_id = uuid.uuid4().hex[:12]
         slug, block = self._session_block(data, memory_id)
-        relative = self.vault.canonical_path("session", data["model"])
+        relative = self.vault.canonical_path("session", data["model"], project=data.get("project"))
         self.vault.append_session_block(relative, block, writer=data["model"])
-        self.vault.ensure_index_entry(relative, "session", f"Session summaries for {data['model']}")
+        covers = f"Session summaries for {data['model']}"
+        if data.get("project"):
+            covers += f" on {data['project']}"
+        self.vault.ensure_index_entry(relative, "session", covers)
         record = MemoryRecord(memory_id, relative, candidate.text, "session", "stated", slug, data["model"], data["date"])
         self.index.upsert(record)
         linked = None
