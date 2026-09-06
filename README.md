@@ -572,7 +572,7 @@ listed in `docs/local-memory-plan.md` and is not claimed as implemented.
 
 Open now: [#40](https://github.com/vib28/ai-memory-hub/issues/40) (chunked per-section
 session embeddings — #39, the kind/subject-context embedding fix, is closed) and
-[#41–#49](https://github.com/vib28/ai-memory-hub/issues), the vault documentation
+[#41–#51](https://github.com/vib28/ai-memory-hub/issues), the vault documentation
 standards workstream tracked in
 [`docs/vault-documentation-standards.md`](docs/vault-documentation-standards.md).
 
@@ -607,10 +607,11 @@ fixes to specific readability and detection gaps found in that review.
 
 | Priority | Issues |
 |---|---|
-| Foundation | [#41](https://github.com/vib28/ai-memory-hub/issues/41) (per-kind templates) → [#42](https://github.com/vib28/ai-memory-hub/issues/42) (session cross-link structure) |
+| Foundation | [#41](https://github.com/vib28/ai-memory-hub/issues/41) (per-kind templates) → [#42](https://github.com/vib28/ai-memory-hub/issues/42) (session cross-link structure) → [#50](https://github.com/vib28/ai-memory-hub/issues/50) (make the companion block safe on forget) |
 | Vault hygiene | [#43](https://github.com/vib28/ai-memory-hub/issues/43) → [#44](https://github.com/vib28/ai-memory-hub/issues/44) → [#45](https://github.com/vib28/ai-memory-hub/issues/45) |
 | Content decisions | [#46](https://github.com/vib28/ai-memory-hub/issues/46), [#47](https://github.com/vib28/ai-memory-hub/issues/47) |
 | Detection/discoverability | [#48](https://github.com/vib28/ai-memory-hub/issues/48), [#49](https://github.com/vib28/ai-memory-hub/issues/49) |
+| Open architecture question | [#51](https://github.com/vib28/ai-memory-hub/issues/51) (should any kind beyond `session` get real multi-line structure) |
 
 Also open, from the retrieval work above: [#40](https://github.com/vib28/ai-memory-hub/issues/40)
 (chunked per-section session embeddings, tracked separately since it needs a schema-light

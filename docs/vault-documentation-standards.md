@@ -75,19 +75,36 @@ attach a layman explanation, with a genuine tradeoff between them:
    decision). Reads better for anything long. **The real cost:** `Vault.delete_entry()` and
    `Vault.replace_entry_line()` (`memory_hub/vault.py`) find and act on the single line
    whose `<!-- mem:id -->` matches — confirmed by reading both functions. Neither one knows
-   the next line is "part of" the entry above it. Forgetting or superseding the tracked
-   entry leaves the companion block sitting there, orphaned or describing a fact that no
-   longer exists, with nothing to catch it.
+   the next line is "part of" the entry above it.
+
+   **Refined after checking both functions individually, not just "the mutators" as a
+   group.** `replace_entry_line()` (supersede) rewrites only the one matched line via a
+   targeted substitution — a companion block underneath is never touched, and staying
+   attached to a now-`[superseded]` entry is *correct*, the same way the technical line
+   itself is kept as history rather than deleted. **Supersede was never actually at risk.**
+   `delete_entry()` (forget) is the one real gap: it removes only the matched line, so a
+   companion block underneath is left behind with nothing above it.
+
+   That gap is fixable without new marker syntax, since every entry in the vault is already
+   blank-line-separated from the next one: `delete_entry()` can sweep the contiguous run of
+   `>`-prefixed lines immediately following a deleted entry, purely by position. Tracked as
+   #50. Once #50 lands, the companion block is safe on both mutation paths, not just one.
 
 **Recommendation:** use (1), the inline clause, as the default and the one the templates
-above assume — it is the only option with no integrity risk, and it is enough for the
-one- or two-sentence explanation most entries need. Reserve (2), the companion block with
-real sub-structure, for the rare entry that is genuinely too long or too multi-part to
-compress into one sentence (a substantial `decision` record is the most likely candidate) —
-and when it's used, the instructions must say plainly that the block is **not** provenance,
-does not move with a supersede, and must be cleaned up by hand if the entry above it is ever
-forgotten. This tradeoff must be stated in `AI_INSTRUCTIONS.md` and `client-prompts/generic.md`
-themselves, not just here — a writer needs to know the cost before choosing (2).
+above assume — it is simplest and enough for the one- or two-sentence explanation most
+entries need, and it needs no dependency on #50. Use (2), the companion block with real
+sub-structure, for the entry that is genuinely too long or too multi-part to compress into
+one sentence (a substantial `decision` record is the most likely candidate) — **once #50
+lands**, this carries no more integrity risk than (1). Until then, `AI_INSTRUCTIONS.md` and
+`client-prompts/generic.md` should say plainly that a companion block used before #50 ships
+must be cleaned up by hand on forget.
+
+A larger, related question — should any kind beyond `session` get *real* multi-line
+structure (a heading block, like `session` already has) instead of a companion block under
+a one-line entry — is deliberately not answered here. It's tracked as its own decision,
+#51, since it is a materially bigger change (existing-content migration, and new answers
+needed for dedup/FTS/embedding text, the same questions `session` already had to answer)
+than making the companion-block pattern safe.
 
 **Example, `decision` kind, inline (option 1):**
 
@@ -117,16 +134,18 @@ themselves, not just here — a writer needs to know the cost before choosing (2
 |---|---|---|---|
 | 1 | #41 — Document per-kind entry templates | Foundation | Nothing else is worth doing consistently until writers know the target shape |
 | 2 | #42 — Session-to-project cross-links lose structure | Code, active harm | Every new session naming a project makes this worse right now |
-| 3 | #43 — Migrate legacy writer-major session files | Vault hygiene | Zero risk, tooling already exists, purely deferred maintenance |
-| 4 | #44 — Remove empty test/throwaway vault files | Vault hygiene | Zero risk, immediate declutter |
-| 5 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene | Zero risk, one line, actively misleading as-is |
-| 6 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision | Needs the Priority-1 template landed first to do it in the new shape |
-| 7 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
-| 8 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
-| 9 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
+| 3 | #50 — Make the companion block safe on forget | Code, small | Unlocks safe use of #41's companion-block option; small and fully scoped |
+| 4 | #43 — Migrate legacy writer-major session files | Vault hygiene | Zero risk, tooling already exists, purely deferred maintenance |
+| 5 | #44 — Remove empty test/throwaway vault files | Vault hygiene | Zero risk, immediate declutter |
+| 6 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene | Zero risk, one line, actively misleading as-is |
+| 7 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision | Needs the Priority-1 template landed first to do it in the new shape |
+| 8 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
+| 9 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
+| 10 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
+| 11 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision, largest scope | Explicitly a decide-first item; a "yes" here would be the biggest single change in this whole series |
 
-All nine are filed and on the project board (`Todo`, priority matching the table above:
-#41/#42 High, #43–#47 Medium, #48/#49 Low). See each issue for the full
+All eleven are filed and on the project board (`Todo`, priority matching the table above:
+#41/#42 High, #43–#47 and #50 Medium, #48/#49/#51 Low). See each issue for the full
 where/why/how/repro/acceptance-criteria/verification detail — this document is the index
 and the rationale for the order, not a duplicate of each issue's content.
 
