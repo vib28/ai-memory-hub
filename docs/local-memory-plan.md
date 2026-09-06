@@ -74,7 +74,6 @@ path and human-readable Obsidian vault.
 - Worst-case write-path duplicate-scan performance (#27); safe length-window pruning and
   benchmarking are complete, but same-length worst cases remain linear.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
-- End-to-end host-client adapters.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
   remain advisory for search and audit; they do not silently change write decisions
   ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
@@ -254,7 +253,7 @@ Do not claim a fixed percentage saving until these measurements exist.
   and its benchmark are the part still open
 - #29 — vault undo plus hook install/uninstall safety gate — **closed**;
   `-InstallHooks`/`-RemoveHooks` wired into `connect-ai-tools.ps1` for Claude Code, Gemini,
-  Qwen, and Kimi
+  Qwen, Kimi, and Codex
 - #32 — normalized resilient lifecycle events without an HTTP hook dependency — closed
 - #33 — stable project identity, read-only audit, and reversible linking — closed
 - #34 — subject-sprawl audit generalized from project-only to every memory kind — closed
