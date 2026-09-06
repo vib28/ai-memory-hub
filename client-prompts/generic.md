@@ -58,9 +58,20 @@ Do not announce every automatic memory write unless it is useful to the user.
 
 At the natural end of every session, call `session_write` automatically. Include the session title, any known project, and all four sections: Investigated, Learned, Completed, and Next Steps. Keep each section concise and use the current date and the connected client's model identity supplied by the server.
 
+Always read the status the call returns. A successful tool call does not by itself mean the summary was persisted:
+
+- `stored` — written.
+- `queued` — awaiting review; it is not in the vault yet.
+- `duplicate` — an identical summary already exists; do not retry.
+- `stored_without_project_link` — the summary was written, but its project cross-link matched an existing entry and was **not** written. The result carries `project_link_supersedes`; use `memory_supersede` with that ID if the link should be applied.
+
+A rejected write is raised as an error, not returned. Never report a session as captured unless the status says it was.
+
 ## Pattern-linked memories
 
 When a recurring situation may match a durable pattern, consult the current `/patterns.md` list. If a listed pattern matches, call `propose_pattern_match` with the pattern ID, a project fact, a global preference rule, and the stable project subject. The review queue decides whether first-occurrence generalizations are kept; later similar matches may be labeled confirmed patterns.
+
+Both halves — the project fact and the preference rule — are validated before either is written, so a pattern is never half-stored. A rejected pattern is raised as an error naming the half that failed; correct that half and call again rather than retrying unchanged.
 
 
 Writer identity for this client: `<tool-name>`.

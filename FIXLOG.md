@@ -1,7 +1,99 @@
+# Fix log
+
+Each entry: what was wrong, what changed, where.
+
+---
+
+# 2026-09-06 — Tiers 0–2 (branch `enhancements/roadmap`)
+
+Nine issues, in the tier order recorded in roadmap #13. Five of them (#22–#25,
+#28) came out of a code review of this branch and were reproduced before being
+filed. Suite: 37 → 63 passing, 1 expected failure.
+
+## #26 — Decision: session routing was writer-major, which hook capture would not survive
+`memory_hub/vault.py` `canonical_path()`: takes a keyword-only `project` and
+returns `/sessions/<project>/<model>.md` when one is named; sessions naming no
+project stay at `/sessions/<model>.md`. Hook capture is per-working-directory,
+so the old layout would have grown one unbounded file per agent spanning every
+project. Project slugs reuse `_merge_into_existing_project()` so sessions and
+`/projects/` cannot disagree on naming.
+`scripts/migrate_session_routing.py`: relocates existing blocks, keyed on each
+block's `**Project:**` link. `--dry-run`, idempotent, preserves IDs and
+frontmatter, skips ID-less blocks (#24).
+Tests: `tests/test_sessions.py::SessionRoutingMigrationTests` (6),
+`test_session_without_project_stays_writer_major`,
+`test_sessions_for_two_projects_are_separate_files`.
+
+## #20 — Bug: memory_forget could not delete session summaries
+`memory_hub/vault.py`: added `delete_session_block()`, which finds the `##`
+block carrying `<!-- session:<id> -->` and rebuilds the file from its parsed
+frontmatter plus surviving blocks. `manager.forget()` dispatches on record
+kind. Previously it always called `delete_entry()`, whose `ENTRY_RE` line scan
+cannot match a heading block, so every session deletion returned
+`not_found_in_file` while the block stayed in the vault.
+Tests: `tests/test_sessions.py` — deletion, sibling/frontmatter survival,
+missing ID, and non-session deletion still working.
+
+## #24 — Bug: session blocks that lost their ID marker were invisible, and audit called the vault healthy
+`memory_hub/vault.py`: added `orphan_session_blocks()`. `manager.audit()` runs
+it over files whose frontmatter `type` is `session`, reports them under
+`orphan_session_blocks`, and counts them in `healthy`. `parse_records()` skips
+such blocks, and `audit()` previously only checked index-vs-file drift and
+malformed `- [` lines, so an orphan matched neither side of the reconciliation.
+Tests: `test_audit_reports_session_block_without_id_marker`,
+`test_audit_healthy_for_intact_session_file`.
+
+## #25 — Bug: identical session summaries were stored twice
+`memory_hub/manager.py`: added `_duplicate_session()`, checked before both the
+review-mode enqueue and the auto-mode write. `propose_session()` never called
+any duplicate detection at all. Keyed on **writer + title + body hash**, not on
+date: `session_write` stamps `now` when a client omits `session_date`, so a
+retry after a transport timeout carries a different date than the call it
+repeats, and a date-inclusive key would miss exactly the case this exists for.
+Tests: `test_identical_session_resubmission_is_a_duplicate`,
+`test_retry_without_explicit_date_is_still_a_duplicate`,
+`test_distinct_sessions_with_same_title_are_both_stored`.
+
+## #22 — Bug: session project cross-links were dropped silently
+`memory_hub/manager.py` `propose_session()`: when the linked project write
+returns `possible_update` — a near-match that writes nothing — the result is
+now `stored_without_project_link`, carrying `project_link_supersedes` and a
+hint pointing at `supersede()`. Previously the session's own `stored` status
+was returned regardless, so cross-links vanished with no signal. `approve()`
+was updated in the same change: it keyed on the literal string `"stored"`, so
+an approved session with a dropped cross-link would otherwise have been left
+in the queue under the new status.
+Tests: `test_dropped_project_cross_link_is_reported`,
+`test_successful_cross_link_still_reports_stored`.
+
+## #23 — Bug: pattern dual-write was not atomic and its rejection was swallowed
+`memory_hub/manager.py` `propose_pattern_match()`: both candidates are built
+and validated before either is written, so a half that cannot be stored stops
+the pair before anything is committed. Rejections propagate `reason` (formerly
+dropped, leaving `reason: None`) and add `half` naming the failing side.
+`memory_hub/mcp_server.py`: the tool raises `ValueError` on rejection, matching
+`session_write`'s contract since #12.
+Tests: `tests/test_patterns.py` (3 new), `tests/test_mcp_server.py` (2 new).
+
+## #19 / #21 / #12 — write mode, the client boundary, and validation
+Behavior was already correct; what was missing was proof and documentation.
+`ARCHITECTURE.md` (new) records the public-MCP-tool boundary with a tool →
+internal-method table, the write-mode policy, the six write outcomes, pattern
+atomicity, session routing, and the rejected HTTP/Node capture draft (#30).
+`tests/test_mcp_server.py::McpBoundaryTests` parses client scripts with `ast`
+and asserts none imports `memory_hub.manager`. It is marked
+`@unittest.expectedFailure` for the one known violation,
+`scripts/backfill_patterns.py` (#28, tier 4) — when that is fixed the test
+flips to unexpected success and forces the marker's removal.
+Tests: `test_review_mode_writes_nothing_to_the_vault`,
+`test_auto_and_review_modes_differ_on_identical_input`.
+
+---
+
 # Fix log — 2026-09-05
 
 Fixes for all 8 open issues at github.com/vib28/ai-memory-hub/issues, applied
-most-to-least important. Each entry: what was wrong, what changed, where.
+most-to-least important.
 
 ## #2 — SECURITY: target_path let any client write into AI_INSTRUCTIONS.md / MEMORY.md
 `memory_hub/vault.py`: added `RESERVED_FILENAMES = {"memory.md", "ai_instructions.md"}`.

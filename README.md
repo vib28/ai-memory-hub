@@ -433,30 +433,47 @@ Run with `review` for a week or two, watch what each AI actually tries to rememb
 
 Clients can write a four-section session summary with `session_write`: `Investigated`, `Learned`, `Completed`, and `Next Steps`. Empty individual sections are allowed; a summary is rejected only when all four sections are empty.
 
-Session summaries are stored in a running file per writer, such as `/sessions/codex.md`, and are searchable through the same SQLite-backed `memory_search` index. If a project is supplied, the summary also creates a linked project entry.
+Session summaries are **project-major**: a summary naming a project is stored in `/sessions/<project>/<writer>.md`, and one naming no project stays at `/sessions/<writer>.md`. Both are searchable through the same SQLite-backed `memory_search` index. If a project is supplied, the summary also creates a linked project entry.
 
-Session writes follow the global write mode. In `review` mode, `session_write` returns `status: queued` and the summary must be approved in the dashboard before it appears in the vault. In `auto` mode, it returns `status: stored` and writes immediately. Always inspect the application-level status; a successful MCP transport call alone does not mean that memory was persisted. Rejected writes now surface their reason as an MCP tool error.
+Vaults created before this change keep their old writer-major layout until migrated:
+
+```powershell
+python scripts/migrate_session_routing.py --vault "<vault>" --dry-run   # report only
+python scripts/migrate_session_routing.py --vault "<vault>"             # apply
+```
+
+The migration preserves session IDs and frontmatter, is idempotent, and skips blocks that have lost their `<!-- session:... -->` marker rather than moving them.
+
+Resubmitting an identical summary — the same writer, title and body — returns `status: duplicate` instead of writing a second block, so a client retry after a timeout cannot double-store a session. Distinct sessions that merely resemble each other are both kept.
+
+Session writes follow the global write mode. In `review` mode, `session_write` returns `status: queued` and the summary must be approved in the dashboard before it appears in the vault. In `auto` mode, it returns `status: stored` and writes immediately. Always inspect the application-level status; a successful MCP transport call alone does not mean that memory was persisted. Rejected writes surface their reason as an MCP tool error, for both `session_write` and `propose_pattern_match`.
+
+One status deserves attention: **`stored_without_project_link`** means the session was written but its project cross-link matched an existing entry closely enough to need a human decision, so the cross-link was *not* written. The response carries `project_link_supersedes`; pass it to `memory_supersede` to apply the link. Treating this as a plain success is how sessions quietly drift out of their project files.
 
 ## Issue tracking
 
-GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track the original bug-fix work, including [#12](https://github.com/vib28/ai-memory-hub/issues/12) for session-write validation. Follow-up defects are tracked in [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#20](https://github.com/vib28/ai-memory-hub/issues/20), and [#21](https://github.com/vib28/ai-memory-hub/issues/21).
+GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track the original bug-fix work. A later code review of the `enhancements/roadmap` branch found five further defects, filed as [#22–#25](https://github.com/vib28/ai-memory-hub/issues) and [#28](https://github.com/vib28/ai-memory-hub/issues/28).
 
-Planned improvements are tracked in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13) and its workstream issues [#14–#18](https://github.com/vib28/ai-memory-hub/issues).
+Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25), [#26](https://github.com/vib28/ai-memory-hub/issues/26).
 
 ## Roadmap and planning
 
-The approved improvement roadmap is tracked in GitHub:
+Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are sequential; within a tier, order is a suggestion. The full ordering with rationale lives in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13).
 
-- [Roadmap: Claude integration and session-pattern memory improvements (#13)](https://github.com/vib28/ai-memory-hub/issues/13)
-- [Claude Code lifecycle hooks and local compression (#14)](https://github.com/vib28/ai-memory-hub/issues/14)
-- [Reliable session-summary import and verification (#15)](https://github.com/vib28/ai-memory-hub/issues/15)
-- [Configurable pattern-linked memory proposals (#16)](https://github.com/vib28/ai-memory-hub/issues/16)
-- [Client prompts and integration documentation (#17)](https://github.com/vib28/ai-memory-hub/issues/17)
-- [Review-safe historical pattern backfill (#18)](https://github.com/vib28/ai-memory-hub/issues/18)
+| Tier | Focus | Issues |
+|---|---|---|
+| 0 | Decide before building | ✅ [#26](https://github.com/vib28/ai-memory-hub/issues/26), [#30](https://github.com/vib28/ai-memory-hub/issues/30) |
+| 1 | Vault integrity before hook volume | ✅ [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25) |
+| 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
+| 3 | Capture pipeline | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
+| 4 | Patterns | [#16](https://github.com/vib28/ai-memory-hub/issues/16) → [#28](https://github.com/vib28/ai-memory-hub/issues/28) → [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
+| 5 | Scale and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
-Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies; copy only sanitized, review-ready versions into `docs/plans/` when they should be shared with collaborators.
+Tiers 0–2 are complete on `enhancements/roadmap`. The ordering is not arbitrary: session deletion and orphan detection ship *before* hook capture because hooks multiply session volume, and the vault undo in [#29](https://github.com/vib28/ai-memory-hub/issues/29) ships before anything writes automatically.
 
-The session-import workstream includes a supported MCP-based migration utility for historical Codex sessions. It must submit through the public `session_write` workflow and honor `review` versus `auto` mode; internal methods such as `MemoryManager.propose_session()` are not client APIs. See [#15](https://github.com/vib28/ai-memory-hub/issues/15) and the boundary defect [#21](https://github.com/vib28/ai-memory-hub/issues/21).
+Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
+
+Architectural boundaries — which methods clients may call, how write mode is enforced, what the six write outcomes mean, and which capture designs were rejected — are documented in [ARCHITECTURE.md](ARCHITECTURE.md). Read it before adding a new write path.
 
 ## The dashboard
 
@@ -496,9 +513,9 @@ Prefer a system-tray icon instead of a browser tab left open?
 | `memory_propose(...)` | Propose a durable memory; written immediately or queued, depending on write mode |
 | `session_write(...)` | Write a four-section session summary; stored immediately or queued, depending on write mode |
 | `propose_pattern_match(...)` | Propose a linked project fact and global preference rule for a configured pattern |
-| `memory_forget(memory_id)` | Delete a specific memory by its stable ID |
+| `memory_forget(memory_id)` | Delete a specific memory by its stable ID, including session summary blocks |
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |
-| `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, index drift |
+| `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, orphaned session blocks, index drift |
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |
 
@@ -522,7 +539,8 @@ Facts are routed to one canonical home by kind:
 | project | `/projects/<subject>.md` |
 | topic | `/topics/<subject>.md` |
 | decision | `/decisions/<subject>.md` |
-| session | `/sessions/<writer>.md` |
+| session (with a project) | `/sessions/<project>/<writer>.md` |
+| session (no project) | `/sessions/<writer>.md` |
 
 New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. A project first uses an exact matching file. Otherwise, a hyphen-segment prefix match routes to the shortest existing project file (`widget-app-ui` routes to `widget-app.md`); unrelated shared-prefix projects stay separate. A caller may explicitly set `target_path`, which is validated to stay inside the vault and bypasses automatic routing. Existing fragmented files are not merged automatically.
 
