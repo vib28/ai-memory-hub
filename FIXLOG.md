@@ -4,6 +4,94 @@ Each entry: what was wrong, what changed, where.
 
 ---
 
+# 2026-09-06 — Tier 3 safety gate, patterns, and entity identity (branch `enhancements/roadmap`)
+
+Ten issues, closing out tiers 3–4 and most of tier 5. Suite: 63 → 127 passing.
+
+## #32 — Enhancement: normalize resilient lifecycle events without an HTTP hook dependency
+Reused the useful lifecycle-hook patterns from an external reference project (stable
+event names, fail-open behavior, bounded delivery, retry awareness) inside the existing
+local SQLite receiver, without adopting its HTTP server architecture or enabling prompt
+capture implicitly. Additive SQLite migration for buffers created by earlier versions.
+
+## #16, #28, #18 — Pattern-linked memories: config, boundary fix, and historical backfill
+`scripts/backfill_patterns.py` previously drove `MemoryManager` in-process and called the
+private `_patterns()`, bypassing the configured write mode (#21's boundary) and lacking
+`--dry-run`. Rewired to submit through the public MCP tool (`memory_hub.mcp_server.
+memory_propose`) and read patterns through `memory_hub/patterns.py`'s supported loader.
+`tests/test_mcp_server.py::McpBoundaryTests` now asserts no exemption for this script.
+Tests: `tests/test_patterns.py`, `tests/test_backfill_patterns.py`.
+
+## #33 — Bug: project memory identity allowed duplicate-looking entries across writers
+Explicit `entity_id` + `aliases` frontmatter for project files, resolved through
+`Vault._entity_slug()` (then `_project_slug()`) rather than fuzzy text matching. Added
+`project_audit()` (read-only: exact duplicates, alias collisions, possible name splits)
+and `project_link()` (explicit, reversible merge with a `.merged-<timestamp>` backup).
+Tests: `tests/test_manager.py` project-identity and audit cases.
+
+## #37 — Bug: project writes without entity_id could silently merge through prefix fallback
+`_project_slug()`'s legacy hyphen-prefix fallback (kept for backward compatibility when
+#33 landed) still let `widget-app-ui` route into an existing `widget-app.md` file with no
+`entity_id` supplied and no confirmation. Removed the fallback entirely: a write that
+omits `entity_id` now always gets its own subject-based file, never a fuzzy-matched
+existing one. `project_audit()`/`subject_audit()` report the relationship for explicit
+review instead.
+
+## #29 — Enhancement: vault history as undo, plus hook install and uninstall
+Part 1 (opt-in vault Git history, `history-init`/`history-status`/`history-commit`) and
+the generic `memory_hub/hooks.py` layer (`install_hook`/`uninstall_hook`, timestamped
+backups, managed-entry-only removal) were already implemented, but nothing called them —
+`connect-ai-tools.ps1` exposed only `-VaultPath`/`-WriteMode`. Added `-InstallHooks`/
+`-RemoveHooks`, targeting Claude Code's `settings.json` (resolved from
+`$CLAUDE_CONFIG_DIR`, falling back to `~/.claude`) and pointing the hook command at the
+venv's own `ai-memory-hook.exe` rather than trusting `PATH`. Verified live against a temp
+`settings.json`: fresh install, idempotent repeat, removal preserving an unrelated
+existing hook, safe no-op on a second removal, and a backup on each mutating write.
+
+## #36 — Bug: rejected session_write/propose_pattern_match lost their reason
+Both raised a plain `ValueError` on rejection. The MCP SDK (`mcp` 2.x) treats any
+exception that is not `ToolError`/`ResourceError`/`MCPError` as a crash and wraps it in
+`UnexpectedToolError`, discarding the original message — the caller saw only
+`Error executing tool <name>`. Confirmed live (a too-long `session_write` payload lost its
+"memory is too long" reason entirely) and against the SDK source
+(`mcp/server/mcpserver/tools/base.py`). Fixed by raising `ToolError` instead, the SDK's
+"anticipated failure" channel, whose message survives the same wrapping. Also documented
+the 1500-character combined-section cap in `client-prompts/generic.md` (undiscoverable
+before except by hitting it), synced to all eight client files.
+Tests: `tests/test_mcp_server.py`, asserting through the real `mcp.call_tool()` boundary
+rather than the bare function, since that is where the bug actually lived.
+
+## #34 — Enhancement: generalize memory audit to detect subject sprawl across all kinds
+`project_audit()` only ever looked at `kind == "project"` (one hardcoded filter). Added
+`subject_audit(kinds=None)`, generalizing exact-duplicate detection (partitioned by
+`(kind, hash)`, so identical text under different kinds is correctly not a duplicate of
+itself) and subject-variant/file-split candidates to every kind, with `session` excluded
+from the variant checks (its subjects are per-instance, not entity names). Run live
+against the author's real vault (49 records): found the already-known project split plus
+a previously invisible preference-kind variant.
+Tests: `tests/test_manager.py::SubjectAuditTests` (9 new).
+
+## #35 — Enhancement: extend entity identity to preferences/topics, group in dashboard
+Two different mechanisms. `topic`/`decision`/`person` already routed one file per subject
+like `project`; widened the same frontmatter gate and `_entity_slug()` routing to cover
+them (mechanical, low-risk, reusing #33's tested code path). `preference`/`profile` route
+every subject into *one* file across all subjects, so the same frontmatter mechanism
+would have given the whole file one entity id shared across unrelated concerns — built a
+separate registry instead, `entity-aliases.md` (`memory_hub/entities.py`), consulted by
+`conflicts()`/`resolve_conflict()` and new `entity_alias_link()` (preview/apply, never
+merges or deletes an entry). Dashboard grouping moved server-side into
+`dashboard._dashboard_group()`, resolving preference/profile subjects through the same
+registry; verified live against a disposable copy of the author's real vault (server
+started, `GET /api/memories` returned all 49 rows with the new grouping fields).
+Caught and fixed one bug pre-ship: the registry's own seed documentation embedded its
+format example as a literal heading, which the (deliberately Markdown-fencing-naive)
+parser would have read as live data on every new vault.
+Tests: `tests/test_entities.py`, `tests/test_manager.py::FileEntityIdentityTests` and
+`::EntityAliasLinkTests` (24 new total), one new dashboard grouping test; one stale
+literal-string dashboard test updated rather than reverted.
+
+---
+
 # 2026-09-06 — Tiers 0–2 (branch `enhancements/roadmap`)
 
 Nine issues, in the tier order recorded in roadmap #13. Five of them (#22–#25,

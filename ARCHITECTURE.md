@@ -12,6 +12,7 @@ Clients — connected models, hook scripts, migration utilities — reach the va
 client -> session_write            -> MemoryManager.propose_session()
 client -> propose_pattern_match    -> MemoryManager.propose_pattern_match()
 client -> memory_propose / _supersede / _forget / _search / _read / _audit / _reindex
+client -> project_audit / subject_audit / project_link / entity_alias_link
 ```
 
 | Public MCP tool | Internal method it wraps |
@@ -20,6 +21,8 @@ client -> memory_propose / _supersede / _forget / _search / _read / _audit / _re
 | `session_write` | `MemoryManager.propose_session()` |
 | `propose_pattern_match` | `MemoryManager.propose_pattern_match()` |
 | `memory_forget`, `memory_search`, `memory_read`, `memory_audit`, `memory_reindex` | corresponding manager methods |
+| `project_audit`, `subject_audit` | read-only; never call `queue()`/`propose()` |
+| `project_link`, `entity_alias_link` | explicit, reviewed merges — never invoked from write-time validation |
 
 `MemoryManager` methods remain importable **inside the Python package** — the MCP server
 calls them, and the test suite exercises them directly. What must not happen is a
@@ -29,8 +32,9 @@ write mode, writing to the vault under `MEMORY_WRITE_MODE=review`.
 The line is *proposing new memory*, not *touching the vault*. `scripts/migrate_session_routing.py`
 relocates blocks that are already stored and proposes nothing, so it may use `Vault`
 directly. `scripts/backfill_patterns.py` proposes new preference rules and therefore may
-not — it currently does, tracked in #28, and `tests/test_mcp_server.py::McpBoundaryTests`
-asserts the rule with that one known violation marked expected-failure.
+not; #28 fixed the one place it did, and `tests/test_mcp_server.py::McpBoundaryTests`
+now asserts the rule with no exemption — `backfill_patterns.py` submits through the
+public MCP workflow (`--dry-run` included) rather than driving `MemoryManager` in-process.
 
 ## Write mode is never bypassed (#19)
 
@@ -41,11 +45,24 @@ vault until approved. There is no source-based exemption: a fact arriving from a
 subject to the same policy as one a model proposes. If unattended operation is wanted, it
 is a separate configured mode with its own variable.
 
-## Application-level rejections are surfaced (#12, #23)
+## Application-level rejections are surfaced (#12, #23, #36)
 
 An MCP transport can return a successful tool call while the operation underneath was
 rejected. Both writing tools therefore raise instead of returning a rejection quietly:
 `session_write` since #12, `propose_pattern_match` since #23.
+
+**Raise `mcp.server.mcpserver.exceptions.ToolError`, never a plain `ValueError` (#36).**
+This is not a style preference. The SDK (`mcp` 2.x) treats any exception that is not
+`ToolError`/`ResourceError`/`MCPError` as a crash: `Tool.run()` wraps it in
+`UnexpectedToolError` and discards the original message, so the caller sees only
+`Error executing tool <name>` with no reason. `ToolError` is the SDK's own "anticipated
+failure" channel — its message survives the same wrapping intact. Confirmed against the
+SDK source (`mcp/server/mcpserver/tools/base.py`) and reproduced live before the fix: a
+rejected `session_write` call returned exactly that bare message, with the actual reason
+(e.g. "memory is too long") visible only in server-side logs. Any new write tool that
+raises on rejection must use `ToolError`, verified through `mcp.call_tool(...)`, not just
+the bare function — a test that only calls the tool function directly cannot see this
+class of regression, since the SDK's wrapping only happens on the real registered path.
 
 There are six outcomes. Callers must distinguish them:
 
@@ -57,7 +74,7 @@ There are six outcomes. Callers must distinguish them:
 | `queued_as_update` | no, `supersedes_id` pre-filled | report as update |
 | `possible_update` | **no** | resolve via `supersede()` |
 | `duplicate` | no, already present | no-op |
-| `rejected` | no | raised as `ValueError`; keep the source data |
+| `rejected` | no | raised as `ToolError`; keep the source data |
 
 `possible_update` is the trap: neither an error nor a write.
 
@@ -76,11 +93,54 @@ never existed. The preference half always targets global `preferences.md`.
 
 Hook capture is per-working-directory. A writer-major layout would grow one unbounded file
 per agent spanning every project the agent ever touched, and #16's pattern work is already
-project-keyed. Project slugs reuse `Vault._merge_into_existing_project`, so sessions and
-`/projects/` agree on naming.
+project-keyed. Project slugs reuse `Vault._entity_slug('projects', ...)` (renamed from
+`_merge_into_existing_project` when #35 generalized it to every `FILE_PER_ENTITY_KINDS`
+kind — see below), so sessions and `/projects/` agree on naming.
 
 Existing vaults migrate with `scripts/migrate_session_routing.py --vault <path> --dry-run`
 first; blocks naming no project stay where they are.
+
+## Entity identity: explicit and never silently merged (#33, #35, #37)
+
+Two mechanisms, chosen by whether the kind routes one file per subject or shares one file
+across all of them (`vault.canonical_path`):
+
+**`FILE_PER_ENTITY_KINDS = {"project", "topic", "decision", "person"}`** each get their own
+file per subject, so identity lives in that file's own frontmatter (`id`, `aliases`).
+`Vault._entity_slug(directory, subject_slug, entity_id)` resolves a write to an existing
+file only by an explicit `entity_id` match or an already-recorded alias — **never** by
+fuzzy or prefix similarity (#37: a caller that has not identified the entity must get a
+separate subject-based file, not have its fact silently folded into whatever existing file
+happens to share a prefix). `project_link()` merges two such files explicitly and
+reversibly (a `.merged-<timestamp>` backup, never a delete); it is a preview-then-apply
+operation, and applying it is the *only* thing that merges these files. Originally
+project-only (#33), generalized to all four kinds by widening one type-check (#35) — the
+merge logic itself needed no change, since it was never kind-specific beyond that check.
+
+**`SHARED_FILE_KINDS = {"preference", "profile"}`** route every subject into one file
+(`/preferences.md`, `/profile.md`), so there is no per-subject file to carry `id`/`aliases`.
+Widening the same frontmatter mechanism to these kinds was considered and rejected: it
+would give the entire file one entity id shared across every distinct concern living in
+it. Identity for these two kinds instead lives in a separate, small registry file,
+`entity-aliases.md` (`memory_hub/entities.py`, parsed the same deliberately
+Markdown-fencing-naive way as `patterns.py`), consulted by `conflicts()`,
+`resolve_conflict()`, and the dashboard's grouping to resolve one subject to another.
+`entity_alias_link()` is the only way to add an entry, and it never merges, moves, or
+deletes a memory entry — both subjects keep their own entries exactly where they are; only
+grouping changes. A registry entry is reversible by hand-editing the file or, with vault
+history enabled, by `git revert`.
+
+**Both mechanisms share the same principle:** identity is resolved by an explicit,
+human-reviewed action, never inferred from text similarity. `subject_audit()` is the
+read-only detector for both — exact-duplicate and subject-variant candidates across every
+kind — and never itself writes anything; `project_link()`/`entity_alias_link()` are the
+only write paths, and both require an explicit call naming the two subjects, not a
+threshold crossed automatically.
+
+Do not add a fuzzy-matching fallback to either mechanism when a caller omits an identifier.
+That fallback existed once for `project` (the pre-#37 behavior) and silently merged
+`widget-app` and `widget-app-ui` writes that were never confirmed to be the same entity —
+exactly the failure mode this whole section exists to prevent.
 
 ## Capture transport (#30)
 
@@ -119,15 +179,21 @@ existing four-section session contract.
 
 ## Current implementation gates
 
-The buffer, local consolidation, and optional hybrid retrieval are implemented on the
-enhancement branch. They are not the same as enabling automatic capture in every client.
-Before the default connection tooling installs hooks that can lead to vault writes, the
-project must ship the safety work in issue #29:
+The buffer, local consolidation, optional hybrid retrieval, and vault Git history/hook
+install-uninstall are all implemented on the enhancement branch — #29 is closed, so that
+safety gate is cleared. That is still not the same as enabling automatic capture in every
+client. What remains:
 
-1. opt-in vault Git history/undo for automated consolidation;
-2. idempotent provider-neutral hook installation with timestamped backups;
-3. precise hook removal that preserves unrelated client settings;
-4. review-mode verification and retry behavior.
+1. client-specific lifecycle-hook adapters beyond Claude Code — `install_hook()` targets
+   Claude Code's `PostToolUse` schema specifically; other clients' settings paths and event
+   schemas are not guessed (#14);
+2. session-import verification — a supported migration utility for historical records with
+   post-import vault/index verification (#15);
+3. the write-path performance half of #27 — `MemoryManager._best_match()` still scans every
+   same-kind row with `SequenceMatcher` on each proposal; only the *search* half moved to
+   cosine similarity. This is what turns expensive once hook capture (#14) makes every
+   session a burst of proposals, and its benchmark is what the roadmap's "keep new capture
+   in review mode until benchmark results are trusted" gate is waiting on.
 
 Confidence and importance scores are planned ranking metadata. They may prioritize review
 and retrieval, but they must never bypass validation, secret rejection, deduplication, or

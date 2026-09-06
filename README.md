@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 101 passing](https://img.shields.io/badge/tests-101%20passing-brightgreen.svg)
+![Tests: 127 passing](https://img.shields.io/badge/tests-127%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
@@ -161,7 +161,7 @@ sequenceDiagram
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
-- ✅ **101 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, secret detection, file-locking edge cases, vault history, hook configuration safety, MCP error propagation, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **127 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
 
@@ -537,7 +537,9 @@ One status deserves attention: **`stored_without_project_link`** means the sessi
 
 GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track the original bug-fix work. A later code review of the `enhancements/roadmap` branch found further defects, including [#22–#25](https://github.com/vib28/ai-memory-hub/issues), [#28](https://github.com/vib28/ai-memory-hub/issues/28), [#36](https://github.com/vib28/ai-memory-hub/issues/36), and [#37](https://github.com/vib28/ai-memory-hub/issues/37); the documented fixes are now applied.
 
-Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25), [#26](https://github.com/vib28/ai-memory-hub/issues/26).
+Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#16](https://github.com/vib28/ai-memory-hub/issues/16), [#18](https://github.com/vib28/ai-memory-hub/issues/18), [#19–#26](https://github.com/vib28/ai-memory-hub/issues), [#28–#37](https://github.com/vib28/ai-memory-hub/issues) — pattern-linked memories and historical backfill (#16, #18, #28), vault history and hook install/uninstall (#29), the compression-engine decision (#30), the history/index isolation fix (#31), lifecycle-event normalization (#32), project entity identity, audit, and reversible linking (#33), subject-sprawl auditing generalized to every kind (#34), the same identity model extended to shared-file kinds with dashboard grouping (#35), MCP rejection reasons preserved across the tool boundary (#36), and the identity-less prefix-merge fix (#37).
+
+Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout), [#14](https://github.com/vib28/ai-memory-hub/issues/14) (client-specific hook adapters), [#15](https://github.com/vib28/ai-memory-hub/issues/15) (session consolidation/verification), [#17](https://github.com/vib28/ai-memory-hub/issues/17) (client prompt sync test + remaining docs), [#27](https://github.com/vib28/ai-memory-hub/issues/27) (write-path duplicate-scan performance + benchmark).
 
 ## Roadmap and planning
 
@@ -550,13 +552,13 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | Tier | Focus | Issues |
 |---|---|---|
 | 0 | Decide before building | ✅ [#26](https://github.com/vib28/ai-memory-hub/issues/26), ✅ [#30](https://github.com/vib28/ai-memory-hub/issues/30) |
-| 1 | Vault integrity before hook volume | ✅ [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25) |
-| 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
-| 3 | Capture pipeline and safety gates | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#32](https://github.com/vib28/ai-memory-hub/issues/32) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
+| 1 | Vault integrity before hook volume | ✅ [#20](https://github.com/vib28/ai-memory-hub/issues/20), ✅ [#24](https://github.com/vib28/ai-memory-hub/issues/24), ✅ [#25](https://github.com/vib28/ai-memory-hub/issues/25) |
+| 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), ✅ [#19](https://github.com/vib28/ai-memory-hub/issues/19), ✅ [#21](https://github.com/vib28/ai-memory-hub/issues/21), ✅ [#22](https://github.com/vib28/ai-memory-hub/issues/22), ✅ [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
+| 3 | Capture pipeline and safety gates | ✅ [#29](https://github.com/vib28/ai-memory-hub/issues/29) → ✅ [#32](https://github.com/vib28/ai-memory-hub/issues/32) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
 | 4 | Patterns | ✅ [#16](https://github.com/vib28/ai-memory-hub/issues/16) → ✅ [#28](https://github.com/vib28/ai-memory-hub/issues/28) → ✅ [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
-| 5 | Retrieval, identity, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
+| 5 | Retrieval, identity, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
-Tiers 0–2 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, and optional hybrid retrieval are implemented, but automatic hook installation and automatic vault writes remain gated on [#29](https://github.com/vib28/ai-memory-hub/issues/29). The vault undo and uninstall path must ship before capture is enabled by default.
+Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, and hook install/uninstall are all implemented — [#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed, so that safety gate is cleared. What remains before automatic capture ships by default: client-specific lifecycle-hook adapters beyond Claude Code ([#14](https://github.com/vib28/ai-memory-hub/issues/14)), session-import verification ([#15](https://github.com/vib28/ai-memory-hub/issues/15)), and the write-path duplicate-scan performance work plus its benchmark ([#27](https://github.com/vib28/ai-memory-hub/issues/27)) — `_best_match()` still scans every same-kind row with `SequenceMatcher` on every proposal; only the *search* half of #27 moved to cosine similarity.
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
 

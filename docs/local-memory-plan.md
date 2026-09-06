@@ -41,25 +41,47 @@ path and human-readable Obsidian vault.
   [#33](https://github.com/vib28/ai-memory-hub/issues/33)).
 - Stable project identity routing, read-only duplicate/split auditing, and reversible
   explicit project linking with source backups.
+- Identity generalized from project-only to every file-per-subject kind (topic, decision,
+  person), and a separate registry mechanism (`entity-aliases.md`) added for the two
+  shared-file kinds (preference, profile) that cannot carry per-file identity metadata;
+  dashboard grouping and `conflicts()`/`resolve_conflict()` both resolve through it
+  ([#34](https://github.com/vib28/ai-memory-hub/issues/34),
+  [#35](https://github.com/vib28/ai-memory-hub/issues/35)).
+- The identity-less prefix-merge fallback removed entirely: a project (or now
+  topic/decision/person) write that omits `entity_id` never uses fuzzy or prefix matching
+  to select an existing file ([#37](https://github.com/vib28/ai-memory-hub/issues/37)).
+- Rejected `session_write`/`propose_pattern_match` calls now surface their reason to the
+  caller; a plain `ValueError` was silently discarded by the MCP SDK's crash-handling path,
+  reaching the caller as a bare `Error executing tool <name>` with no reason
+  ([#36](https://github.com/vib28/ai-memory-hub/issues/36)).
+- Generic hook install/removal wired into the default connection script for Claude Code:
+  `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`, idempotent, with a timestamped
+  backup before each write ([#29](https://github.com/vib28/ai-memory-hub/issues/29)).
 - Documentation and tests for the above paths.
 
 ### In progress
 
-- Client-specific lifecycle-hook adapters and installation/removal wiring.
+- Client-specific lifecycle-hook adapters for clients beyond Claude Code.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
+- The write-path half of hybrid retrieval: `MemoryManager._best_match()` still scans every
+  same-kind row with `SequenceMatcher` on every proposal; only the *search* half moved to
+  cosine similarity ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
 
-### Safety gate now implemented
+### Safety gate — complete
 
 - Opt-in vault Git initialization and status inspection.
 - Disposable index, WAL/SHM, lock, and temporary-file ignores.
 - Session-ID commit support for successful automated consolidation.
-- Provider-neutral JSON hook installation/removal with timestamped backups and managed-entry preservation.
+- Provider-neutral JSON hook installation/removal with timestamped backups and managed-entry
+  preservation, **now wired into the default connection script** for Claude Code
+  (`-InstallHooks`/`-RemoveHooks`) — this was the missing piece that kept #29 open.
 
 Automated commits refuse to mix with pre-staged user changes.
 
-Hook installation/uninstallation and end-to-end verification remain before automatic
-capture is enabled by default.
+[#29](https://github.com/vib28/ai-memory-hub/issues/29) is closed: this safety gate is
+cleared. What still gates automatic capture shipping *by default* is client-specific
+adapter coverage (#14) and the write-path benchmark (#27), not this gate.
 
 ### Not yet implemented
 
@@ -67,6 +89,9 @@ capture is enabled by default.
 - Graph-aware retrieval and reranking.
 - Full token-savings benchmark.
 - Automatic hook enablement in the default installer.
+- A migration/backfill that scans `subject_audit()` candidates and proposes
+  `entity_alias_link()`/`project_link()` calls automatically — linking stays a one-at-a-time,
+  human-reviewed action by design.
 
 ## Safety gates
 
@@ -191,28 +216,41 @@ Do not claim a fixed percentage saving until these measurements exist.
 
 ## Final documentation action item
 
-- [ ] Rewrite every GitHub issue, including closed issues, and every roadmap entry in
-  clear layman language with explicit **where**, **why**, **how**, reproduction steps,
-  acceptance criteria, implementation details, and verification results. Do not infer
-  missing evidence; mark it as unavailable or ask for clarification. Complete this
-  after the implementation work and testing are finished.
+- [x] Rewrite every **open** GitHub issue and every roadmap entry in clear layman language
+  with explicit **where**, **why**, **how**, reproduction steps, acceptance criteria,
+  implementation details, and verification results, not inferring missing evidence.
+  Applied to #13, #14, #15, #16, #17, #18, #27, #28, #29, #33, #34, #35, #36, #37 and the
+  #13 roadmap body itself.
+- [ ] Extend the same treatment to **closed** issues from the original bug-fix pass
+  (#2–#12, #19–#26, #30, #31, #32) — not yet done; those issues predate this
+  documentation standard and were closed under the previous format.
 
 ## Issue mapping
 
+- #13 — parent roadmap and closeout
 - #14 — generic lifecycle hooks and local observation buffering
 - #15 — local session consolidation and verification
-- #27 — optional local embeddings and hybrid memory search
-- #29 — vault undo plus hook install/uninstall safety gate
-- #32 — normalized resilient lifecycle events without an HTTP hook dependency
-- #33 — stable project identity and generic duplicate prevention
-- #36 — preserve rejection reasons across the MCP tool boundary
-- #37 — prevent identity-less project prefix merges
 - #17 — client prompts and integration documentation
-- #13 — parent roadmap and closeout
+- #27 — optional local embeddings and hybrid memory search; the write-path duplicate scan
+  and its benchmark are the part still open
+- #29 — vault undo plus hook install/uninstall safety gate — **closed**;
+  `-InstallHooks`/`-RemoveHooks` wired into `connect-ai-tools.ps1` for Claude Code
+- #32 — normalized resilient lifecycle events without an HTTP hook dependency — closed
+- #33 — stable project identity, read-only audit, and reversible linking — closed
+- #34 — subject-sprawl audit generalized from project-only to every memory kind — closed
+- #35 — the same identity model extended to shared-file kinds (preference, profile) via a
+  small alias registry, plus dashboard grouping through it — closed
+- #36 — preserve rejection reasons across the MCP tool boundary — closed
+- #37 — prevent identity-less project prefix merges — closed
 
-Pattern issues #16, #28, and #18 are implemented as a separate parallel track. They do
-not block the core local capture pipeline. Pattern configuration is validated through a
-supported loader, historical backfill supports dry-run and idempotent review-safe writes,
-and the backfill client uses the public MCP proposal boundary. Project writes without an
-explicit `entity_id` no longer use prefix-based routing, and MCP rejection reasons remain
-visible to callers.
+Pattern issues #16, #28, and #18 are implemented as a separate parallel track and are all
+closed. They do not block the core local capture pipeline. Pattern configuration is
+validated through a supported loader, historical backfill supports dry-run and idempotent
+review-safe writes, and the backfill client uses the public MCP proposal boundary. Project
+writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
+rejection reasons remain visible to callers.
+
+Five issues remain open: #13, #14, #15, #17, #27 — see [README.md's roadmap
+table](../README.md#roadmap-and-planning) for what specifically blocks each, and [roadmap
+#13](https://github.com/vib28/ai-memory-hub/issues/13) for the recommended fix order and
+its rationale.
