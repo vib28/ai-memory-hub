@@ -42,6 +42,8 @@ path and human-readable Obsidian vault.
 - Client-specific lifecycle-hook adapters and installation/removal wiring.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
+- Project entity identity, alias resolution, and duplicate-looking entry cleanup with
+  an explicit dry-run migration ([#33](https://github.com/vib28/ai-memory-hub/issues/33)).
 
 ### Safety gate now implemented
 
@@ -198,6 +200,7 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #27 — optional local embeddings and hybrid memory search
 - #29 — vault undo plus hook install/uninstall safety gate
 - #32 — normalized resilient lifecycle events without an HTTP hook dependency
+- #33 — stable project identity and generic duplicate prevention
 - #17 — client prompts and integration documentation
 - #13 — parent roadmap and closeout
 
