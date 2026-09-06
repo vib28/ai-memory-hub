@@ -267,7 +267,6 @@ review-safe writes, and the backfill client uses the public MCP proposal boundar
 writes without an explicit `entity_id` no longer use prefix-based routing, and MCP
 rejection reasons remain visible to callers.
 
-One issue remains open: #13 — see [README.md's roadmap
-table](../README.md#roadmap-and-planning) for what specifically blocks each, and [roadmap
-#13](https://github.com/vib28/ai-memory-hub/issues/13) for the recommended fix order and
-its rationale.
+No Local Memory v1 roadmap issues remain open. Future scoring, graph retrieval, broader
+benchmarking, and migration work remain explicitly listed as future scope rather than
+being silently claimed as implemented.

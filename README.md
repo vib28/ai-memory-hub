@@ -560,7 +560,8 @@ GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track th
 
 Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#16](https://github.com/vib28/ai-memory-hub/issues/16), [#18](https://github.com/vib28/ai-memory-hub/issues/18), [#19–#37](https://github.com/vib28/ai-memory-hub/issues) — including verified client hooks (#14), optional hybrid search and read-only semantic auditing with the lexical write boundary explicitly retained (#27), pattern-linked memories and historical backfill (#16, #18, #28), vault history and hook install/uninstall (#29), the compression-engine decision (#30), the history/index isolation fix (#31), lifecycle-event normalization (#32), project entity identity, audit, and reversible linking (#33), subject-sprawl auditing generalized to every kind (#34), the same identity model extended to shared-file kinds with dashboard grouping (#35), MCP rejection reasons preserved across the tool boundary (#36), and the identity-less prefix-merge fix (#37).
 
-Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout).
+All tracked Local Memory v1 roadmap issues are closed. Future work remains explicitly
+listed in `docs/local-memory-plan.md` and is not claimed as implemented.
 
 ## Roadmap and planning
 
@@ -577,7 +578,7 @@ Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are
 | 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), ✅ [#19](https://github.com/vib28/ai-memory-hub/issues/19), ✅ [#21](https://github.com/vib28/ai-memory-hub/issues/21), ✅ [#22](https://github.com/vib28/ai-memory-hub/issues/22), ✅ [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
 | 3 | Capture pipeline and safety gates | ✅ [#29](https://github.com/vib28/ai-memory-hub/issues/29) → ✅ [#32](https://github.com/vib28/ai-memory-hub/issues/32) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
 | 4 | Patterns | ✅ [#16](https://github.com/vib28/ai-memory-hub/issues/16) → ✅ [#28](https://github.com/vib28/ai-memory-hub/issues/28) → ✅ [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
-| 5 | Retrieval, identity, context, and closeout | ✅ [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), ✅ [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
+| 5 | Retrieval, identity, context, and closeout | ✅ [#27](https://github.com/vib28/ai-memory-hub/issues/27), ✅ [#33](https://github.com/vib28/ai-memory-hub/issues/33), ✅ [#34](https://github.com/vib28/ai-memory-hub/issues/34), ✅ [#35](https://github.com/vib28/ai-memory-hub/issues/35), ✅ [#37](https://github.com/vib28/ai-memory-hub/issues/37), ✅ [#17](https://github.com/vib28/ai-memory-hub/issues/17), ✅ [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
 Tiers 0–4 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, optional hybrid retrieval, session import, bounded context priming, and hook install/uninstall are implemented — [#14](https://github.com/vib28/ai-memory-hub/issues/14), [#27](https://github.com/vib28/ai-memory-hub/issues/27), and [#29](https://github.com/vib28/ai-memory-hub/issues/29) are closed. #27 records the accepted lexical write boundary: safe length-bound pruning is implemented, while embeddings remain advisory for search/audit and never change write decisions.
 
