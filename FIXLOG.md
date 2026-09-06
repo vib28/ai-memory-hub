@@ -4,6 +4,24 @@ Each entry: what was wrong, what changed, where.
 
 ---
 
+# 2026-09-06 — Dashboard review-queue card legibility (branch `enhancements/roadmap`)
+
+## #38 — Enhancement: render structured session/pattern payloads on review-queue cards
+Noticed live: a pending `session_write` proposal rendered as one dense, run-on paragraph
+in the dashboard's review queue, because the card only ever showed the flattened `text`
+field every proposal has — never the structured `payload` a session (four sections) or
+pattern (two halves) proposal also carries. `_pending_rows_for_dashboard()` now parses
+`payload` into a real object for the `/api/pending` response; the card renders labeled
+sections for `session`/`pattern` payloads and falls through to the original flat
+paragraph for every other kind, including every proposal that predates this change
+(which has no payload at all). Verified live: queued a real `session_write` against the
+actual running server and confirmed the parsed structure survives to the API response.
+Tests: `tests/test_dashboard_features.py` (5 new: structured session, structured
+pattern, ordinary-proposal backward compatibility, and malformed/missing payload never
+raising). Suite: 127 → 131.
+
+---
+
 # 2026-09-06 — Tier 3 safety gate, patterns, and entity identity (branch `enhancements/roadmap`)
 
 Ten issues, closing out tiers 3–4 and most of tier 5. Suite: 63 → 127 passing.
