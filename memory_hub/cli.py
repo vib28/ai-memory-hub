@@ -61,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_parser().parse_args()
+    if args.command == "history-init":
+        jprint(initialize_history(args.vault))
+        return
+    if args.command == "history-status":
+        jprint(history_status(args.vault))
+        return
+    if args.command == "history-commit":
+        jprint(commit_vault_change(args.vault, args.session_id, args.paths))
+        return
     manager = MemoryManager(args.vault)
     try:
         if args.command == "init":
@@ -70,12 +79,6 @@ def main():
             jprint(manager.audit())
         elif args.command == "reindex":
             jprint({"indexed": manager.reindex()})
-        elif args.command == "history-init":
-            jprint(initialize_history(args.vault))
-        elif args.command == "history-status":
-            jprint(history_status(args.vault))
-        elif args.command == "history-commit":
-            jprint(commit_vault_change(args.vault, args.session_id, args.paths))
         elif args.command == "search":
             jprint(manager.search(args.query, args.limit))
         elif args.command == "read":
