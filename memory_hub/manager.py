@@ -104,12 +104,17 @@ class MemoryManager:
     DUPLICATE_UPDATE_BAND = 0.85
 
     def _best_match(self, text: str, kind: str):
-        """Single O(n) pass finding the closest same-kind, non-superseded row —
-        classified against both thresholds by the caller, instead of scanning
-        the whole index once per threshold."""
+        """Find the closest same-kind row using vectors when safely available.
+
+        The lexical scan remains the conservative fallback for missing, incomplete, or
+        failed embeddings. Threshold classification stays in this manager (#27).
+        """
         norm = normalize_text(text)
         best_row, best_ratio = None, 0.0
-        for row in self.index.all_rows():
+        rows = self.index.vector_candidates(text, kind)
+        if rows is None:
+            rows = self.index.all_rows()
+        for row in rows:
             if row["tag"] == "superseded" or row["kind"] != kind:
                 continue
             ratio = SequenceMatcher(None, norm, normalize_text(row["text"])).ratio()

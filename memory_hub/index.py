@@ -143,6 +143,43 @@ class MemoryIndex:
     def all_rows(self) -> list[dict]:
         return [dict(r) for r in self.conn.execute("SELECT * FROM memories ORDER BY path,date,memory_id")]
 
+    def vector_candidates(self, text: str, kind: str, limit: int = 64) -> list[dict] | None:
+        """Return bounded same-kind candidates, or None when vectors cannot be trusted.
+
+        The caller falls back to the complete lexical scan when embeddings are disabled,
+        unavailable, or incomplete. That keeps duplicate/update behavior conservative.
+        """
+        if not self.embedding_provider:
+            return None
+        try:
+            total = self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE kind=? AND tag!='superseded'", (kind,)
+            ).fetchone()[0]
+            vector_rows = self.conn.execute(
+                """SELECT m.*, e.vector_json FROM memories m
+                   JOIN memory_embeddings e USING(memory_id)
+                   WHERE m.kind=? AND m.tag!='superseded'""",
+                (kind,),
+            ).fetchall()
+            if total == 0:
+                return []
+            if len(vector_rows) != total:
+                return None
+            query_vector = self.embedding_provider.embed([text])[0]
+            ranked = []
+            for row in vector_rows:
+                try:
+                    score = cosine_similarity(query_vector, json.loads(row["vector_json"]))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    return None
+                item = dict(row)
+                item.pop("vector_json", None)
+                ranked.append((score, item))
+            ranked.sort(key=lambda item: item[0], reverse=True)
+            return [item for _, item in ranked[:max(1, limit)]]
+        except Exception:
+            return None
+
     def search(self, query: str, limit: int = 10) -> list[dict]:
         limit = max(1, min(int(limit), 50))
         fts_rows: list[dict] = []

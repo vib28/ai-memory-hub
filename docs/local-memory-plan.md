@@ -64,9 +64,9 @@ path and human-readable Obsidian vault.
 - Client-specific lifecycle-hook adapters for clients beyond Claude Code.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
-- The write-path half of hybrid retrieval: `MemoryManager._best_match()` still scans every
-  same-kind row with `SequenceMatcher` on every proposal; only the *search* half moved to
-  cosine similarity ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
+- The write-path optimization is now optional: when a complete embedding index exists,
+  `_best_match()` narrows comparisons to bounded cosine candidates; missing, incomplete,
+  or failed embeddings use the conservative lexical fallback ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).
 
 ### Safety gate — complete
 

@@ -73,6 +73,10 @@ python scripts/backfill_patterns.py --vault "<vault>"
 The real run follows `MEMORY_WRITE_MODE`, and repeated runs skip already queued or stored
 proposals.
 
+If a consolidation process stops after claiming observations but before completing them,
+the next consolidation run returns those `processing` rows to retryable state. A failed
+model or write remains retryable and records its last error in the local buffer.
+
 ## Undo history
 
 Vault history is opt-in:

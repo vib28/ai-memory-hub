@@ -45,6 +45,23 @@ class SessionCaptureTests(unittest.TestCase):
             finally:
                 buffer.close()
 
+    def test_interrupted_processing_is_recovered_and_retried(self):
+        with tempfile.TemporaryDirectory() as temp:
+            buffer = ObservationBuffer(Path(temp) / "capture.sqlite3")
+            try:
+                buffer.append({"observation_id": "one", "session_id": "s1", "output_summary": "work"})
+                buffer.mark_status(["one"], "processing")
+                manager = FakeManager("stored")
+                result = consolidate_buffered_session(
+                    buffer, manager, "s1", writer="codex", write_mode="auto"
+                )
+                self.assertEqual(result["status"], "stored")
+                self.assertEqual(result["recovered"], 1)
+                self.assertEqual(buffer.for_session("s1")[0]["status"], "completed")
+                self.assertGreaterEqual(buffer.for_session("s1")[0]["attempts"], 4)
+            finally:
+                buffer.close()
+
 
 if __name__ == "__main__":
     unittest.main()

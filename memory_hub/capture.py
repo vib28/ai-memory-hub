@@ -215,10 +215,22 @@ class ObservationBuffer:
 
     def pending_sessions(self, limit: int = 100) -> list[str]:
         rows = self.conn.execute(
-            "SELECT DISTINCT session_id FROM observations WHERE status='pending' ORDER BY session_id LIMIT ?",
+            "SELECT DISTINCT session_id FROM observations "
+            "WHERE status IN ('pending', 'failed', 'processing') "
+            "ORDER BY session_id LIMIT ?",
             (max(1, min(int(limit), 1000)),),
         ).fetchall()
         return [str(row[0]) for row in rows]
+
+    def recover_processing(self, session_id: str) -> int:
+        """Return rows left processing by a crashed consolidation to retryable state."""
+        with self.conn:
+            cursor = self.conn.execute(
+                """UPDATE observations SET status='failed', attempts=attempts+1,
+                   last_error=? WHERE session_id=? AND status='processing'""",
+                ("recovered after interrupted consolidation", session_id),
+            )
+        return cursor.rowcount
 
     def mark_status(self, observation_ids: Iterable[str], status: str, error: str | None = None) -> int:
         if status not in {"pending", "processing", "completed", "failed"}:
