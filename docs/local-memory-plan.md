@@ -205,10 +205,14 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #29 — vault undo plus hook install/uninstall safety gate
 - #32 — normalized resilient lifecycle events without an HTTP hook dependency
 - #33 — stable project identity and generic duplicate prevention
+- #36 — preserve rejection reasons across the MCP tool boundary
+- #37 — prevent identity-less project prefix merges
 - #17 — client prompts and integration documentation
 - #13 — parent roadmap and closeout
 
 Pattern issues #16, #28, and #18 are implemented as a separate parallel track. They do
 not block the core local capture pipeline. Pattern configuration is validated through a
 supported loader, historical backfill supports dry-run and idempotent review-safe writes,
-and the backfill client uses the public MCP proposal boundary.
+and the backfill client uses the public MCP proposal boundary. Project writes without an
+explicit `entity_id` no longer use prefix-based routing, and MCP rejection reasons remain
+visible to callers.
