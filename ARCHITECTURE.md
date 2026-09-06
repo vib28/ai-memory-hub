@@ -1,222 +1,230 @@
-# Architecture and boundaries
+# Architecture
 
-Decisions that constrain how AI Memory Hub may be extended. Each names the issue that
-settled it.
+AI Memory Hub separates accepted Markdown memories from the tools, indexes and
+operational queues used to create and retrieve them.
 
-## Public MCP tools vs. internal manager methods (#21)
+[README](README.md) · [Configuration](docs/CONFIGURATION.md) ·
+[Developer guide](CONTRIBUTING.md) · [Roadmap](docs/local-memory-plan.md)
 
-Clients — connected models, hook scripts, migration utilities — reach the vault through
-**public MCP tools only**:
+## Repository map
 
-```
-client -> session_write            -> MemoryManager.propose_session()
-client -> propose_pattern_match    -> MemoryManager.propose_pattern_match()
-client -> memory_propose / _supersede / _forget / _search / _read / _audit / _reindex
-client -> project_audit / subject_audit / project_link / entity_alias_link
-```
+~~~text
+memory_hub/
+  mcp_server.py       Public AI-client interface
+  manager.py         Validation, proposal policy and memory operations
+  vault.py           Markdown parsing, routing and file operations
+  index.py           SQLite search, embeddings and review queue
+  models.py          Memory types, writers and tags
+  security.py        Text validation and probable-secret checks
+  utils.py           Paths, locks, hashing and atomic file replacement
+  entities.py        Shared-file subject aliases
+  patterns.py        Pattern configuration
+  capture.py         Generic observation receiver and local queue
+  consolidator.py    Optional local-model summaries and fallback
+  session_capture.py Queue-to-summary bridge
+  history.py         Opt-in Git history
+  extractor.py       Transcript-to-candidate extraction
+  hooks.py           Client hook configuration helpers
+  cli.py             Administrative command line
+  dashboard.py       Local review and browsing UI
+  tray.py            Tray launcher
 
-| Public MCP tool | Internal method it wraps |
-|---|---|
-| `memory_propose`, `memory_supersede` | `MemoryManager.propose()` / `.queue()` |
-| `session_write` | `MemoryManager.propose_session()` |
-| `propose_pattern_match` | `MemoryManager.propose_pattern_match()` |
-| `memory_forget`, `memory_search`, `memory_read`, `memory_audit`, `memory_reindex` | corresponding manager methods |
-| `project_audit`, `subject_audit` | read-only; never call `queue()`/`propose()` |
-| `project_link`, `entity_alias_link` | explicit, reviewed merges — never invoked from write-time validation |
+client-prompts/       Instructions installed into AI clients
+vault_template/       Files copied when a vault is initialized
+hermes/skills/        Hermes-specific behavioral integration
+scripts/             Import, migration, backfill and benchmarks
+tests/               Automated checks
+docs/                User guides and separately governed plans
+~~~
 
-`MemoryManager` methods remain importable **inside the Python package** — the MCP server
-calls them, and the test suite exercises them directly. What must not happen is a
-client-facing script proposing memory in-process: that is how #19 bypassed the configured
-write mode, writing to the vault under `MEMORY_WRITE_MODE=review`.
+The Windows setup and connection scripts live at the repository root. They configure
+processes; they do not implement a background checkpoint worker.
 
-The line is *proposing new memory*, not *touching the vault*. `scripts/migrate_session_routing.py`
-relocates blocks that are already stored and proposes nothing, so it may use `Vault`
-directly. `scripts/backfill_patterns.py` proposes new preference rules and therefore may
-not; #28 fixed the one place it did, and `tests/test_mcp_server.py::McpBoundaryTests`
-now asserts the rule with no exemption — `backfill_patterns.py` submits through the
-public MCP workflow (`--dry-run` included) rather than driving `MemoryManager` in-process.
+## Runtime data flow
 
-## Write mode is never bypassed (#19)
+~~~text
+Connected AI client
+    |
+    v
+Public MCP tools ---> MemoryManager
+                           |
+                   validate and classify
+                     /             \
+              review proposal    accepted write
+                     |                 |
+              SQLite queue          Markdown
+                     |                 |
+                approval ----------> index update
+                                       |
+                             keyword / optional vector search
+~~~
 
-`MEMORY_WRITE_MODE` is `auto` or `review`, read once at server start.
+A separate capture path currently stops short of unattended operation:
 
-Under `review`, every write path returns `status: queued` and touches nothing in the
-vault until approved. There is no source-based exemption: a fact arriving from a hook is
-subject to the same policy as one a model proposes. If unattended operation is wanted, it
-is a separate configured mode with its own variable.
+~~~text
+Client hook -> generic receiver -> observation SQLite
+                                         |
+                              explicit session_consolidate call
+                                         |
+                          local summary or deterministic fallback
+                                         |
+                               session proposal policy
+~~~
 
-## Application-level rejections are surfaced (#12, #23, #36)
+> [!IMPORTANT]
+> The generic receiver recognizes normalized event names, but native adapters,
+> scheduling and automatic startup injection are incomplete. See
+> [the continuity design](docs/automatic-session-continuity.md). A successful
+> hook-config write is not an end-to-end capture test.
 
-An MCP transport can return a successful tool call while the operation underneath was
-rejected. Both writing tools therefore raise instead of returning a rejection quietly:
-`session_write` since #12, `propose_pattern_match` since #23.
+## Storage and recovery
 
-**Raise `mcp.server.mcpserver.exceptions.ToolError`, never a plain `ValueError` (#36).**
-This is not a style preference. The SDK (`mcp` 2.x) treats any exception that is not
-`ToolError`/`ResourceError`/`MCPError` as a crash: `Tool.run()` wraps it in
-`UnexpectedToolError` and discards the original message, so the caller sees only
-`Error executing tool <name>` with no reason. `ToolError` is the SDK's own "anticipated
-failure" channel — its message survives the same wrapping intact. Confirmed against the
-SDK source (`mcp/server/mcpserver/tools/base.py`) and reproduced live before the fix: a
-rejected `session_write` call returned exactly that bare message, with the actual reason
-(e.g. "memory is too long") visible only in server-side logs. Any new write tool that
-raises on rejection must use `ToolError`, verified through `mcp.call_tool(...)`, not just
-the bare function — a test that only calls the tool function directly cannot see this
-class of regression, since the SDK's wrapping only happens on the real registered path.
+| Data | Location | Recovery meaning |
+| --- | --- | --- |
+| Accepted memories | Markdown vault | Canonical durable content; back it up |
+| Instruction and index files | Vault `AI_INSTRUCTIONS.md`, `MEMORY.md` | Trusted navigation/guidance, not arbitrary proposal targets |
+| Search rows and vectors | Vault `.memory_index.sqlite3` | Rebuild from accepted Markdown |
+| Pending review payloads | Tables in the same SQLite file | Not reconstructible from accepted Markdown |
+| Unprocessed observations | `MEMORY_CAPTURE_DB` or user-home `.ai-memory-hub/observations.sqlite3` | Durable operational evidence; not a disposable index |
+| Undo history | Optional vault Git repository | Covers committed files, not every queue or process state |
 
-There are six outcomes. Callers must distinguish them:
+Deleting the entire SQLite index file also discards pending review data. Reindexing
+accepted memories and deleting an operational database are different operations.
 
-| Status | Written? | Caller action |
-|---|---|---|
-| `stored` | yes | done |
-| `stored_without_project_link` | session yes, cross-link no | resolve via `project_link_supersedes` (#22) |
-| `queued` | no, awaiting review | report queued |
-| `queued_as_update` | no, `supersedes_id` pre-filled | report as update |
-| `possible_update` | **no** | resolve via `supersede()` |
-| `duplicate` | no, already present | no-op |
-| `rejected` | no | raised as `ToolError`; keep the source data |
+### Memory routing
 
-`possible_update` is the trap: neither an error nor a write.
+| Kind | Canonical layout |
+| --- | --- |
+| profile | `/profile.md` |
+| preference | `/preferences.md` |
+| project | `/projects/<subject>.md` |
+| topic | `/topics/<subject>.md` |
+| person | `/people/<subject>.md` |
+| decision | `/decisions/<subject>.md` |
+| session with project | `/sessions/<project>/<writer>.md` |
+| session without project | `/sessions/<writer>.md` |
 
-## Pattern writes are atomic (#23)
+Ordinary records occupy one tracked line with a stable memory ID and provenance.
+Sessions use a multi-line heading block with a session-ID marker and four sections:
+Investigated, Learned, Completed and Next Steps. Reindexing parses those stored records.
 
-A pattern is its two linked halves — a project fact and a global preference rule. Both are
-validated before either is written, so a failure cannot leave an orphaned fact whose rule
-never existed. The preference half always targets global `preferences.md`.
+Initialization copies missing template files; it does not upgrade existing instructions
+by replacing the vault's content.
 
-## Session routing is project-major (#26)
+## Interfaces and write policy
 
-```
-/sessions/<project>/<model>.md     session naming a project
-/sessions/<model>.md               session naming no project
-```
+AI clients and client-facing scripts that propose new memory use the public MCP
+boundary. Internal package code may call the manager. A migration that only relocates
+existing blocks is different from proposing new memory
+([#21](https://github.com/vib28/ai-memory-hub/issues/21)).
 
-Hook capture is per-working-directory. A writer-major layout would grow one unbounded file
-per agent spanning every project the agent ever touched, and #16's pattern work is already
-project-keyed. Project slugs reuse `Vault._entity_slug('projects', ...)` (renamed from
-`_merge_into_existing_project` when #35 generalized it to every `FILE_PER_ENTITY_KINDS`
-kind — see below), so sessions and `/projects/` agree on naming.
+The administrative CLI currently calls manager operations directly. Its proposal,
+supersede and ingestion commands do not inherit MCP review mode. Do not use them
+as review-safe substitutes for MCP tools.
 
-Existing vaults migrate with `scripts/migrate_session_routing.py --vault <path> --dry-run`
-first; blocks naming no project stay where they are.
+| Interface group | Public MCP tools |
+| --- | --- |
+| Read and orient | `memory_policy`, `memory_search`, `memory_read`, `memory_context` |
+| Propose or replace | `memory_propose`, `memory_supersede` |
+| Sessions | `session_write`, `session_consolidate` |
+| Patterns | `propose_pattern_match` |
+| Audit and identity | `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `entity_alias_link` |
+| Maintenance | `memory_reindex`, `memory_forget` |
 
-## Entity identity: explicit and never silently merged (#33, #35, #37)
+MCP proposal paths use `MEMORY_WRITE_MODE`, read at server startup. Review queues a
+proposal; auto attempts storage after validation. This does not make destructive or
+explicit maintenance operations approval-queued.
 
-Two mechanisms, chosen by whether the kind routes one file per subject or shares one file
-across all of them (`vault.canonical_path`):
+> [!WARNING]
+> Setup helpers choose review, but the MCP module falls back to auto for an unset or
+> invalid mode. Configure the mode explicitly. No separate session-only auto setting
+> exists yet; that separation is part of the future continuity design.
 
-**`FILE_PER_ENTITY_KINDS = {"project", "topic", "decision", "person"}`** each get their own
-file per subject, so identity lives in that file's own frontmatter (`id`, `aliases`).
-`Vault._entity_slug(directory, subject_slug, entity_id)` resolves a write to an existing
-file only by an explicit `entity_id` match or an already-recorded alias — **never** by
-fuzzy or prefix similarity (#37: a caller that has not identified the entity must get a
-separate subject-based file, not have its fact silently folded into whatever existing file
-happens to share a prefix). `project_link()` merges two such files explicitly and
-reversibly (a `.merged-<timestamp>` backup, never a delete); it is a preview-then-apply
-operation, and applying it is the *only* thing that merges these files. Originally
-project-only (#33), generalized to all four kinds by widening one type-check (#35) — the
-merge logic itself needed no change, since it was never kind-specific beyond that check.
+### Results are part of the contract
 
-**`SHARED_FILE_KINDS = {"preference", "profile"}`** route every subject into one file
-(`/preferences.md`, `/profile.md`), so there is no per-subject file to carry `id`/`aliases`.
-Widening the same frontmatter mechanism to these kinds was considered and rejected: it
-would give the entire file one entity id shared across every distinct concern living in
-it. Identity for these two kinds instead lives in a separate, small registry file,
-`entity-aliases.md` (`memory_hub/entities.py`, parsed the same deliberately
-Markdown-fencing-naive way as `patterns.py`), consulted by `conflicts()`,
-`resolve_conflict()`, and the dashboard's grouping to resolve one subject to another.
-`entity_alias_link()` is the only way to add an entry, and it never merges, moves, or
-deletes a memory entry — both subjects keep their own entries exactly where they are; only
-grouping changes. A registry entry is reversible by hand-editing the file or, with vault
-history enabled, by `git revert`.
+| Result | Meaning |
+| --- | --- |
+| `stored` | New content was written |
+| `stored_without_project_link` | Session exists; its project cross-link was not written |
+| `queued` | Awaiting review, not accepted Markdown |
+| `queued_as_update` | Queued with a proposed replacement relationship |
+| `possible_update` | Possible replacement identified; no new write |
+| `duplicate` | Existing content matched; no new write |
+| `rejected` | Validation or policy rejected the operation |
 
-**Both mechanisms share the same principle:** identity is resolved by an explicit,
-human-reviewed action, never inferred from text similarity. `subject_audit()` is the
-read-only detector for both — exact-duplicate and subject-variant candidates across every
-kind — and never itself writes anything; `project_link()`/`entity_alias_link()` are the
-only write paths, and both require an explicit call naming the two subjects, not a
-threshold crossed automatically.
+Read the actual result. A successful transport call alone does not mean a memory was
+saved. Session and pattern tools surface application rejection through MCP
+`ToolError`; tests must cover the registered tool path, not just the Python function.
 
-Do not add a fuzzy-matching fallback to either mechanism when a caller omits an identifier.
-That fallback existed once for `project` (the pre-#37 behavior) and silently merged
-`widget-app` and `widget-app-ui` writes that were never confirmed to be the same entity —
-exactly the failure mode this whole section exists to prevent.
+Pattern writes prevalidate both halves, then perform sequential proposals. This is
+not a crash-atomic transaction across two Markdown files; a later-half failure can
+return partial-work details. Preserve those details.
 
-## Capture transport (#30)
+## Identity and duplicate handling
 
-Hook capture reaches the vault through `session_write`. Superseded alternatives, recorded
-so they are not rediscovered:
+Project, topic, person and decision files carry entity IDs and aliases in frontmatter.
+Profile and preference subjects share files, so their aliases live in
+`entity-aliases.md`. Writer identity is provenance, not a separate memory namespace.
 
-| Rejected | Why |
-|---|---|
-| HTTP `POST /ingest` endpoint | Bypasses the MCP boundary (#21) and the write policy (#19) |
-| Fire-and-forget POST with no status handling | Cannot honor review mode or report the six outcomes |
-| Raw `{type, context, metadata}` observations | Observations are not memories and have no vault kind |
+Routing uses explicit identity and recorded aliases, not fuzzy title-prefix merging.
+`project_link` and `entity_alias_link` have preview/apply workflows.
+Audit candidates do not authorize unattended merging or deletion.
 
-Observations are buffered **outside** the vault and consolidated into the four-section
-session contract before any write. Compression runs locally with no credentials; the
-engine choice is settled inside #14.
+Write matching uses normalized hashes and lexical similarity. The current thresholds
+are 0.985 for duplicate suppression and 0.85 for the update-review band. Embeddings
+remain advisory for search/audit; they do not decide write-time removal.
 
-## Generic observation capture
+The current session retry check has a cross-project identity defect
+([#55](https://github.com/vib28/ai-memory-hub/issues/55)).
+Do not infer that identical session prose always represents the same session.
 
-The first capture boundary is provider-neutral. A client lifecycle hook may send a JSON
-observation to `ai-memory-hook` over stdin. The receiver validates and bounds the payload,
-then stores it in a local SQLite buffer outside the Obsidian vault.
+## Retrieval and local models
 
-The receiver is deliberately not a memory writer:
+The index supports SQLite FTS keyword search with a LIKE fallback. If an embedding
+provider is configured, search combines lexical and vector ranking. Stored embeddings
+include kind/subject context. A failed embedding request falls back to lexical results.
 
-```text
-client hook -> ai-memory-hook -> local observation SQLite
-                         (later)
-local SLM -> session_write MCP tool -> validation/review -> vault
-```
+The provider calls a configured HTTP endpoint. Local-first behavior therefore depends
+on choosing a local endpoint; code does not make an arbitrary URL local or private.
+Consolidation can use a local language model or an evidence-only fallback.
+Transcript extraction separately requires a configured model.
 
-The buffer is crash-safe and idempotent by `observation_id`. Duplicate retries do not
-replace the original observation. Hook failures return a structured rejection and exit
-successfully so a host AI tool is never blocked by memory capture. Raw observations are
-bounded and are not durable vault content until a later consolidation step creates the
-existing four-section session contract.
+`memory_context` currently selects search results on demand. It is not automatic
+session restoration; its first-item budget and project isolation need correction
+([#56](https://github.com/vib28/ai-memory-hub/issues/56)).
 
-## Current implementation gates
+## Security and consistency boundaries
 
-Buffering, local consolidation, optional hybrid retrieval, history, hook configuration
-helpers and historical import exist. They do not yet form a supervised automatic
-checkpoint/handoff service. Current connection code installs only PostToolUse (AfterTool
-for Gemini), and native payload/schema gaps remain (#52). Hook reinstall can remove
-unrelated sibling handlers (#53). Queue pagination/claim safety (#54), cross-project
-session deduplication (#55) and context scope/budget (#56) also need correction.
+- Text checks reject empty/oversized content and recognizable secrets. They are
+  defense in depth, not a guarantee that all sensitive data is detected.
+- Candidate target paths cannot plant content in reserved instruction/index files.
+- File locks and atomic replacement protect individual file operations. They do not
+  create a transaction covering Markdown, SQLite, Git and an external service.
+- The dashboard binds locally by default and checks requests. Do not expose it as an
+  internet service or assume local storage is encrypted.
+- The generic capture queue bounds text but does not yet provide the complete
+  privacy-filtered native pipeline proposed for automatic continuity.
+- Review, rejected and failed states must remain distinguishable from accepted data.
 
-The first-priority next phase is [automatic session continuity](docs/automatic-session-continuity.md),
-tracked by [#61](https://github.com/vib28/ai-memory-hub/issues/61): linked checkpoints and
-final rollups (#57), a local worker (#58), automatic lifecycle/startup handoff (#59),
-then optional sanitized GitHub publication (#60). No routine manual trigger is allowed.
-One-time setup and separate persistence/export permissions remain explicit.
+## Opt-in history
 
-Capture evidence and pending proposals are durable operational data, not rebuildable
-search indexes. A worker must preserve them across restarts, and claim work with leases
-rather than treating every processing row as a crashed job. The local handoff packet
-must remain usable without GitHub, embeddings, or MCP being ready at client startup.
+`history-init` initializes local Git history when needed and configures a local Git
+identity. A new repository receives a baseline commit and ignore rules for SQLite,
+lock and temporary files. Use a dedicated vault outside another Git worktree:
+the current repository check also recognizes a parent repository.
 
-Accepted memories still cross the public MCP write-policy boundary; the local packet
-may expose pending operational evidence only with an explicit unreviewed label. Automatic
-session saving does not authorize automatic merging or deleting durable preferences.
+With `MEMORY_VAULT_HISTORY=true`, successful MCP consolidation attempts to commit
+the session/project paths it reports. It refuses to mix with already staged changes.
+The write occurs before the commit; a Git failure is not a rollback of the memory write.
+Ordinary proposals are not all automatically committed.
 
-Required evaluation: [paired two-tool ON/OFF benchmark](docs/session-handoff-benchmark.md)
-(#62), counting total workflow overhead and task quality, not just packet length.
+## Planned extension
 
-Confidence and importance scores are planned ranking metadata. They may prioritize review
-and retrieval, but they must never bypass validation, secret rejection, deduplication, or
-the configured write mode.
+[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is first priority:
+native hook fixes, reliable queue claims, linked checkpoint metadata, a supervised
+worker and automatic cross-client startup context. Sanitized GitHub publication follows
+local continuity. Graph retrieval and embedding upgrades are not prerequisites.
 
-## Opt-in vault history
-
-Automated consolidation may commit only the Markdown files it changed, and only when
-`MEMORY_VAULT_HISTORY=true` is set for the MCP server. The user must first run
-`history-init` for the vault. Initialization is idempotent, sets a local Git identity,
-and adds disposable SQLite, lock, and temporary artifacts to `.gitignore`.
-
-History commits happen after the vault write and outside the vault file lock. A commit
-failure is surfaced in the consolidation result rather than silently reported as a clean
-history update. If the vault already has staged changes, the automated commit refuses to
-mix them with the session commit. Review-mode queueing does not create a history commit
-because no vault content has changed.
+The required [paired benchmark](docs/session-handoff-benchmark.md) measures both token
+overhead and task quality. No implementation or savings percentage is implied by this
+architecture document.

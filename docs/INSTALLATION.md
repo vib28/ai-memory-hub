@@ -1,84 +1,118 @@
 # Installation
 
-This guide gets AI Memory Hub running on Windows with a local Obsidian vault.
+Install the repository environment, initialize a vault, then connect a client.
 
-Current setup connects shared memory tools; it does not install an unattended session
-checkpoint service. [Automatic linked saves and cross-client handoff](automatic-session-continuity.md)
-are the first-priority planned phase. No new worker/setup commands are available yet.
+[Documentation](README.md) · [Client connections](CLIENTS.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-## What you need
+## Before you start
 
-- Windows PowerShell
-- Python 3.10–3.12
-- An Obsidian vault folder, or a new folder for AI Memory Hub
+You need Python 3.10+, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+and a writable folder for your memories. Obsidian can open that folder but is not required.
 
-## Quick install
+These examples target Windows PowerShell. Commands assume you are in the repository
+directory. Use a dedicated vault outside the source repository and outside another
+Git worktree, especially if you intend to enable vault history.
 
-From the repository directory:
+> [!NOTE]
+> This guide describes the enhancement branch. The bootstrap installer's default branch
+> is master, which may not contain the same features.
 
-```powershell
-.\setup.ps1 -VaultPath "C:\Users\YOUR_NAME\Documents\Obsidian\AI-Memory"
-```
+## Get the source
 
-The setup script creates the virtual environment, installs dependencies, initializes
-the vault template, and prepares the local tools.
+For a fresh checkout of the branch described here:
 
-For a five-minute walkthrough, see [`QUICK_START.md`](../QUICK_START.md).
+~~~powershell
+git clone --branch enhancements/roadmap https://github.com/vib28/ai-memory-hub.git
+cd ai-memory-hub
+~~~
 
-## Start safely in review mode
+If you already have a checkout, keep it. Inspect its branch and local changes before
+updating; do not clone over it or discard edits.
 
-```powershell
-$env:MEMORY_WRITE_MODE = "review"
-.\start-dashboard.ps1 -VaultPath "C:\Users\YOUR_NAME\Documents\Obsidian\AI-Memory"
-```
+## Create the environment and vault
 
-Open `http://127.0.0.1:8765`. Review mode lets you approve or reject proposed memories
-before they enter the vault.
+Choose the vault path once and reuse it throughout setup:
 
-## Connect an AI client
+~~~powershell
+$memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
+.\setup.ps1 -VaultPath $memoryVault
+~~~
 
-Use the client-specific files in [`client-prompts/`](../client-prompts/). The MCP server
-uses these environment variables:
+The script runs uv sync, creates the repository environment and initializes missing
+vault-template files. It does not install development-test dependencies, overwrite
+existing vault instructions, or start an automatic checkpoint worker.
 
-```text
-AI_MEMORY_VAULT=C:\Users\YOUR_NAME\Documents\Obsidian\AI-Memory
-MEMORY_WRITER=claude
-MEMORY_WRITE_MODE=review
-```
+If scripts are blocked, consult your organization's PowerShell policy. Do not disable
+security controls globally just to run this setup.
 
-The MCP command is:
+## Connect in review mode
 
-```text
-<repository>\.venv\Scripts\python.exe -m memory_hub.mcp_server
-```
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -WriteMode review
+~~~
 
-The repository also includes [`connect-ai-tools.ps1`](../connect-ai-tools.ps1) for
-connecting supported local clients automatically.
+Read the connection summary. It attempts supported CLIs found on the machine;
+skipped or failed clients are not connected. See [client connections](CLIENTS.md)
+for manual configuration and optional ChatGPT setup.
 
-After changing the MCP configuration or prompt instructions, start a new client session.
-Most AI tools read their MCP server list and instructions only when the session starts;
-an already-open conversation will continue using its previous configuration.
+Start a fresh client session after configuration changes. Verify that the client can
+see AI Memory Hub's tools and that memory_policy reports review mode.
 
-## Verify the installation
+## Open the dashboard
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m pytest -q
-python -m memory_hub.cli --vault "C:\Users\YOUR_NAME\Documents\Obsidian\AI-Memory" audit
-```
+~~~powershell
+.\start-dashboard.ps1 -VaultPath $memoryVault
+~~~
 
-The audit should report a healthy vault. Keep review mode enabled until you have checked
-what each connected client proposes.
+The dashboard normally opens at [localhost:8765](http://127.0.0.1:8765).
+Keep the terminal open while using it. The optional Windows tray launcher is:
 
-## Optional components
+~~~powershell
+.\start-tray.ps1 -VaultPath $memoryVault
+~~~
 
-- Enable `MEMORY_WRITE_MODE=auto` only after reviewing proposals.
-- Configure Ollama or LM Studio for local consolidation and embeddings.
-- Enable opt-in vault history with `history-init` before automatic consolidation.
-- Install generic hooks only after reading the safety gates in
-  [`ARCHITECTURE.md`](../ARCHITECTURE.md).
-- `connect-ai-tools.ps1 -InstallHooks` also installs verified hook entries for Gemini CLI,
-  Qwen Code, Kimi Code, and Codex CLI. Kimi uses a marked block in `~/.kimi/config.toml`;
-  Codex uses `~/.codex/hooks.json`.
+The tray is a launcher, not the planned background checkpoint service.
 
-For the full setup walkthrough, see [`INSTALLATION_GUIDE.md`](../INSTALLATION_GUIDE.md).
+## Check the installation
+
+Run a non-destructive vault audit:
+
+~~~powershell
+.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault audit
+~~~
+
+Read the returned findings rather than assuming a zero exit code proves every
+integration works. In a test vault, ask the connected client to propose a harmless
+preference and verify that it appears in the review queue before approval.
+
+Development tests need additional dependencies; see [Contributing](../CONTRIBUTING.md).
+
+## Linux or macOS source setup
+
+The repository includes a shell setup helper. Run it from the repository root:
+
+~~~bash
+bash setup.sh /absolute/path/to/AI-Memory
+~~~
+
+Configure a stdio MCP host manually using the environment's Python executable at
+`.venv/bin/python`. The PowerShell multi-client connection helper is Windows-oriented.
+This documentation rewrite does not certify all client/platform combinations.
+
+## Optional bootstrap installer
+
+[install.ps1](../install.ps1) can obtain the repository, run setup and connect clients.
+Read it before running it. It accepts InstallPath, VaultPath, Branch and SkipConnect;
+Branch defaults to master. The explicit source workflow above makes the selected
+branch visible and avoids executing a downloaded script without inspection.
+
+## Update and remove
+
+Before updating, back up accepted Markdown plus pending review/capture databases,
+stop processes using the environment, and inspect git status. Update your selected
+branch, run setup again, then refresh the [client connections](CLIENTS.md#refresh-or-remove-a-connection).
+
+To disconnect, remove the named MCP registration through the host's supported settings
+and remove only AI Memory Hub's managed instruction block or Hermes skill.
+Hook removal is separate and has [known limitations](CLIENTS.md#hooks-are-not-yet-unattended-handoff).
+Do not delete the vault to uninstall the client integration.

@@ -1,65 +1,72 @@
-# Frequently Asked Questions
+# Frequently asked questions
 
-## Does this require a cloud memory subscription?
+[Documentation](README.md) · [Architecture](../ARCHITECTURE.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-No. The vault, index, capture buffer, and optional embeddings can all run locally. A local
-Ollama- or LM Studio-compatible model is optional.
+## Is a memory subscription required?
 
-## Which AI tools are supported?
+No. The vault and databases run locally, and language/embedding models are optional.
+Your chosen AI clients or remote endpoints may have separate costs.
 
-Any client that can call the MCP server can use the shared memory layer. Prompt templates
-for common clients are in [`client-prompts/`](../client-prompts/).
+## Do I need Obsidian?
 
-## Where is the canonical data stored?
+No. A writable Markdown folder is enough. Obsidian is a convenient way to read and
+organize the accepted memories.
 
-In ordinary Markdown files inside your Obsidian vault. SQLite is a disposable search index,
-not the source of truth.
+## Can Codex read a preference written by Claude?
 
-## Why does review mode exist?
+Yes, when both clients use the same vault and have access through the memory server.
+Writer identity records provenance; it does not restrict a preference to that writer.
 
-It prevents an AI client from writing directly to the vault without your approval. It is the
-recommended starting mode and is especially useful when multiple AI clients share one vault.
+## Will switching tools restore my entire conversation?
 
-## Does the system automatically delete duplicate memories?
+Not today. Clients can retrieve stored memories and session summaries. Automatic
+periodic saves and startup handoff are the [first-priority plan](automatic-session-continuity.md),
+not implemented runtime behavior. The design transfers useful task state, not a
+guaranteed verbatim replay of everything said.
 
-No. Exact duplicates are blocked, and likely updates are routed for review. Merging,
-superseding, or deleting existing memories requires an explicit action.
+## Do vectors make handoff automatic?
 
-## Why do project entries need an `entity_id`?
+No. Vectors can help find related stored text. They do not capture missing events,
+schedule a save or inject context into a new client.
 
-Different clients may use different names for the same project. An explicit `entity_id`
-provides a stable identity. If it is omitted, similar names remain separate rather than
-being silently merged.
+## How much does this save in tokens?
 
-## What happens if SQLite is damaged?
+No cross-tool saving percentage has been demonstrated. The required
+[paired benchmark](session-handoff-benchmark.md) compares matched Claude/Codex tasks
+with context passing enabled and disabled, including overhead and task quality.
 
-The index can be rebuilt from the Markdown vault:
+## Is review mode always the default?
 
-```powershell
-python -m memory_hub.cli --vault "<vault>" reindex
-```
+The connection helpers select review. A directly started MCP server falls back to auto
+if its mode is missing or invalid. Configure it explicitly. Administrative CLI writes
+are not governed by MCP review mode; see [configuration](CONFIGURATION.md).
 
-## Are hooks enabled automatically?
+## Are duplicate-looking entries automatically merged?
 
-No. Hook installation and automatic vault writes are opt-in safety decisions. Read
-[`ARCHITECTURE.md`](../ARCHITECTURE.md) before enabling them.
+No automatic semantic merge is intended. Identity audits flag candidates and linking
+requires an explicit action. Write-time duplicate suppression exists, including an
+open cross-project session defect. Similar titles alone do not prove identical facts.
 
-## Will Codex automatically continue where Claude stopped?
+## Can I delete SQLite and rebuild everything?
 
-Not reliably today. Shared stored summaries can be retrieved, but periodic automatic
-checkpoints and startup handoff are the [first-priority planned work](automatic-session-continuity.md).
-The design saves locally throughout the session and injects the latest compact state
-when a supported client starts. Vectors are optional retrieval aids, not the transfer
-mechanism. No routine manual save/restore command should be needed after setup.
+No. Accepted-memory search rows are rebuildable. Pending review payloads and
+unsummarized observations are not reconstructible from accepted Markdown.
+See [backup and recovery](USAGE.md#undo-and-backup).
 
-## Will all session content be uploaded to GitHub?
+## Is everything private because it is local?
 
-No. Planned automatic publishing uses permitted, sanitized checkpoint and final summaries
-after one-time destination approval, not raw transcripts. Local handoff will work without
-GitHub. Existing issue/roadmap templates remain unchanged.
+Local storage is not encryption. Connected AI clients receive whatever memories they
+retrieve, and configured model endpoints receive content sent to them. Choose endpoints
+and clients deliberately; secret checks cannot recognize every sensitive string.
 
-## Where are bugs and future work tracked?
+## Are session summaries automatically posted to GitHub?
 
-GitHub issues and roadmap entries use a separate structured format for implementation
-tracking. The user-facing documentation format in this directory does not replace those
-engineering records.
+No. Sanitized automatic publication is planned after local continuity. It will require
+a configured destination and explicit export permission. Raw transcripts are not the
+default export.
+
+## Why are issues formatted differently from these guides?
+
+Guides help someone understand and operate the project. Issues and roadmaps retain the
+prescribed seven-section engineering format. Historical fix/release records are retained
+rather than rewritten as current capability claims.
