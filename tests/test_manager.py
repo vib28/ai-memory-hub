@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -462,6 +463,237 @@ class SubjectAuditTests(unittest.TestCase):
         self.manager.subject_audit()
         after = {p: p.read_text(encoding="utf-8") for p in self.vault.rglob("*.md")}
         self.assertEqual(before, after)
+
+
+class FileEntityIdentityTests(unittest.TestCase):
+    """#35: entity_id/aliases routing, originally project-only (#33), generalized
+    to every FILE_PER_ENTITY_KINDS kind (topic, decision, person)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.manager = MemoryManager(self.vault)
+        template = Path(__file__).resolve().parent.parent / "vault_template"
+        self.manager.initialize(template)
+
+    def tearDown(self):
+        self.manager.close()
+        self.tmp.cleanup()
+
+    def test_topic_entity_id_routes_aliases_to_one_file(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Widget rendering uses a virtual DOM diff.", kind="topic", tag="stated",
+            subject="widget-rendering", writer="codex", entity_id="widget-rendering",
+        ))
+        second = self.manager.propose(MemoryCandidate(
+            text="Widget paint pipeline batches layout passes.", kind="topic", tag="stated",
+            subject="paint-pipeline", writer="claude", entity_id="widget-rendering",
+        ))
+        self.assertEqual(first["status"], "stored")
+        self.assertEqual(second["status"], "stored")
+        self.assertEqual(first["memory"]["path"], second["memory"]["path"])
+        content = (self.vault / first["memory"]["path"].lstrip("/")).read_text(encoding="utf-8")
+        self.assertIn("id: widget-rendering", content)
+        self.assertIn("paint-pipeline", content)
+
+    def test_decision_and_person_get_the_same_treatment(self):
+        for kind, directory in (("decision", "decisions"), ("person", "people")):
+            first = self.manager.propose(MemoryCandidate(
+                text=f"First {kind} fact.", kind=kind, tag="decided" if kind == "decision" else "stated",
+                subject="alpha", writer="codex", entity_id="shared-entity",
+            ))
+            second = self.manager.propose(MemoryCandidate(
+                text=f"Second {kind} fact.", kind=kind, tag="decided" if kind == "decision" else "stated",
+                subject="beta", writer="claude", entity_id="shared-entity",
+            ))
+            self.assertEqual(first["memory"]["path"], second["memory"]["path"], kind)
+            self.assertEqual(first["memory"]["path"], f"/{directory}/shared-entity.md", kind)
+
+    def test_missing_entity_id_does_not_merge_similar_topic_names(self):
+        """#37's fix (no legacy prefix fallback) applies to every generalized
+        kind, not just project: two topic writes with no entity_id and
+        similar-looking subjects must stay in separate files."""
+        first = self.manager.propose(MemoryCandidate(
+            text="Widget app overview.", kind="topic", tag="stated",
+            subject="widget-app", writer="claude",
+        ))
+        second = self.manager.propose(MemoryCandidate(
+            text="Widget app UI layer detail.", kind="topic", tag="stated",
+            subject="widget-app-ui", writer="codex",
+        ))
+        self.assertNotEqual(first["memory"]["path"], second["memory"]["path"])
+
+    def test_project_link_now_works_for_topic_files(self):
+        source = self.manager.propose(MemoryCandidate(
+            text="Source topic history.", kind="topic", tag="stated",
+            subject="widget-app-ui", writer="claude", entity_id="widget-app-ui",
+        ))["memory"]
+        target = self.manager.propose(MemoryCandidate(
+            text="Target topic history.", kind="topic", tag="stated",
+            subject="widget-app", writer="codex", entity_id="widget-app",
+        ))["memory"]
+        applied = self.manager.project_link(source["path"], target["path"], apply=True)
+        self.assertEqual(applied["status"], "linked")
+        self.assertFalse((self.vault / source["path"].lstrip("/")).exists())
+        target_text = (self.vault / target["path"].lstrip("/")).read_text(encoding="utf-8")
+        self.assertIn("Source topic history.", target_text)
+
+    def test_project_link_rejects_mismatched_kinds(self):
+        project = self.manager.propose(MemoryCandidate(
+            text="A project fact.", kind="project", tag="stated",
+            subject="widget-app", writer="claude", entity_id="widget-app",
+        ))["memory"]
+        topic = self.manager.propose(MemoryCandidate(
+            text="A topic fact.", kind="topic", tag="stated",
+            subject="widget-topic", writer="claude", entity_id="widget-topic",
+        ))["memory"]
+        result = self.manager.project_link(topic["path"], project["path"])
+        self.assertEqual(result["status"], "rejected")
+
+    def test_subject_audit_reports_alias_collision_for_topics(self):
+        self.manager.propose(MemoryCandidate(
+            text="Widget topic fact.", kind="topic", tag="stated",
+            subject="widget-app", writer="claude", entity_id="widget-app",
+        ))
+        colliding_path = self.vault / "topics" / "widget-app-copy.md"
+        colliding_path.write_text(
+            "---\ntype: topic\nid: widget-app\naliases:\n---\n\n"
+            "- [stated] Duplicate identity claim. "
+            "<!-- mem:collide-001 source:codex subject:widget-app-copy date:2026-09-06 -->\n",
+            encoding="utf-8",
+        )
+        report = self.manager.subject_audit(kinds=["topic"])
+        self.assertFalse(report["healthy"])
+        self.assertTrue(any(c["kind"] == "topic" and c["alias"] == "widget-app"
+                            for c in report["alias_collisions"]))
+
+
+class EntityAliasLinkTests(unittest.TestCase):
+    """#35: shared-file kinds (preference, profile) get identity through a
+    small registry file instead of per-file frontmatter, since all their
+    subjects already live in one shared Markdown file."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.manager = MemoryManager(self.vault)
+        template = Path(__file__).resolve().parent.parent / "vault_template"
+        self.manager.initialize(template)
+
+    def tearDown(self):
+        self.manager.close()
+        self.tmp.cleanup()
+
+    def test_rejects_a_file_per_subject_kind(self):
+        result = self.manager.entity_alias_link("project", "a", "b")
+        self.assertEqual(result["status"], "rejected")
+
+    def test_rejects_identical_subjects(self):
+        result = self.manager.entity_alias_link("preference", "git-safety", "git-safety")
+        self.assertEqual(result["status"], "rejected")
+
+    def test_preview_does_not_write_the_registry(self):
+        # The registry file itself already exists (vault_template seeds it with
+        # its own documentation), so the thing to prove is that its *content* is
+        # untouched by a preview, not that the file is absent.
+        registry_path = self.vault / "entity-aliases.md"
+        before = registry_path.read_text(encoding="utf-8")
+        preview = self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety")
+        self.assertEqual(preview["status"], "preview")
+        self.assertEqual(preview["entity_id"], "git-safety")
+        self.assertIn("git-safety-checks", preview["aliases"])
+        self.assertEqual(registry_path.read_text(encoding="utf-8"), before)
+
+    def test_apply_persists_and_a_second_call_extends_the_same_entity(self):
+        self.manager.propose(MemoryCandidate(
+            text="Ask before making destructive changes.", kind="preference",
+            tag="preference", subject="git-safety", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Confirm before any destructive git operation.", kind="preference",
+            tag="preference", subject="git-safety-checks", writer="codex",
+        ))
+        first = self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
+        self.assertEqual(first["status"], "linked")
+        registry_path = self.vault / "entity-aliases.md"
+        self.assertTrue(registry_path.exists())
+        content = registry_path.read_text(encoding="utf-8")
+        self.assertIn("## preference: git-safety", content)
+        self.assertIn("- git-safety-checks", content)
+
+        # Linking a third subject to either side of the pair joins the same
+        # entity rather than forking a second registry entry for it.
+        second = self.manager.entity_alias_link("preference", "confirm-destructive-ops", "git-safety-checks", apply=True)
+        self.assertEqual(second["status"], "linked")
+        self.assertEqual(second["entity_id"], "git-safety")
+        content = registry_path.read_text(encoding="utf-8")
+        # A plain substring count would also match the template's own indented
+        # documentation example; count real (column-0) headings only, the same
+        # way load_entity_aliases anchors on ^## with re.M.
+        real_headings = re.findall(r"(?m)^## preference: git-safety\s*$", content)
+        self.assertEqual(len(real_headings), 1)
+        self.assertIn("- confirm-destructive-ops", content)
+
+    def test_original_entries_are_untouched_by_linking(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Ask before making destructive changes.", kind="preference",
+            tag="preference", subject="git-safety", writer="claude",
+        ))["memory"]
+        second = self.manager.propose(MemoryCandidate(
+            text="Confirm before any destructive git operation.", kind="preference",
+            tag="preference", subject="git-safety-checks", writer="codex",
+        ))["memory"]
+        preferences_path = self.vault / "preferences.md"
+        before = preferences_path.read_text(encoding="utf-8")
+        self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
+        after = preferences_path.read_text(encoding="utf-8")
+        self.assertEqual(before, after)
+        self.assertIsNotNone(self.manager.index.by_id(first["memory_id"]))
+        self.assertIsNotNone(self.manager.index.by_id(second["memory_id"]))
+
+    def test_linked_pair_moves_from_candidates_to_linked_entities_in_the_audit(self):
+        self.manager.propose(MemoryCandidate(
+            text="Ask before making destructive changes.", kind="preference",
+            tag="preference", subject="git-safety", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Confirm before any destructive git operation.", kind="preference",
+            tag="preference", subject="git-safety-checks", writer="codex",
+        ))
+        before = self.manager.subject_audit(kinds=["preference"])
+        self.assertTrue(any(
+            c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"}
+            for c in before["subject_variant_candidates"]
+        ))
+        self.assertEqual(before["linked_entities"], [])
+
+        self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
+        after = self.manager.subject_audit(kinds=["preference"])
+        self.assertFalse(any(
+            set(c["subjects"]) == {"git-safety", "git-safety-checks"}
+            for c in after["subject_variant_candidates"]
+        ))
+        self.assertTrue(any(
+            set(link["subjects"]) == {"git-safety", "git-safety-checks"} and link["entity_id"] == "git-safety"
+            for link in after["linked_entities"]
+        ))
+
+    def test_linked_preferences_are_grouped_by_conflicts_and_resolvable(self):
+        """A linked pair with genuinely different text is not itself a conflict
+        (conflicts() requires >1 distinct text under the group) -- so first prove
+        grouping via resolve_conflict() collapsing both onto one kept entry."""
+        first = self.manager.propose(MemoryCandidate(
+            text="Ask before making destructive changes.", kind="preference",
+            tag="preference", subject="git-safety", writer="claude",
+        ))["memory"]
+        second = self.manager.propose(MemoryCandidate(
+            text="Confirm before any destructive git operation.", kind="preference",
+            tag="preference", subject="git-safety-checks", writer="codex",
+        ))["memory"]
+        self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
+        result = self.manager.resolve_conflict(first["memory_id"])
+        self.assertEqual(result["status"], "resolved")
+        self.assertIn(second["memory_id"], result["superseded"])
 
 
 if __name__ == "__main__":

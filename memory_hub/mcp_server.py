@@ -112,6 +112,14 @@ def subject_audit(kinds: list[str] | None = None) -> dict:
     return manager.subject_audit(kinds)
 
 @mcp.tool()
+def entity_alias_link(kind: str, source_subject: str, target_subject: str, apply: bool = False) -> dict:
+    """Preview or apply linking two subjects of a shared-file kind (preference,
+    profile) as one entity. Nothing is merged or deleted; both subjects keep
+    their own memory entries. Use project_link instead for project/topic/
+    decision/person, which each have their own file to merge."""
+    return manager.entity_alias_link(kind, source_subject, target_subject, apply=apply)
+
+@mcp.tool()
 def memory_reindex() -> dict:
     """Rebuild the disposable SQLite search index from the Markdown vault."""
     return {"indexed": manager.reindex()}

@@ -13,6 +13,12 @@ from .utils import atomic_write, file_lock, safe_join, slugify
 # memory content. Never writable via a caller-supplied target_path (issue #2).
 RESERVED_FILENAMES = {"memory.md", "ai_instructions.md"}
 
+# Kinds routed one file per subject, so identity (id/aliases) can live in that
+# file's own frontmatter the way project's already did (#33), generalized here
+# to topic/decision/person (#35). preference and profile route every subject
+# into one shared file instead, so they use the separate entities.py registry.
+FILE_PER_ENTITY_KINDS = {"project", "topic", "decision", "person"}
+
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 ENTRY_RE = re.compile(
     r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
@@ -88,7 +94,7 @@ def ensure_metadata(content: str, *, kind: str, writer: str,
             "updated": now,
             "sources": [writer],
         }
-        if kind == "project":
+        if kind in FILE_PER_ENTITY_KINDS:
             meta["id"] = entity_id or "general"
             meta["aliases"] = [alias] if alias else []
     else:
@@ -103,7 +109,7 @@ def ensure_metadata(content: str, *, kind: str, writer: str,
         meta.setdefault("status", "active")
         meta.setdefault("aliases", [])
         meta.setdefault("type", kind)
-        if kind == "project":
+        if kind in FILE_PER_ENTITY_KINDS:
             meta.setdefault("id", entity_id or "general")
             aliases = meta.get("aliases") or []
             if not isinstance(aliases, list):
@@ -195,35 +201,39 @@ class Vault:
         if kind == "preference":
             return "/preferences.md"
         if kind == "person":
-            return f"/people/{subject_slug}.md"
+            return f"/people/{self._entity_slug('people', subject_slug, entity_id)}.md"
         if kind == "project":
-            return f"/projects/{self._project_slug(subject_slug, entity_id)}.md"
+            return f"/projects/{self._entity_slug('projects', subject_slug, entity_id)}.md"
         if kind == "decision":
-            return f"/decisions/{subject_slug}.md"
+            return f"/decisions/{self._entity_slug('decisions', subject_slug, entity_id)}.md"
+        if kind == "topic":
+            return f"/topics/{self._entity_slug('topics', subject_slug, entity_id)}.md"
         if kind == "session":
             # Sessions are project-major: hook capture is per-working-directory, so a
             # writer-major layout would grow one unbounded file per agent spanning every
             # project. Sessions naming no project stay at the writer-major root path.
             model_slug = slugify(subject.split("-", 1)[0] or "other")
             if project:
-                project_slug = self._project_slug(slugify(project), None)
+                project_slug = self._entity_slug("projects", slugify(project), None)
                 return f"/sessions/{project_slug}/{model_slug}.md"
             return f"/sessions/{model_slug}.md"
         return f"/topics/{subject_slug}.md"
 
-    def _project_slug(self, subject_slug: str, entity_id: str | None) -> str:
-        """Resolve by explicit identity or an existing exact alias.
+    def _entity_slug(self, directory: str, subject_slug: str, entity_id: str | None) -> str:
+        """Resolve by explicit identity or an existing exact alias, for any kind
+        routed one file per subject (FILE_PER_ENTITY_KINDS): project originally
+        (#33), generalized here to topic/decision/person (#35).
 
-        Similar-looking names are reported by project-audit and require an explicit
-        link decision instead of a silent merge (#33). A missing entity_id must not
-        activate the old prefix fallback: callers that have not identified a
-        project must get a separate subject-based path (#37).
+        Similar-looking names are reported by subject_audit and require an
+        explicit link decision instead of a silent merge. A missing entity_id
+        must not activate a prefix fallback: a caller that has not identified
+        the entity must get a separate subject-based path (#37).
         """
-        projects_dir = self.root / "projects"
-        if not projects_dir.exists():
+        base = self.root / directory
+        if not base.exists():
             return slugify(entity_id or subject_slug)
         wanted_id = slugify(entity_id) if entity_id else None
-        for path in projects_dir.glob("*.md"):
+        for path in base.glob("*.md"):
             meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
             current_id = slugify(str(meta.get("id", ""))) if meta.get("id") else path.stem
             aliases = meta.get("aliases") or []
@@ -248,7 +258,7 @@ class Vault:
                 current = f"\n# {title}\n"
             current = ensure_metadata(
                 current, kind=kind, writer=writer,
-                entity_id=entity_id or (p.stem if kind == "project" else None), alias=alias
+                entity_id=entity_id or (p.stem if kind in FILE_PER_ENTITY_KINDS else None), alias=alias
             ).rstrip() + "\n"
             if line not in current:
                 if not current.endswith("\n\n"):

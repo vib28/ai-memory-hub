@@ -8,14 +8,20 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from .entities import load_entity_aliases, resolve_subject
 from .index import MemoryIndex
 from .embeddings import LocalEmbeddingProvider
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .patterns import load_patterns
 from .security import check_text
 from .utils import atomic_write, file_lock, normalize_text, slugify, text_hash
-from .vault import (Vault, ENTRY_RE, RESERVED_FILENAMES, parse_frontmatter, parse_records,
-                    dump_frontmatter, ensure_metadata, now_stamp)
+from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
+                    parse_records, dump_frontmatter, ensure_metadata, now_stamp)
+
+# Kinds that route every subject into one shared file, so there is no
+# per-subject file to carry id/aliases frontmatter -- identity for these is
+# resolved through the entity-aliases.md registry instead (#35).
+SHARED_FILE_KINDS = {"preference", "profile"}
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -476,12 +482,22 @@ class MemoryManager:
     def read(self, path: str) -> str:
         return self.vault.read(path)
 
+    def entity_registry(self) -> dict[str, dict[str, str]]:
+        return load_entity_aliases(self.vault.root / "entity-aliases.md")
+
     def conflicts(self) -> list[dict]:
+        registry = self.entity_registry()
         groups = {}
         for row in self.index.all_rows():
             if row["tag"] == "superseded":
                 continue
-            key = (row["kind"], row["subject"])
+            subject = row["subject"]
+            if row["kind"] in SHARED_FILE_KINDS:
+                # An explicitly linked alias (#35) must be compared as one entity,
+                # not left invisible because the two entries used different
+                # subject strings -- see entity_alias_link().
+                subject = resolve_subject(registry, row["kind"], slugify(subject))
+            key = (row["kind"], subject)
             groups.setdefault(key, []).append(row)
         out = []
         for (kind, subject), rows in groups.items():
@@ -497,11 +513,21 @@ class MemoryManager:
         keep = self.index.by_id(keep_id)
         if not keep:
             return {"status": "not_found", "memory_id": keep_id}
+        registry = self.entity_registry() if keep["kind"] in SHARED_FILE_KINDS else {}
+        keep_subject = resolve_subject(registry, keep["kind"], slugify(keep["subject"])) \
+            if registry else keep["subject"]
         changed = []
         for row in self.index.all_rows():
             if row["memory_id"] == keep_id or row["tag"] == "superseded":
                 continue
-            if row["kind"] == keep["kind"] and row["subject"] == keep["subject"]:
+            if row["kind"] != keep["kind"]:
+                continue
+            # Same widening conflicts() applies: an explicitly linked alias must
+            # resolve to the same entity here too, or resolve_conflict() would
+            # silently miss the rows conflicts() just showed the reviewer (#35).
+            row_subject = resolve_subject(registry, row["kind"], slugify(row["subject"])) \
+                if registry else row["subject"]
+            if row_subject == keep_subject:
                 if self._mark_superseded(row):
                     changed.append(row["memory_id"])
         return {"status": "resolved", "kept": keep_id, "superseded": changed}
@@ -617,6 +643,7 @@ class MemoryManager:
         """
         target_kinds = sorted(set(kinds) & ALLOWED_KINDS) if kinds else sorted(ALLOWED_KINDS)
         records = [r for r in self._all_records() if r.kind in target_kinds and r.tag != "superseded"]
+        registry = self.entity_registry()
 
         by_kind_hash: dict[tuple[str, str], list[dict]] = {}
         for record in records:
@@ -629,14 +656,26 @@ class MemoryManager:
                 continue
             by_kind_subject.setdefault(record.kind, set()).add(record.subject)
         subject_variant_candidates = []
+        linked_entities = []
         for kind, subjects in sorted(by_kind_subject.items()):
             ordered = sorted(subjects)
             for left in ordered:
                 for right in ordered:
-                    if left < right and (right.startswith(left + "-") or left.startswith(right + "-")):
+                    if not (left < right and (right.startswith(left + "-") or left.startswith(right + "-"))):
+                        continue
+                    if kind in SHARED_FILE_KINDS and registry.get(kind, {}).get(left) is not None \
+                            and resolve_subject(registry, kind, left) == resolve_subject(registry, kind, right):
+                        # A reviewer already confirmed this pair via entity_alias_link():
+                        # report it as resolved, not as an open candidate.
+                        linked_entities.append({
+                            "kind": kind, "subjects": [left, right],
+                            "entity_id": resolve_subject(registry, kind, left),
+                        })
+                    else:
                         subject_variant_candidates.append({"kind": kind, "subjects": [left, right]})
 
         possible_file_splits = []
+        alias_collisions = []
         for kind in target_kinds:
             directory = self._SUBJECT_SPRAWL_DIRS.get(kind)
             if not directory:
@@ -652,29 +691,61 @@ class MemoryManager:
                             "kind": kind,
                             "paths": [f"/{directory}/{left}.md", f"/{directory}/{right}.md"],
                         })
+            # Two files under the same kind whose id/aliases overlap is an
+            # inconsistency worth surfacing on its own (e.g. a hand edit that
+            # duplicated an id) -- generalizes project_audit()'s alias_collisions
+            # to every FILE_PER_ENTITY_KINDS kind, not just project (#35).
+            identity_paths: dict[str, list[str]] = {}
+            for path in base.glob("*.md"):
+                meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+                identity = slugify(str(meta.get("id") or path.stem))
+                aliases = meta.get("aliases") or []
+                if not isinstance(aliases, list):
+                    aliases = [str(aliases)]
+                aliases = {slugify(str(value)) for value in aliases if str(value).strip()}
+                relative = f"/{directory}/{path.stem}.md"
+                for name in [identity, *aliases]:
+                    identity_paths.setdefault(name, []).append(relative)
+            for alias, paths in sorted(identity_paths.items()):
+                if len(set(paths)) > 1:
+                    alias_collisions.append({"kind": kind, "alias": alias, "paths": sorted(set(paths))})
 
         return {
             "kinds": target_kinds,
             "exact_duplicate_groups": exact_duplicate_groups,
             "subject_variant_candidates": subject_variant_candidates,
             "possible_file_splits": possible_file_splits,
-            "healthy": not (exact_duplicate_groups or subject_variant_candidates or possible_file_splits),
+            "alias_collisions": alias_collisions,
+            "linked_entities": linked_entities,
+            "healthy": not (exact_duplicate_groups or subject_variant_candidates
+                            or possible_file_splits or alias_collisions),
         }
 
     def project_link(self, source_path: str, target_path: str, *, apply: bool = False) -> dict:
-        """Preview or apply an explicit, reversible project-file merge."""
+        """Preview or apply an explicit, reversible file-per-entity merge.
+
+        Originally project-only (#33); generalized to every FILE_PER_ENTITY_KINDS
+        kind (topic/decision/person too) since their identity metadata is now the
+        same id/aliases frontmatter shape (#35). The name stays project_link for
+        backward compatibility with the existing public MCP tool and CLI command.
+        """
         source = self.vault.resolve(source_path)
         target = self.vault.resolve(target_path)
         if source == target:
             return {"status": "rejected", "reason": "source and target must differ"}
         if source.suffix.lower() != ".md" or target.suffix.lower() != ".md":
-            return {"status": "rejected", "reason": "project paths must be Markdown files"}
+            return {"status": "rejected", "reason": "paths must be Markdown files"}
         if not source.exists() or not target.exists():
-            return {"status": "rejected", "reason": "both project files must exist"}
+            return {"status": "rejected", "reason": "both files must exist"}
         source_meta, source_body = parse_frontmatter(source.read_text(encoding="utf-8"))
         target_meta, target_body = parse_frontmatter(target.read_text(encoding="utf-8"))
-        if source_meta.get("type") != "project" or target_meta.get("type") != "project":
-            return {"status": "rejected", "reason": "both files must have type: project"}
+        source_kind, target_kind = source_meta.get("type"), target_meta.get("type")
+        if source_kind not in FILE_PER_ENTITY_KINDS or target_kind not in FILE_PER_ENTITY_KINDS:
+            return {"status": "rejected",
+                    "reason": "both files must have a type in " + ", ".join(sorted(FILE_PER_ENTITY_KINDS))}
+        if source_kind != target_kind:
+            return {"status": "rejected",
+                    "reason": f"source and target must be the same kind (got {source_kind} and {target_kind})"}
         source_records = parse_records(source, self.vault.root)
         target_records = parse_records(target, self.vault.root)
         target_ids = {record.memory_id for record in target_records}
@@ -723,4 +794,62 @@ class MemoryManager:
         result["backup"] = "/" + backup.relative_to(self.vault.root).as_posix()
         result["records_to_move"] = len(lines)
         self.reindex()
+        return result
+
+    def entity_alias_link(self, kind: str, source_subject: str, target_subject: str,
+                          *, apply: bool = False) -> dict:
+        """Preview or apply linking two subjects of a shared-file kind (preference,
+        profile) as the same entity (#35).
+
+        Unlike project_link, nothing is merged, moved, or rewritten: every existing
+        memory entry keeps its own stored subject and stays exactly where it is and
+        fully readable. This only adds or updates one small section in the
+        entity-aliases.md registry (see entities.py), so it is trivially reversible
+        by hand-editing that file or, if vault history is enabled, through normal
+        Git revert -- there is no backup file to manage because nothing destructive
+        happens.
+        """
+        if kind not in SHARED_FILE_KINDS:
+            return {"status": "rejected",
+                    "reason": f"entity_alias_link is only for {sorted(SHARED_FILE_KINDS)}; "
+                              f"use project_link for a file-per-subject kind"}
+        source_slug = slugify(source_subject)
+        target_slug = slugify(target_subject)
+        if source_slug == target_slug:
+            return {"status": "rejected", "reason": "source and target must differ"}
+        registry_path = self.vault.root / "entity-aliases.md"
+        registry = load_entity_aliases(registry_path)
+        bucket = registry.get(kind, {})
+        # If either side is already linked, keep its existing canonical id so two
+        # separate link calls can't fork one entity into two registry entries.
+        canonical = bucket.get(target_slug) or bucket.get(source_slug) or target_slug
+        combined_aliases = sorted(
+            {alias for alias, cid in bucket.items() if cid == canonical} | {source_slug, target_slug}
+        )
+        result = {
+            "status": "preview" if not apply else "linked",
+            "kind": kind,
+            "entity_id": canonical,
+            "aliases": combined_aliases,
+        }
+        if not apply:
+            return result
+        with file_lock(registry_path):
+            # Re-read after locking so a concurrent link cannot be silently dropped.
+            content = registry_path.read_text(encoding="utf-8") if registry_path.exists() else ""
+            section_re = re.compile(
+                rf"^## {re.escape(kind)}: {re.escape(canonical)}\s*$\n(?:.*?)(?=^## |\Z)",
+                re.M | re.S,
+            )
+            body_lines = "\n".join(f"- {a}" for a in combined_aliases if a != canonical)
+            section = f"## {kind}: {canonical}\n" + (body_lines + "\n" if body_lines else "")
+            match = section_re.search(content)
+            if match:
+                content = content[:match.start()] + section + content[match.end():]
+            else:
+                if content and not content.endswith("\n\n"):
+                    content = content.rstrip("\n") + "\n\n"
+                content += section
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(registry_path, content)
         return result

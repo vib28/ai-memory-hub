@@ -65,6 +65,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
 - [Memory format & routing](#memory-format--routing)
+  - [Shared-file entity linking](#shared-file-entity-linking)
 - [Safety](#safety)
 - [CLI reference](#cli-reference)
 - [Project layout](#project-layout)
@@ -144,12 +145,13 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `entity_alias_link`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
-- 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
-- 🗃️ **Project identity and audit** — explicit `entity_id` values route aliases to one canonical project file; `project_audit` reports exact duplicates, alias collisions, and possible name splits without modifying memory
+- 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, and resolve through linked entity aliases first, while log-like kinds can accumulate distinct facts
+- 🗃️ **Entity identity and audit** — explicit `entity_id` values route aliases to one canonical file for `project`, `topic`, `decision`, and `person`; `project_link` merges two such files, reversibly; `project_audit`/`subject_audit` report exact duplicates, alias collisions, and possible name splits without modifying memory
+- 🔗 **Shared-file entity linking** — `preference` and `profile` share one file across every subject, so there is no per-subject file to carry identity; `entity_alias_link` records that two subjects are the same entity in a small `entity-aliases.md` registry instead, without merging, moving, or deleting anything — the dashboard and `conflicts()`/`resolve_conflict()` group a linked pair as one entity once recorded
 - 🔍 **Subject-sprawl audit** — `subject_audit` generalizes exact-duplicate and possible-split detection to every memory kind (project, preference, topic, decision, person, profile, session), so two different subjects describing the same concern (e.g. `ai-memory-github-documentation` vs `ai-memory-change-documentation`) surface as a review candidate even when the write-time singleton check never compares them; read-only, never merges
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
 - 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped lists with the newest entry first in each group and one most-recent marker per group, and a readable audit view
@@ -641,7 +643,8 @@ at the moment you click, even if the page is still open and showing data from be
 | `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, orphaned session blocks, index drift |
 | `project_audit()` | Report project identity collisions, exact duplicate candidates, and possible name splits without changing memory |
 | `subject_audit(kinds=None)` | Report exact duplicates and subject-variant candidates across every memory kind (or just the ones passed); read-only |
-| `project_link(source_path, target_path, apply=False)` | Preview or explicitly apply a reversible project-file link; `apply=True` leaves a source backup |
+| `project_link(source_path, target_path, apply=False)` | Preview or explicitly apply a reversible file-per-entity link (`project`, `topic`, `decision`, `person`); `apply=True` leaves a source backup |
+| `entity_alias_link(kind, source_subject, target_subject, apply=False)` | Preview or apply linking two subjects of a shared-file kind (`preference`, `profile`) as one entity; nothing is merged or deleted |
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |
 
@@ -668,7 +671,23 @@ Facts are routed to one canonical home by kind:
 | session (with a project) | `/sessions/<project>/<writer>.md` |
 | session (no project) | `/sessions/<writer>.md` |
 
-New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. Projects should provide an explicit `entity_id`; matching IDs and approved aliases route to one canonical project file. When an entity ID is omitted, the subject is kept in its own project path—similar-looking or prefix-related project names are never silently merged. `project_audit()` reports possible name splits and exact duplicates without changing memory. Existing fragmented files are not merged automatically.
+New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. `project`, `topic`, `decision`, and `person` should each provide an explicit `entity_id`; matching IDs and approved aliases route to one canonical file. When an entity ID is omitted, the subject is kept in its own path — similar-looking or prefix-related names are never silently merged. `project_audit()`/`subject_audit()` report possible name splits and exact duplicates without changing memory; `project_link()` applies a confirmed merge, reversibly. Existing fragmented files are not merged automatically.
+
+`preference` and `profile` route every subject into one shared file instead, so there is no per-subject file to carry an `id`/`aliases` pair. Identity for those two kinds lives in a separate registry, `entity-aliases.md`, updated only through `entity_alias_link()` — see [Shared-file entity linking](#shared-file-entity-linking).
+
+### Shared-file entity linking
+
+Two `preference` (or `profile`) subjects can describe the same concern under different names — `ai-memory-github-documentation` and `ai-memory-change-documentation`, say — and `subject_audit()` will surface that pair as a `subject_variant_candidate`. Confirm the link:
+
+```powershell
+python -m memory_hub.cli --vault "<vault>" entity-alias-link `
+  --kind preference --source ai-memory-github-documentation --target ai-memory-change-documentation
+
+python -m memory_hub.cli --vault "<vault>" entity-alias-link `
+  --kind preference --source ai-memory-github-documentation --target ai-memory-change-documentation --apply
+```
+
+The first call previews what would be recorded; `--apply` writes it. Both existing preference entries are left exactly as they are — nothing is merged, moved, or deleted. The link only changes how they group: `conflicts()`/`resolve_conflict()` and the dashboard now treat the linked subjects as one entity, and `subject_audit()` reports the pair under `linked_entities` instead of `subject_variant_candidates`.
 
 ## Safety
 

@@ -9,7 +9,10 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .entities import resolve_subject
 from .manager import MemoryManager
+from .utils import slugify
+from .vault import FILE_PER_ENTITY_KINDS
 
 HTML = r"""<!doctype html>
 <html>
@@ -282,16 +285,17 @@ function renderMemories(){
     $('memoryList').innerHTML = `<div class="empty"><span class="big">🔎</span>No memories found${activeKind?' for "'+esc(activeKind)+'"':''}.</div>`;
     return;
   }
-  // Group projects by their canonical file, since routing may place several
-  // related subjects in one file. Other kinds are grouped by kind + subject.
-  // Newest first within a group — the latest entry at the top.
+  // group_key/group_label come from the server (memory_hub.dashboard._dashboard_group):
+  // file-per-entity kinds (project, topic, decision, person) group by their
+  // canonical file, since routing may place several related subjects in one
+  // file; shared-file kinds (preference, profile) group by their
+  // entity-aliases.md-resolved subject, so an explicitly linked pair (#35)
+  // renders as one group instead of two unrelated cards. Newest first within
+  // a group — the latest entry at the top.
   const groups = new Map();
   for(const r of rows){
-    const isProject = r.kind === 'project';
-    const key = isProject ? `project:${r.path}` : `${r.kind}:${r.subject || 'general'}`;
-    const label = isProject ? r.path.replace(/^\/projects\//,'').replace(/\.md$/,'') : (r.subject || 'general');
-    if(!groups.has(key)) groups.set(key, {label,items:[]});
-    groups.get(key).items.push(r);
+    if(!groups.has(r.group_key)) groups.set(r.group_key, {label:r.group_label,items:[]});
+    groups.get(r.group_key).items.push(r);
   }
   // Newest first: descending date within each group.
   const compareRows=(a,b)=>a.date>b.date?-1:a.date<b.date?1:a.memory_id>b.memory_id?-1:a.memory_id<b.memory_id?1:0;
@@ -413,19 +417,42 @@ loadMemories(); loadPending(); loadConflicts();
 </body></html>
 """
 
+def _dashboard_group(row: dict, registry: dict[str, dict[str, str]]) -> tuple[str, str]:
+    """(group_key, group_label) for one index row.
+
+    FILE_PER_ENTITY_KINDS (project, and since #35 also topic/decision/person)
+    route one file per entity, so routing may place several related subjects
+    in one file -- group by that file, not by subject, the way project always
+    did. Shared-file kinds (preference, profile) route every subject into one
+    file regardless of entity, so grouping must resolve through the
+    entity-aliases.md registry instead, or a linked pair (#35) would still
+    render as two unrelated cards.
+    """
+    kind = row["kind"]
+    if kind in FILE_PER_ENTITY_KINDS:
+        label = row["path"].rsplit("/", 1)[-1]
+        if label.endswith(".md"):
+            label = label[:-3]
+        return f"{kind}:{row['path']}", label
+    subject = row["subject"] or "general"
+    if kind in registry:
+        subject = resolve_subject(registry, kind, slugify(subject))
+    return f"{kind}:{subject}", subject
+
 def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[dict]:
     """Return visible dashboard rows with recency calculated from the full index."""
+    registry = manager.entity_registry()
     newest = {}
     for row in manager.index.all_rows():
-        is_project = row["kind"] == "project"
-        key = f"project:{row['path']}" if is_project else f"{row['kind']}:{row['subject'] or 'general'}"
+        key, _ = _dashboard_group(row, registry)
         if key not in newest or (row["date"], row["memory_id"]) > (newest[key]["date"], newest[key]["memory_id"]):
             newest[key] = row
     rows = manager.search(query, 200) if query else manager.index.all_rows()[::-1][:200]
     for row in rows:
-        is_project = row["kind"] == "project"
-        key = f"project:{row['path']}" if is_project else f"{row['kind']}:{row['subject'] or 'general'}"
+        key, label = _dashboard_group(row, registry)
         row["is_most_recent"] = newest.get(key, {}).get("memory_id") == row["memory_id"]
+        row["group_key"] = key
+        row["group_label"] = label
     return rows
 
 class DashboardHandler(BaseHTTPRequestHandler):

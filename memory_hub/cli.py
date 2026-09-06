@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--source", required=True)
     pl.add_argument("--target", required=True)
     pl.add_argument("--apply", action="store_true")
+    el = sub.add_parser("entity-alias-link")
+    el.add_argument("--kind", required=True, choices=["preference", "profile"])
+    el.add_argument("--source", required=True)
+    el.add_argument("--target", required=True)
+    el.add_argument("--apply", action="store_true")
     sub.add_parser("reindex")
     sub.add_parser("history-init")
     sub.add_parser("history-status")
@@ -109,6 +114,8 @@ def main():
             jprint(manager.subject_audit(args.kinds))
         elif args.command == "project-link":
             jprint(manager.project_link(args.source, args.target, apply=args.apply))
+        elif args.command == "entity-alias-link":
+            jprint(manager.entity_alias_link(args.kind, args.source, args.target, apply=args.apply))
         elif args.command == "reindex":
             jprint({"indexed": manager.reindex()})
         elif args.command == "search":

@@ -89,7 +89,11 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertIn("memoryCard(item,item.is_most_recent)", HTML)
         self.assertIn("${isMostRecent?'<span class=\"recent-badge\">🕐 Most recent</span>':''}", HTML)
         self.assertIn("<span class=\"meta\" style=\"margin:0\">${formatWhen(r.date)}</span>", HTML)
-        self.assertIn("const key = isProject ? `project:${r.path}` : `${r.kind}:${r.subject || 'general'}`;", HTML)
+        # Grouping key/label moved server-side into _dashboard_group() (#35), so
+        # they cover shared-file kinds (preference, profile) resolved through the
+        # entity-aliases.md registry, not just project. The JS now consumes the
+        # server-computed fields directly rather than recomputing its own key.
+        self.assertIn("groups.set(r.group_key, {label:r.group_label,items:[]})", HTML)
         self.assertIn("a.memory_id>b.memory_id?-1:a.memory_id<b.memory_id?1:0", HTML)
 
     def test_dashboard_recency_uses_the_full_canonical_project_group(self):
@@ -109,6 +113,35 @@ class DashboardFeatureTests(unittest.TestCase):
         older_search = memory_rows_for_dashboard(self.manager, "Vintageonly")
         self.assertEqual(len(older_search), 1)
         self.assertFalse(older_search[0]["is_most_recent"])
+
+    def test_dashboard_groups_linked_preferences_by_resolved_entity(self):
+        """#35: preference has no per-file identity to group by (every subject
+        shares /preferences.md), so grouping must resolve through the
+        entity-aliases.md registry -- proving the point the project test above
+        makes, for the shared-file case entity_alias_link exists for."""
+        with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
+            older = self.manager.propose(MemoryCandidate(
+                text="Ask before making destructive changes.", kind="preference",
+                tag="preference", subject="git-safety", writer="claude",
+            ))["memory"]
+            newer = self.manager.propose(MemoryCandidate(
+                text="Confirm before any destructive git operation.", kind="preference",
+                tag="preference", subject="git-safety-checks", writer="codex",
+            ))["memory"]
+        before_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
+        self.assertNotEqual(
+            before_rows[older["memory_id"]]["group_key"], before_rows[newer["memory_id"]]["group_key"])
+
+        self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
+        after_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
+        self.assertEqual(
+            after_rows[older["memory_id"]]["group_key"], after_rows[newer["memory_id"]]["group_key"])
+        self.assertEqual(after_rows[older["memory_id"]]["group_label"], "git-safety")
+        self.assertFalse(after_rows[older["memory_id"]]["is_most_recent"])
+        self.assertTrue(after_rows[newer["memory_id"]]["is_most_recent"])
+        # Nothing about the underlying entries changed -- only the grouping view.
+        self.assertEqual(after_rows[older["memory_id"]]["subject"], "git-safety")
+        self.assertEqual(after_rows[newer["memory_id"]]["subject"], "git-safety-checks")
 
 class DashboardOriginProtectionTests(unittest.TestCase):
     def setUp(self):
