@@ -58,6 +58,12 @@ path and human-readable Obsidian vault.
   `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`, idempotent, with a timestamped
   backup before each write ([#29](https://github.com/vib28/ai-memory-hub/issues/29)).
 - Documentation and tests for the above paths.
+- Bounded session-start context priming through the `memory_context` MCP tool; it returns
+  selected records only and never injects the whole vault.
+- Historical session import through the public `session_write` boundary, with dry-run,
+  duplicate-safe reruns, and post-import `memory_audit()` verification.
+- Read-only semantic candidate reporting through `subject_audit()` when local embeddings
+  are available; vectors do not affect write decisions.
 
 ### In progress
 
