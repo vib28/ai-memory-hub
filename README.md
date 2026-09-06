@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 37 passing](https://img.shields.io/badge/tests-37%20passing-brightgreen.svg)
+![Tests: 76 passing](https://img.shields.io/badge/tests-76%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -61,6 +61,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 - [Session summaries](#session-summaries)
 - [Issue tracking](#issue-tracking)
 - [Roadmap and planning](#roadmap-and-planning)
+- [Tracked local-memory plan](docs/local-memory-plan.md)
 - [The dashboard](#the-dashboard)
 - [MCP tools exposed](#mcp-tools-exposed)
 - [Memory format & routing](#memory-format--routing)
@@ -143,7 +144,7 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
@@ -156,7 +157,7 @@ sequenceDiagram
 - 🤖 **One script to connect every AI tool** you have installed, including Codex as a recognized writer identity
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
-- ✅ **37 unit tests** covering the manager, dashboard workflows, session summaries, pattern-linked memories, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **76 passing tests plus 1 expected failure** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories, conflict resolution, secret detection, and file-locking edge cases, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Requirements
 
@@ -490,18 +491,22 @@ Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/i
 
 ## Roadmap and planning
 
+The tracked implementation plan is [`docs/local-memory-plan.md`](docs/local-memory-plan.md).
+It records what is complete, what is in progress, and which safety gates must be cleared
+before automatic vault writes are enabled.
+
 Work is ordered in tiers, labeled `tier-0` … `tier-5` on each issue. Tiers are sequential; within a tier, order is a suggestion. The full ordering with rationale lives in [roadmap #13](https://github.com/vib28/ai-memory-hub/issues/13).
 
 | Tier | Focus | Issues |
 |---|---|---|
-| 0 | Decide before building | ✅ [#26](https://github.com/vib28/ai-memory-hub/issues/26), [#30](https://github.com/vib28/ai-memory-hub/issues/30) |
+| 0 | Decide before building | ✅ [#26](https://github.com/vib28/ai-memory-hub/issues/26), ✅ [#30](https://github.com/vib28/ai-memory-hub/issues/30) |
 | 1 | Vault integrity before hook volume | ✅ [#20](https://github.com/vib28/ai-memory-hub/issues/20), [#24](https://github.com/vib28/ai-memory-hub/issues/24), [#25](https://github.com/vib28/ai-memory-hub/issues/25) |
 | 2 | Write-path correctness | ✅ [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#19](https://github.com/vib28/ai-memory-hub/issues/19), [#21](https://github.com/vib28/ai-memory-hub/issues/21), [#22](https://github.com/vib28/ai-memory-hub/issues/22), [#23](https://github.com/vib28/ai-memory-hub/issues/23) |
-| 3 | Capture pipeline | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
+| 3 | Capture pipeline and safety gates | [#29](https://github.com/vib28/ai-memory-hub/issues/29) → [#14](https://github.com/vib28/ai-memory-hub/issues/14) → [#15](https://github.com/vib28/ai-memory-hub/issues/15) |
 | 4 | Patterns | [#16](https://github.com/vib28/ai-memory-hub/issues/16) → [#28](https://github.com/vib28/ai-memory-hub/issues/28) → [#18](https://github.com/vib28/ai-memory-hub/issues/18) |
-| 5 | Scale and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
+| 5 | Retrieval, context, and closeout | [#27](https://github.com/vib28/ai-memory-hub/issues/27), [#17](https://github.com/vib28/ai-memory-hub/issues/17), [#13](https://github.com/vib28/ai-memory-hub/issues/13) |
 
-Tiers 0–2 are complete on `enhancements/roadmap`. The ordering is not arbitrary: session deletion and orphan detection ship *before* hook capture because hooks multiply session volume, and the vault undo in [#29](https://github.com/vib28/ai-memory-hub/issues/29) ships before anything writes automatically.
+Tiers 0–2 are complete on `enhancements/roadmap`. The observation buffer, local consolidation, and optional hybrid retrieval are implemented, but automatic hook installation and automatic vault writes remain gated on [#29](https://github.com/vib28/ai-memory-hub/issues/29). The vault undo and uninstall path must ship before capture is enabled by default.
 
 Use an issue for each independently testable improvement, and update the roadmap issue when implementation, tests, documentation, and a pull request are complete. Keep private planning notes out of public issue bodies.
 
@@ -674,6 +679,7 @@ ai-memory-hub/
 ├─ client-prompts/          # per-tool behavioral instructions (claude, codex, qwen, gemini, kimi, hermes, chatgpt, generic)
 ├─ hermes/                  # Hermes Agent skill source (skills/ai-memory-hub/SKILL.md), installed by connect-ai-tools.ps1
 ├─ examples/                # sample transcript + generic MCP host config
+├─ docs/                    # tracked implementation and release documentation
 ├─ tests/                   # unit tests (unittest)
 ├─ .github/workflows/ci.yml # GitHub Actions: runs the test suite on push/PR (Windows + Ubuntu, Python 3.10-3.12)
 ├─ install.ps1              # one-line irm | iex bootstrap: download + setup + connect

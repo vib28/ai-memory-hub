@@ -19,3 +19,15 @@
 
 ## Recommended first-run mode
 Use `MEMORY_WRITE_MODE=review` initially, inspect what each AI tries to retain, then switch to `auto` once the retention behavior matches your preferences.
+# Local Memory v1 work on `enhancements/roadmap`
+
+The enhancement branch now contains the first local-memory slices:
+
+- generic crash-safe observation buffering through `ai-memory-hook`;
+- local SLM session consolidation with deterministic fallback;
+- `session_consolidate` MCP integration that preserves review/auto policy;
+- optional local embeddings and hybrid FTS/vector retrieval;
+- tracked implementation plan at [`docs/local-memory-plan.md`](docs/local-memory-plan.md).
+
+Automatic hook installation and vault undo remain safety gates before enabling automatic
+vault writes by default. See issue [#29](https://github.com/vib28/ai-memory-hub/issues/29).

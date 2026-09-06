@@ -116,3 +116,19 @@ replace the original observation. Hook failures return a structured rejection an
 successfully so a host AI tool is never blocked by memory capture. Raw observations are
 bounded and are not durable vault content until a later consolidation step creates the
 existing four-section session contract.
+
+## Current implementation gates
+
+The buffer, local consolidation, and optional hybrid retrieval are implemented on the
+enhancement branch. They are not the same as enabling automatic capture in every client.
+Before the default connection tooling installs hooks that can lead to vault writes, the
+project must ship the safety work in issue #29:
+
+1. opt-in vault Git history/undo for automated consolidation;
+2. idempotent hook installation with timestamped backups;
+3. precise hook removal that preserves unrelated client settings;
+4. review-mode verification and retry behavior.
+
+Confidence and importance scores are planned ranking metadata. They may prioritize review
+and retrieval, but they must never bypass validation, secret rejection, deduplication, or
+the configured write mode.
