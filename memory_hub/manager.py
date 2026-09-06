@@ -104,17 +104,14 @@ class MemoryManager:
     DUPLICATE_UPDATE_BAND = 0.85
 
     def _best_match(self, text: str, kind: str):
-        """Find the closest same-kind row using vectors when safely available.
+        """Find the closest same-kind row for the review-band classifier.
 
-        The lexical scan remains the conservative fallback for missing, incomplete, or
-        failed embeddings. Threshold classification stays in this manager (#27).
+        Embeddings remain advisory for search and audit; write-time duplicate/update
+        decisions stay on the exact-hash plus lexical path (#27 and the identity decision).
         """
         norm = normalize_text(text)
         best_row, best_ratio = None, 0.0
-        rows = self.index.vector_candidates(text, kind)
-        if rows is None:
-            rows = self.index.all_rows()
-        for row in rows:
+        for row in self.index.all_rows():
             if row["tag"] == "superseded" or row["kind"] != kind:
                 continue
             ratio = SequenceMatcher(None, norm, normalize_text(row["text"])).ratio()

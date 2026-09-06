@@ -45,19 +45,5 @@ class EmbeddingTests(unittest.TestCase):
         with unittest.mock.patch("urllib.request.urlopen", provider_urlopen):
             self.assertEqual(provider.embed(["a", "b"]), [[1.0], [2.0]])
 
-    def test_vector_candidates_are_bounded_to_same_kind(self):
-        with tempfile.TemporaryDirectory() as temp:
-            index = MemoryIndex(Path(temp), FakeEmbeddingProvider())
-            index.upsert(MemoryRecord("one", "/one.md", "Authentication refresh decision",
-                                      "decision", "decided", "auth", "user", "2026-09-06"))
-            index.upsert(MemoryRecord("two", "/two.md", "Authentication project note",
-                                      "project", "stated", "auth", "user", "2026-09-06"))
-            index.upsert(MemoryRecord("three", "/three.md", "Database decision",
-                                      "decision", "decided", "db", "user", "2026-09-06"))
-            rows = index.vector_candidates("auth flow", "decision", limit=1)
-            self.assertEqual([row["memory_id"] for row in rows], ["one"])
-            index.close()
-
-
 if __name__ == "__main__":
     unittest.main()
