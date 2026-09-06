@@ -6,6 +6,16 @@ truth for the public repository roadmap.
 
 ## First priority: automatic session continuity
 
+### User-requested dashboard implementation: awaiting user verification
+
+[Issue #64](https://github.com/vib28/ai-memory-hub/issues/64) and the
+[reviewed dashboard plan](dashboard-redesign-plan.md) track the readable workspace,
+single tray/dashboard launcher, four color modes and ID-based tag/link editing.
+Implementation passes 169 automated tests. The user's initial sanity test passed;
+the next-visit real-vault checklist in #64 is still open. The plan uses the required Where / Why / How / Reproduction / Acceptance /
+Implementation / Verification format. This UI work does not mark automatic
+continuity or the token benchmark complete.
+
 The user's current first priority is automatic periodic session saves and cross-client
 handoff, with shared metadata, forward/backward links and tags. This takes precedence
 over embedding improvements and unrelated documentation cleanup.

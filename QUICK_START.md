@@ -12,7 +12,7 @@ Run from the repository directory:
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\setup.ps1 -VaultPath $memoryVault
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -WriteMode review
-.\start-dashboard.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
 Keep the dashboard terminal open. Start a new AI-client session, check memory_policy

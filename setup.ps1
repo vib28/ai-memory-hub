@@ -39,6 +39,8 @@ finally {
 
 Write-Host ""
 Write-Host "Done."
+Write-Host "Open dashboard and tray together:"
+Write-Host "  .\start-memory-hub.ps1 -VaultPath `"$VaultPath`""
 Write-Host "Vault: $VaultPath"
 Write-Host ""
 Write-Host "Activate with:"

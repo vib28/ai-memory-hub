@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory workspace · AI Memory Hub</title><style>__CSS__</style></head>
+<body><div class="workspace">
+<aside class="rail"><a class="brand" href="/" aria-label="Memory home"><span class="mark">m</span> memory<span class="brand-small">AI MEMORY HUB</span></a>
+<p class="eyebrow">WORKSPACE</p><nav aria-label="Workspace">
+<button data-view="library" class="nav active">Library <span id="total">—</span></button>
+<button data-view="review" class="nav">Review &amp; history <span id="pending-count"></span></button>
+<button data-view="conflicts" class="nav">Conflicts</button><button data-view="audit" class="nav">Vault health</button>
+</nav><div class="rail-bottom"><span class="live-dot"></span> Local workspace<p>Your files. Your memory.</p><button id="refresh">Refresh data</button></div></aside>
+<main><header class="topbar"><div><p class="eyebrow">YOUR SHARED KNOWLEDGE</p><h1 id="heading">Memory library</h1></div><div class="appearance" role="group" aria-label="Color mode"><label class="toggle"><input id="dark-mode" type="checkbox" role="switch"><span>Dark mode</span></label><label class="toggle"><input id="colorblind-mode" type="checkbox" role="switch"><span>Colorblind</span></label></div></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="library" class="library"><div class="collection">
+<div class="filters"><label for="search">Find a memory</label><input id="search" type="search" placeholder="Search words, subjects, sources…">
+<div class="filter-row"><label class="sr-only" for="kind">Memory type</label><select id="kind"><option value="">All types</option></select>
+<label class="sr-only" for="tag-filter">Tag</label><select id="tag-filter"><option value="">All tags</option></select></div>
+<p id="result-count" class="meta"></p></div><div id="memory-list" class="memory-list" aria-label="Memories"></div></div>
+<article id="reader" class="reader"><div class="empty"><span class="empty-icon">↗</span><h2>Your memory, in context.</h2><p>Select a memory to read its full contents and explore its connections.</p></div></article></section>
+<section id="secondary" class="secondary" hidden></section></main></div>
+<dialog id="editor"><form method="dialog"><header><h2 id="editor-title">Edit memory</h2><button aria-label="Close editor" value="cancel">×</button></header><div id="editor-body"></div><p id="editor-error" role="alert"></p><footer><button value="cancel">Cancel</button><button id="save" class="primary" type="button">Save changes</button></footer></form></dialog>
+<script>__JS__</script></body></html>

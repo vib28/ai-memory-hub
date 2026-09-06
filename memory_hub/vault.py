@@ -11,7 +11,7 @@ from .utils import atomic_write, file_lock, safe_join, slugify
 
 # Files every connected AI tool trusts as instructions/index rather than ordinary
 # memory content. Never writable via a caller-supplied target_path (issue #2).
-RESERVED_FILENAMES = {"memory.md", "ai_instructions.md"}
+RESERVED_FILENAMES = {"memory.md", "ai_instructions.md", "dashboard-metadata.md"}
 
 # Kinds routed one file per subject, so identity (id/aliases) can live in that
 # file's own frontmatter the way project's already did (#33), generalized here

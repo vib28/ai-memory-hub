@@ -19,6 +19,9 @@ A preference written by Claude is available to Codex and other connected clients
 The writer records where it came from; it is not an access restriction.
 
 - Save preferences, project facts, decisions, people, topics and session summaries.
+- Read full memory sections in a local workspace with four light/dark color modes.
+- Edit organization tags and memory links through lookup, with visible backlinks.
+- Start dashboard and optional tray together with one launcher.
 - Review proposed changes in a local dashboard before accepting them.
 - Search with SQLite keyword search and optional local embeddings.
 - Inspect identity conflicts and possible duplicates without automatic merging.
@@ -57,7 +60,7 @@ For a fresh clone, follow [installation](docs/INSTALLATION.md).
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\setup.ps1 -VaultPath $memoryVault
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -WriteMode review
-.\start-dashboard.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
 The setup creates the environment and initializes missing vault files. The connection
@@ -115,6 +118,7 @@ usage charges. Local language and embedding models are optional and use your har
 | [Installation](docs/INSTALLATION.md) | Environment, vault and first verification |
 | [Client connections](docs/CLIENTS.md) | MCP registration and behavioral instructions |
 | [Configuration](docs/CONFIGURATION.md) | Write modes, endpoints and environment variables |
+| [Dashboard](docs/DASHBOARD.md) | Reading, color modes, tags, links and the single launcher |
 | [Usage](docs/USAGE.md) | Review, search, sessions, imports and undo |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptoms, checks and safe recovery |
 | [FAQ](docs/FAQ.md) | Short answers and limits |

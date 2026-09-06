@@ -1,5 +1,8 @@
 # Documentation
 
+Use the [dashboard guide](DASHBOARD.md) for the unified launcher, full memory reader,
+four color modes and editable tag/link lookups.
+
 Start with [AI Memory Hub](../README.md) for what the project does and what is still planned.
 
 ## Install and operate

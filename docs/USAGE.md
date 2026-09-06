@@ -21,7 +21,7 @@ Open the dashboard against the same vault as the client:
 
 ~~~powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
-.\start-dashboard.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
 Review the proposed content and its provenance before approving. Session and pattern
@@ -172,3 +172,6 @@ For an intact database whose accepted-memory index is stale:
 This rebuilds accepted-memory search rows from Markdown. It does not recover lost
 pending proposals or unsummarized observations. If the database cannot open, follow
 [database recovery](TROUBLESHOOTING.md#database-will-not-open) before changing files.
+
+See the [dashboard guide](DASHBOARD.md) for the single launcher, four color modes,
+full session reading and tag/link lookup editing.

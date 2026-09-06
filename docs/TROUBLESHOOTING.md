@@ -47,7 +47,7 @@ Launch it in the foreground to see the error:
 
 ~~~powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
-.\start-dashboard.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
 Check the vault path and whether another process already uses port 8765.
@@ -106,3 +106,7 @@ Record an environment setup error separately from a failing test assertion.
 Use synthetic examples, not credentials or real vault contents. Follow the
 [issue workflow](../CONTRIBUTING.md#issue-workflow), including exact reproduction,
 expected behavior and actual results.
+
+If the tray cannot run on your desktop, use start-memory-hub.ps1 with -NoTray.
+If the palette is difficult to read, try the Dark mode and Colorblind toggles in the header.
+See the [dashboard guide](DASHBOARD.md).

@@ -1,20 +1,3 @@
-param(
-    [ValidateNotNullOrEmpty()]
-    [string]$VaultPath = (Join-Path $env:USERPROFILE "OneDrive\Documents\Memory")
-)
-
-$ErrorActionPreference = "Stop"
-Set-StrictMode -Version Latest
-
-$Python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $Python)) {
-    throw "Virtual environment not found at $Python. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
-}
-if (-not (Test-Path $VaultPath)) {
-    Write-Warning "Vault path does not exist yet: $VaultPath. Run .\setup.ps1 -VaultPath `"$VaultPath`" to initialize it, or continue if you expect the dashboard to create it."
-}
-
-& $Python -m memory_hub.dashboard --vault $VaultPath
-if ($LASTEXITCODE -ne 0) {
-    throw "The dashboard exited with an error (code $LASTEXITCODE). See the output above for details."
-}
+param([string]$VaultPath = $env:AI_MEMORY_VAULT, [int]$Port = 8765, [switch]$NoTray)
+# Compatibility alias: one application now starts both dashboard and tray.
+& (Join-Path $PSScriptRoot "start-memory-hub.ps1") -VaultPath $VaultPath -Port $Port -NoTray:$NoTray

@@ -61,17 +61,20 @@ see AI Memory Hub's tools and that memory_policy reports review mode.
 ## Open the dashboard
 
 ~~~powershell
-.\start-dashboard.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
 The dashboard normally opens at [localhost:8765](http://127.0.0.1:8765).
-Keep the terminal open while using it. The optional Windows tray launcher is:
+Keep the terminal open while using it. The same command starts the optional tray.
+To run without a tray:
 
 ~~~powershell
-.\start-tray.ps1 -VaultPath $memoryVault
+.\start-memory-hub.ps1 -VaultPath $memoryVault -NoTray
 ~~~
 
 The tray is a launcher, not the planned background checkpoint service.
+Both older launcher names are compatibility aliases; do not run two scripts.
+See the [dashboard guide](DASHBOARD.md) for color modes and editing links/tags.
 
 ## Check the installation
 

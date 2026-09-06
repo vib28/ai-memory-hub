@@ -26,8 +26,11 @@ memory_hub/
   extractor.py       Transcript-to-candidate extraction
   hooks.py           Client hook configuration helpers
   cli.py             Administrative command line
-  dashboard.py       Local review and browsing UI
-  tray.py            Tray launcher
+  dashboard.py       Shared local HTTP server, host/token guards and routes
+  dashboard_data.py  Canonical full-record reads and organization metadata
+  static/            Bundled HTML, CSS and JavaScript; no frontend build required
+  app.py             Single owner of browser dashboard and optional tray
+  tray.py            Compatibility entry point and tray artwork
 
 client-prompts/       Instructions installed into AI clients
 vault_template/       Files copied when a vault is initialized
@@ -82,6 +85,7 @@ Client hook -> generic receiver -> observation SQLite
 | Data | Location | Recovery meaning |
 | --- | --- | --- |
 | Accepted memories | Markdown vault | Canonical durable content; back it up |
+| Dashboard tags and links | Vault dashboard-metadata.md | Canonical ID-based organization; survives reindexing |
 | Instruction and index files | Vault `AI_INSTRUCTIONS.md`, `MEMORY.md` | Trusted navigation/guidance, not arbitrary proposal targets |
 | Search rows and vectors | Vault `.memory_index.sqlite3` | Rebuild from accepted Markdown |
 | Pending review payloads | Tables in the same SQLite file | Not reconstructible from accepted Markdown |
@@ -194,6 +198,14 @@ session restoration; its first-item budget and project isolation need correction
 ([#56](https://github.com/vib28/ai-memory-hub/issues/56)).
 
 ## Security and consistency boundaries
+
+The [dashboard](docs/DASHBOARD.md) uses one shared server factory for every launch
+path, per-server tokens and request serialization. It rejects non-loopback binding.
+Organization edits use a file lock, atomic replacement and a revision check.
+This metadata is separate from memory classifications and source wiki-links.
+Browser storage holds only appearance preferences, never the memory records.
+The Python assets are packaged directly; the dashboard needs no JavaScript build
+runtime or model service.
 
 - Text checks reject empty/oversized content and recognizable secrets. They are
   defense in depth, not a guarantee that all sensitive data is detected.
