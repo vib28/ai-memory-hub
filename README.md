@@ -400,6 +400,24 @@ Run it from any hook system that can execute a command and pipe JSON to stdin:
 
 Set `MEMORY_CAPTURE_DB` to choose the buffer location. The default is `%USERPROFILE%\\.ai-memory-hub\\observations.sqlite3`. Repeated observation IDs are idempotent, long text and file lists are bounded, and the buffer can later be consolidated by the local SLM through the existing `session_write` path.
 
+The provider-neutral hook configuration helper manages only entries marked as owned by AI
+Memory Hub. It backs up an existing JSON settings file before changing it, is safe to run
+twice, and removes only its own entries:
+
+```powershell
+python -m memory_hub.cli hooks-install `
+  --settings "C:\path\to\client-settings.json" `
+  --event PostToolUse `
+  --command ai-memory-hook
+
+python -m memory_hub.cli hooks-uninstall `
+  --settings "C:\path\to\client-settings.json"
+```
+
+This generic layer does not guess a client-specific settings path or event schema. Client
+adapters will call it with the correct path and event name. That prevents an installer
+from silently editing the wrong application configuration.
+
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
 
 ### Opt-in vault history

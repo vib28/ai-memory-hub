@@ -125,7 +125,7 @@ Before the default connection tooling installs hooks that can lead to vault writ
 project must ship the safety work in issue #29:
 
 1. opt-in vault Git history/undo for automated consolidation;
-2. idempotent hook installation with timestamped backups;
+2. idempotent provider-neutral hook installation with timestamped backups;
 3. precise hook removal that preserves unrelated client settings;
 4. review-mode verification and retry behavior.
 

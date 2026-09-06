@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .extractor import extract_candidates
 from .history import commit_vault_change, history_status, initialize_history
+from .hooks import install_hook, uninstall_hook
 from .manager import MemoryManager
 from .models import MemoryCandidate
 
@@ -14,7 +15,7 @@ def jprint(obj):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="AI Memory Hub")
-    p.add_argument("--vault", required=True, help="Path to Obsidian memory vault")
+    p.add_argument("--vault", help="Path to Obsidian memory vault")
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init")
@@ -25,6 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     hc = sub.add_parser("history-commit")
     hc.add_argument("session_id")
     hc.add_argument("paths", nargs="+")
+    hi = sub.add_parser("hooks-install")
+    hi.add_argument("--settings", required=True)
+    hi.add_argument("--event", default="PostToolUse")
+    hi.add_argument("--command", dest="hook_command", default="ai-memory-hook")
+    hi.add_argument("--arg", action="append", default=[])
+    hu = sub.add_parser("hooks-uninstall")
+    hu.add_argument("--settings", required=True)
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -61,6 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_parser().parse_args()
+    if args.command in {"hooks-install", "hooks-uninstall"}:
+        if args.command == "hooks-install":
+            jprint(install_hook(args.settings, event=args.event, command=args.hook_command, args=args.arg))
+        else:
+            jprint(uninstall_hook(args.settings))
+        return
+    if not args.vault:
+        raise SystemExit("--vault is required for this command")
     if args.command == "history-init":
         jprint(initialize_history(args.vault))
         return

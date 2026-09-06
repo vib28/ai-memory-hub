@@ -38,7 +38,7 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Generic lifecycle-hook installation and removal.
+- Client-specific lifecycle-hook adapters and installation/removal wiring.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
 
@@ -47,6 +47,7 @@ path and human-readable Obsidian vault.
 - Opt-in vault Git initialization and status inspection.
 - Disposable index, WAL/SHM, lock, and temporary-file ignores.
 - Session-ID commit support for successful automated consolidation.
+- Provider-neutral JSON hook installation/removal with timestamped backups and managed-entry preservation.
 
 Automated commits refuse to mix with pre-staged user changes.
 
