@@ -96,11 +96,11 @@ class DashboardFeatureTests(unittest.TestCase):
         with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
             older = self.manager.propose(MemoryCandidate(
                 text="Vintageonly project note.", kind="project", tag="stated",
-                subject="widget-app", writer="chatgpt",
+                subject="widget-app", writer="chatgpt", entity_id="widget-app",
             ))["memory"]
             newer = self.manager.propose(MemoryCandidate(
                 text="Newer project note.", kind="project", tag="stated",
-                subject="widget-app-ui", writer="chatgpt",
+                subject="widget-app-ui", writer="chatgpt", entity_id="widget-app",
             ))["memory"]
         all_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
         self.assertEqual(all_rows[older["memory_id"]]["path"], all_rows[newer["memory_id"]]["path"])

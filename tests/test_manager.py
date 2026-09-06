@@ -95,6 +95,25 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("id: vib28-ai-memory-hub", content)
         self.assertIn("repository-memory", content)
 
+    def test_project_without_entity_id_does_not_use_prefix_fallback(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="The canonical project has one subject.",
+            kind="project", tag="stated", subject="ai-memory-hub", writer="codex",
+        ))
+        second = self.manager.propose(MemoryCandidate(
+            text="The plan has a related but separate subject.",
+            kind="project", tag="stated",
+            subject="ai-memory-hub-session-pattern-plan", writer="claude",
+        ))
+        self.assertEqual(first["status"], "stored")
+        self.assertEqual(second["status"], "stored")
+        self.assertEqual(first["memory"]["path"], "/projects/ai-memory-hub.md")
+        self.assertEqual(
+            second["memory"]["path"],
+            "/projects/ai-memory-hub-session-pattern-plan.md",
+        )
+        self.assertNotIn("plan has a related", self.manager.read(first["memory"]["path"]))
+
     def test_review_queue_preserves_project_entity_id(self):
         candidate = MemoryCandidate(
             text="Review-mode project fact.", kind="project", tag="stated",

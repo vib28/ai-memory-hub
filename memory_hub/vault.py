@@ -215,7 +215,9 @@ class Vault:
         """Resolve by explicit identity or an existing exact alias.
 
         Similar-looking names are reported by project-audit and require an explicit
-        link decision instead of a silent merge (#33).
+        link decision instead of a silent merge (#33). A missing entity_id must not
+        activate the old prefix fallback: callers that have not identified a
+        project must get a separate subject-based path (#37).
         """
         projects_dir = self.root / "projects"
         if not projects_dir.exists():
@@ -230,19 +232,6 @@ class Vault:
             aliases = {slugify(str(value)) for value in aliases}
             if (wanted_id and current_id == wanted_id) or subject_slug == current_id or subject_slug in aliases:
                 return path.stem
-        if not wanted_id:
-            # Legacy compatibility: retain the old narrow prefix fallback for callers
-            # that do not yet provide an entity_id. New integrations should pass one;
-            # project-audit reports these relationships for explicit review (#33).
-            existing_slugs = [path.stem for path in projects_dir.glob("*.md")]
-            related = [
-                value for value in existing_slugs
-                if value != subject_slug and (
-                    subject_slug.startswith(value + "-") or value.startswith(subject_slug + "-")
-                )
-            ]
-            if related:
-                return min(related, key=len)
         return slugify(entity_id or subject_slug)
 
     def append_entry(self, relative: str, line: str, *, kind: str, writer: str,

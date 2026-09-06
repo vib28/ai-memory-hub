@@ -654,7 +654,7 @@ Facts are routed to one canonical home by kind:
 | session (with a project) | `/sessions/<project>/<writer>.md` |
 | session (no project) | `/sessions/<writer>.md` |
 
-New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. Projects may provide an explicit `entity_id`; matching IDs and approved aliases route to one canonical project file. For legacy callers without an entity ID, the narrow hyphen-segment prefix fallback remains for compatibility (`widget-app-ui` routes to `widget-app.md`). `project_audit()` reports possible name splits and exact duplicates without changing memory. Existing fragmented files are not merged automatically.
+New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. Projects should provide an explicit `entity_id`; matching IDs and approved aliases route to one canonical project file. When an entity ID is omitted, the subject is kept in its own project path—similar-looking or prefix-related project names are never silently merged. `project_audit()` reports possible name splits and exact duplicates without changing memory. Existing fragmented files are not merged automatically.
 
 ## Safety
 
