@@ -39,6 +39,8 @@ path and human-readable Obsidian vault.
   the embedding model does not replace stable project identity, canonical routing, or
   human-reviewed merge rules ([#27](https://github.com/vib28/ai-memory-hub/issues/27),
   [#33](https://github.com/vib28/ai-memory-hub/issues/33)).
+- Stable project identity routing, read-only duplicate/split auditing, and reversible
+  explicit project linking with source backups.
 - Documentation and tests for the above paths.
 
 ### In progress
@@ -46,8 +48,6 @@ path and human-readable Obsidian vault.
 - Client-specific lifecycle-hook adapters and installation/removal wiring.
 - Session-start and per-turn context priming.
 - End-to-end host-client adapters.
-- Project entity identity, alias resolution, and duplicate-looking entry cleanup with
-  an explicit dry-run migration ([#33](https://github.com/vib28/ai-memory-hub/issues/33)).
 
 ### Safety gate now implemented
 
