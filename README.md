@@ -144,7 +144,7 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `project_link`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
@@ -627,6 +627,7 @@ at the moment you click, even if the page is still open and showing data from be
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |
 | `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, orphaned session blocks, index drift |
 | `project_audit()` | Report project identity collisions, exact duplicate candidates, and possible name splits without changing memory |
+| `project_link(source_path, target_path, apply=False)` | Preview or explicitly apply a reversible project-file link; `apply=True` leaves a source backup |
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |
 

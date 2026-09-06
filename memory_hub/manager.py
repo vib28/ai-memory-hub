@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import uuid
 import json
+import shutil
+from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -10,9 +12,9 @@ from .index import MemoryIndex
 from .embeddings import LocalEmbeddingProvider
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .security import check_text
-from .utils import normalize_text, slugify, text_hash
+from .utils import atomic_write, file_lock, normalize_text, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, RESERVED_FILENAMES, parse_frontmatter, parse_records,
-                    ensure_metadata, now_stamp)
+                    dump_frontmatter, ensure_metadata, now_stamp)
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -591,3 +593,67 @@ class MemoryManager:
             "possible_name_splits": possible_splits,
             "healthy": not (alias_collisions or exact_duplicates or possible_splits),
         }
+
+    def project_link(self, source_path: str, target_path: str, *, apply: bool = False) -> dict:
+        """Preview or apply an explicit, reversible project-file merge."""
+        source = self.vault.resolve(source_path)
+        target = self.vault.resolve(target_path)
+        if source == target:
+            return {"status": "rejected", "reason": "source and target must differ"}
+        if source.suffix.lower() != ".md" or target.suffix.lower() != ".md":
+            return {"status": "rejected", "reason": "project paths must be Markdown files"}
+        if not source.exists() or not target.exists():
+            return {"status": "rejected", "reason": "both project files must exist"}
+        source_meta, source_body = parse_frontmatter(source.read_text(encoding="utf-8"))
+        target_meta, target_body = parse_frontmatter(target.read_text(encoding="utf-8"))
+        if source_meta.get("type") != "project" or target_meta.get("type") != "project":
+            return {"status": "rejected", "reason": "both files must have type: project"}
+        source_records = parse_records(source, self.vault.root)
+        target_records = parse_records(target, self.vault.root)
+        target_ids = {record.memory_id for record in target_records}
+        movable = [record for record in source_records if record.memory_id not in target_ids]
+        source_identity = slugify(str(source_meta.get("id") or source.stem))
+        aliases = target_meta.get("aliases") or []
+        if not isinstance(aliases, list):
+            aliases = [str(aliases)]
+        aliases = list(dict.fromkeys([str(value) for value in aliases] + [source.stem, source_identity]))
+        result = {
+            "status": "preview" if not apply else "linked",
+            "source": "/" + source.relative_to(self.vault.root).as_posix(),
+            "target": "/" + target.relative_to(self.vault.root).as_posix(),
+            "source_entity_id": source_identity,
+            "target_entity_id": str(target_meta.get("id") or target.stem),
+            "records_found": len(source_records),
+            "records_to_move": len(movable),
+            "memory_ids": [record.memory_id for record in movable],
+            "aliases_added": aliases,
+        }
+        if not apply:
+            return result
+        lock_paths = sorted((source, target), key=lambda path: str(path).lower())
+        with file_lock(lock_paths[0]):
+            with file_lock(lock_paths[1]):
+                # Re-read after locking so an approval cannot overwrite a concurrent edit.
+                source_text = source.read_text(encoding="utf-8")
+                target_text = target.read_text(encoding="utf-8")
+                source_meta, source_body = parse_frontmatter(source_text)
+                target_meta, target_body = parse_frontmatter(target_text)
+                source_records = parse_records(source, self.vault.root)
+                target_records = parse_records(target, self.vault.root)
+                target_ids = {record.memory_id for record in target_records}
+                lines = [line for line in source_body.splitlines() if ENTRY_RE.match(line)
+                         and ENTRY_RE.match(line).group("id") not in target_ids]
+                target_meta["aliases"] = aliases
+                target_meta["updated"] = datetime.now().date().isoformat()
+                merged_body = target_body.rstrip()
+                if lines:
+                    if merged_body:
+                        merged_body += "\n\n"
+                    merged_body += "\n".join(lines)
+                atomic_write(target, dump_frontmatter(target_meta) + merged_body.rstrip() + "\n")
+                backup = source.with_name(source.name + ".merged-" + datetime.now().strftime("%Y%m%d%H%M%S%f"))
+                shutil.move(str(source), str(backup))
+        result["backup"] = "/" + backup.relative_to(self.vault.root).as_posix()
+        result["records_to_move"] = len(lines)
+        self.reindex()
+        return result

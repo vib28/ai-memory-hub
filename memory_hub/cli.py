@@ -21,6 +21,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init")
     sub.add_parser("audit")
     sub.add_parser("project-audit")
+    pl = sub.add_parser("project-link")
+    pl.add_argument("--source", required=True)
+    pl.add_argument("--target", required=True)
+    pl.add_argument("--apply", action="store_true")
     sub.add_parser("reindex")
     sub.add_parser("history-init")
     sub.add_parser("history-status")
@@ -98,6 +102,8 @@ def main():
             jprint(manager.audit())
         elif args.command == "project-audit":
             jprint(manager.project_audit())
+        elif args.command == "project-link":
+            jprint(manager.project_link(args.source, args.target, apply=args.apply))
         elif args.command == "reindex":
             jprint({"indexed": manager.reindex()})
         elif args.command == "search":

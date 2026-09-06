@@ -124,6 +124,28 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(report["exact_duplicate_groups"])
         self.assertTrue(report["possible_name_splits"])
 
+    def test_project_link_dry_run_then_reversible_apply(self):
+        source = self.manager.propose(MemoryCandidate(
+            text="Source project history.", kind="project", tag="stated",
+            subject="widget-app-ui", writer="claude", entity_id="widget-app-ui",
+        ))["memory"]
+        target = self.manager.propose(MemoryCandidate(
+            text="Target project history.", kind="project", tag="decided",
+            subject="widget-app", writer="codex", entity_id="widget-app",
+        ))["memory"]
+        preview = self.manager.project_link(source["path"], target["path"])
+        self.assertEqual(preview["status"], "preview")
+        self.assertEqual(preview["records_to_move"], 1)
+        self.assertTrue((self.vault / source["path"].lstrip("/")).exists())
+
+        applied = self.manager.project_link(source["path"], target["path"], apply=True)
+        self.assertEqual(applied["status"], "linked")
+        self.assertTrue((self.vault / applied["backup"].lstrip("/")).exists())
+        self.assertFalse((self.vault / source["path"].lstrip("/")).exists())
+        target_text = (self.vault / target["path"].lstrip("/")).read_text(encoding="utf-8")
+        self.assertIn("Source project history.", target_text)
+        self.assertIn(source["memory_id"], target_text)
+
     def test_new_entry_timestamp_and_subject_survive_reindex(self):
         first = self.manager.propose(MemoryCandidate(
             text="Uses Windows as the primary development OS.",

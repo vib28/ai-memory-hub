@@ -99,6 +99,11 @@ def project_audit() -> dict:
     return manager.project_audit()
 
 @mcp.tool()
+def project_link(source_path: str, target_path: str, apply: bool = False) -> dict:
+    """Preview or explicitly apply a reversible project-file link."""
+    return manager.project_link(source_path, target_path, apply=apply)
+
+@mcp.tool()
 def memory_reindex() -> dict:
     """Rebuild the disposable SQLite search index from the Markdown vault."""
     return {"indexed": manager.reindex()}
