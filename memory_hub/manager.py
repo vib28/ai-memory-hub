@@ -111,16 +111,14 @@ class MemoryManager:
         """
         norm = normalize_text(text)
         best_row, best_ratio = None, 0.0
-        for row in self.index.all_rows():
-            if row["tag"] == "superseded" or row["kind"] != kind:
-                continue
+        text_length = len(norm)
+        if text_length == 0:
+            return None, 0.0
+        threshold = self.DUPLICATE_UPDATE_BAND
+        minimum = max(1, int((threshold * text_length / (2 - threshold)) + 0.999999))
+        maximum = int((2 - threshold) * text_length / threshold)
+        for row in self.index.candidate_rows(kind, minimum, maximum):
             existing = normalize_text(row["text"])
-            shorter, longer = sorted((len(norm), len(existing)))
-            # SequenceMatcher's ratio cannot exceed this bound when one string
-            # is fully contained in the other.  Skipping below-threshold length
-            # pairs preserves the review policy while avoiding needless work.
-            if shorter == 0 or (2 * shorter / (len(norm) + len(existing))) < self.DUPLICATE_UPDATE_BAND:
-                continue
             ratio = SequenceMatcher(None, norm, existing).ratio()
             if ratio > best_ratio:
                 best_row, best_ratio = row, ratio

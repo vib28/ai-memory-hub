@@ -23,21 +23,31 @@ def measure(size: int) -> dict[str, float | int]:
         try:
             candidate = "Session record candidate. " + "stable context " * 4
             comparisons = [0]
+            candidate_rows = [0]
             original_matcher = manager_module.SequenceMatcher
+            original_candidates = manager.index.candidate_rows
 
             def counting_matcher(*args, **kwargs):
                 comparisons[0] += 1
                 return original_matcher(*args, **kwargs)
 
+            def counting_candidates(kind, minimum, maximum):
+                rows = original_candidates(kind, minimum, maximum)
+                candidate_rows[0] = len(rows)
+                return rows
+
             manager_module.SequenceMatcher = counting_matcher
+            manager.index.candidate_rows = counting_candidates
             started = time.perf_counter()
             try:
                 manager._best_match(candidate, "topic")
             finally:
                 manager_module.SequenceMatcher = original_matcher
+                manager.index.candidate_rows = original_candidates
             elapsed = time.perf_counter() - started
             return {
                 "records": size,
+                "candidate_rows": candidate_rows[0],
                 "sequence_matcher_comparisons": comparisons[0],
                 "elapsed_seconds": round(elapsed, 6),
             }

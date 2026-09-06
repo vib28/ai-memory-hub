@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS memories (
 
 CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(normalized_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_path ON memories(path);
+CREATE INDEX IF NOT EXISTS idx_memories_kind_length ON memories(kind, length(text));
 
 CREATE TABLE IF NOT EXISTS pending (
     proposal_id TEXT PRIMARY KEY,
@@ -142,6 +143,17 @@ class MemoryIndex:
 
     def all_rows(self) -> list[dict]:
         return [dict(r) for r in self.conn.execute("SELECT * FROM memories ORDER BY path,date,memory_id")]
+
+    def candidate_rows(self, kind: str, min_length: int, max_length: int) -> list[dict]:
+        """Return only same-kind rows whose text length is in a caller-safe window."""
+        rows = self.conn.execute(
+            """SELECT * FROM memories
+               WHERE kind=? AND tag!='superseded'
+                 AND length(text) BETWEEN ? AND ?
+               ORDER BY path,date,memory_id""",
+            (kind, min_length, max_length),
+        )
+        return [dict(row) for row in rows]
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         limit = max(1, min(int(limit), 50))
