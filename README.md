@@ -144,12 +144,13 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `project_link`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
 - 🗃️ **Project identity and audit** — explicit `entity_id` values route aliases to one canonical project file; `project_audit` reports exact duplicates, alias collisions, and possible name splits without modifying memory
+- 🔍 **Subject-sprawl audit** — `subject_audit` generalizes exact-duplicate and possible-split detection to every memory kind (project, preference, topic, decision, person, profile, session), so two different subjects describing the same concern (e.g. `ai-memory-github-documentation` vs `ai-memory-change-documentation`) surface as a review candidate even when the write-time singleton check never compares them; read-only, never merges
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
 - 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped lists with the newest entry first in each group and one most-recent marker per group, and a readable audit view
 - 🔒 **Origin-protected dashboard API** — every state-changing request is checked against the `Host`/`Origin` headers and a random per-launch token, so binding to localhost isn't the only thing standing between the vault and a rogue page in your browser
@@ -639,6 +640,7 @@ at the moment you click, even if the page is still open and showing data from be
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |
 | `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, orphaned session blocks, index drift |
 | `project_audit()` | Report project identity collisions, exact duplicate candidates, and possible name splits without changing memory |
+| `subject_audit(kinds=None)` | Report exact duplicates and subject-variant candidates across every memory kind (or just the ones passed); read-only |
 | `project_link(source_path, target_path, apply=False)` | Preview or explicitly apply a reversible project-file link; `apply=True` leaves a source backup |
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |

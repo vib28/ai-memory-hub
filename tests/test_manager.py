@@ -296,5 +296,173 @@ class ManagerTests(unittest.TestCase):
         audit = self.manager.audit()
         self.assertTrue(audit["healthy"], audit)
 
+
+class SubjectAuditTests(unittest.TestCase):
+    """#34: subject_audit() generalizes project_audit()'s exact-hash and
+    possible-split detection to every memory kind, read-only."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.manager = MemoryManager(self.vault)
+        template = Path(__file__).resolve().parent.parent / "vault_template"
+        self.manager.initialize(template)
+
+    def tearDown(self):
+        self.manager.close()
+        self.tmp.cleanup()
+
+    def test_empty_vault_is_healthy(self):
+        report = self.manager.subject_audit()
+        self.assertTrue(report["healthy"], report)
+        self.assertEqual(report["exact_duplicate_groups"], [])
+        self.assertEqual(report["subject_variant_candidates"], [])
+        self.assertEqual(report["possible_file_splits"], [])
+
+    def test_exact_duplicate_detected_for_a_non_project_kind(self):
+        """project_audit() only ever looked at kind == "project"; this is the
+        generalization the issue asked for, exercised on "preference" instead,
+        which shares one file (/preferences.md) across every subject."""
+        self.manager.propose(MemoryCandidate(
+            text="Prefers concise answers with no filler.", kind="preference",
+            tag="preference", subject="response-style", writer="claude",
+        ))
+        duplicate_path = self.vault / "preferences.md"
+        content = duplicate_path.read_text(encoding="utf-8")
+        content += (
+            "\n- [preference] Prefers concise answers with no filler. "
+            "<!-- mem:dup-pref-001 source:codex subject:response-style-alt date:2026-09-06 -->\n"
+        )
+        duplicate_path.write_text(content, encoding="utf-8")
+        report = self.manager.subject_audit()
+        self.assertFalse(report["healthy"])
+        self.assertTrue(report["exact_duplicate_groups"])
+        flat = [row for group in report["exact_duplicate_groups"] for row in group]
+        self.assertTrue(all(row["kind"] == "preference" for row in flat))
+
+    def test_duplicates_do_not_cross_kind_boundaries(self):
+        """The same text under different kinds is not a duplicate of itself --
+        grouping must be keyed on (kind, hash), not hash alone."""
+        self.manager.propose(MemoryCandidate(
+            text="Ship the release on Friday.", kind="preference",
+            tag="preference", subject="release-cadence", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Ship the release on Friday.", kind="decision",
+            tag="decided", subject="release-plan", writer="codex",
+        ))
+        report = self.manager.subject_audit()
+        self.assertEqual(report["exact_duplicate_groups"], [])
+
+    def test_superseded_records_are_excluded(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Uses Windows as the primary development OS.", kind="profile",
+            tag="stated", subject="general", writer="claude",
+        ))
+        duplicate_path = self.vault / "profile.md"
+        content = duplicate_path.read_text(encoding="utf-8")
+        content += (
+            "\n- [stated] Uses Windows as the primary development OS. "
+            "<!-- mem:dup-profile-001 source:codex subject:general date:2026-09-06 -->\n"
+        )
+        duplicate_path.write_text(content, encoding="utf-8")
+        self.manager.reindex()
+        report = self.manager.subject_audit()
+        self.assertTrue(report["exact_duplicate_groups"])
+        self.manager.supersede(first["memory"]["memory_id"], MemoryCandidate(
+            text="Uses Windows as the primary development OS, confirmed 2026.",
+            kind="profile", tag="stated", subject="general", writer="claude",
+        ))
+        report = self.manager.subject_audit()
+        self.assertEqual(report["exact_duplicate_groups"], [])
+
+    def test_subject_variant_candidates_for_a_non_project_file_per_subject_kind(self):
+        self.manager.propose(MemoryCandidate(
+            text="Widget rendering pipeline overview.", kind="topic",
+            tag="stated", subject="widget-app", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Widget rendering pipeline, UI layer detail.", kind="topic",
+            tag="stated", subject="widget-app-ui", writer="codex",
+        ))
+        report = self.manager.subject_audit()
+        self.assertFalse(report["healthy"])
+        self.assertTrue(any(
+            c["kind"] == "topic" and set(c["subjects"]) == {"widget-app", "widget-app-ui"}
+            for c in report["subject_variant_candidates"]
+        ))
+        self.assertTrue(any(
+            s["kind"] == "topic" and set(Path(p).stem for p in s["paths"]) == {"widget-app", "widget-app-ui"}
+            for s in report["possible_file_splits"]
+        ))
+
+    def test_preference_variants_are_reported_without_a_file_split(self):
+        """preference shares one file (/preferences.md) across all subjects, so
+        there is no per-subject file to flag as split -- only the subject-string
+        comparison applies."""
+        self.manager.propose(MemoryCandidate(
+            text="Ask before making destructive changes.", kind="preference",
+            tag="preference", subject="git-safety", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Confirm before any destructive git operation.", kind="preference",
+            tag="preference", subject="git-safety-checks", writer="codex",
+        ))
+        report = self.manager.subject_audit()
+        self.assertTrue(any(
+            c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"}
+            for c in report["subject_variant_candidates"]
+        ))
+        self.assertEqual(
+            [s for s in report["possible_file_splits"] if s["kind"] == "preference"], [])
+
+    def test_session_subjects_are_never_treated_as_variants(self):
+        """Session subjects are per-instance (writer-title-date), not entity names --
+        a shared hyphen prefix between two sessions is coincidence, not sprawl."""
+        self.manager.propose_session({
+            "model": "claude", "title": "widget-app work", "date": "2026-09-01",
+            "project": None, "investigated": ["a"], "learned": ["b"],
+            "completed": ["c"], "next_steps": ["d"],
+        }, write_mode="auto")
+        self.manager.propose_session({
+            "model": "claude", "title": "widget-app-ui work", "date": "2026-09-02",
+            "project": None, "investigated": ["e"], "learned": ["f"],
+            "completed": ["g"], "next_steps": ["h"],
+        }, write_mode="auto")
+        report = self.manager.subject_audit()
+        self.assertEqual(
+            [c for c in report["subject_variant_candidates"] if c["kind"] == "session"], [])
+        self.assertEqual(
+            [s for s in report["possible_file_splits"] if s["kind"] == "session"], [])
+
+    def test_kinds_filter_narrows_scope(self):
+        self.manager.propose(MemoryCandidate(
+            text="Widget topic note.", kind="topic", tag="stated",
+            subject="widget-app", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Widget topic note, UI layer.", kind="topic", tag="stated",
+            subject="widget-app-ui", writer="codex",
+        ))
+        report = self.manager.subject_audit(kinds=["preference"])
+        self.assertTrue(report["healthy"])
+        self.assertEqual(report["kinds"], ["preference"])
+
+    def test_audit_never_mutates_the_vault(self):
+        self.manager.propose(MemoryCandidate(
+            text="Widget topic note.", kind="topic", tag="stated",
+            subject="widget-app", writer="claude",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Widget topic note, UI layer.", kind="topic", tag="stated",
+            subject="widget-app-ui", writer="codex",
+        ))
+        before = {p: p.read_text(encoding="utf-8") for p in self.vault.rglob("*.md")}
+        self.manager.subject_audit()
+        self.manager.subject_audit()
+        after = {p: p.read_text(encoding="utf-8") for p in self.vault.rglob("*.md")}
+        self.assertEqual(before, after)
+
+
 if __name__ == "__main__":
     unittest.main()

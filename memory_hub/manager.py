@@ -591,6 +591,76 @@ class MemoryManager:
             "healthy": not (alias_collisions or exact_duplicates or possible_splits),
         }
 
+    # Kinds routed one file per subject (vault.canonical_path), so a filename-level
+    # split check is meaningful for them the same way it already is for "project".
+    # "session" is deliberately excluded: its files are partitioned by project
+    # directory and its subjects are per-instance (writer-title-date), so comparing
+    # bare stems or subject strings there would flag unrelated files/records that
+    # merely share a writer or wording, not sprawl. "preference" and "profile" share
+    # one file across all their subjects, so there is no per-subject file to split --
+    # they still get subject-variant comparison, just not the file-split check.
+    _SUBJECT_SPRAWL_DIRS = {"project": "projects", "topic": "topics",
+                            "decision": "decisions", "person": "people"}
+
+    def subject_audit(self, kinds: list[str] | None = None) -> dict:
+        """Read-only report of exact duplicates and subject-variant candidates across
+        memory kinds (#34).
+
+        Generalizes project_audit()'s exact-hash and possible-split detection to every
+        kind, reusing the same text_hash/normalize_text identity the write path already
+        uses (#3's TRUE_DUPLICATE_THRESHOLD path) so a finding here is exactly what
+        propose() would reject as a duplicate had it been offered as a fresh write.
+
+        This command only reads. It never edits Markdown, changes a tag, touches the
+        index, or writes to the review queue -- see project_link() for the reviewed,
+        reversible merge path once a finding here has been looked at.
+        """
+        target_kinds = sorted(set(kinds) & ALLOWED_KINDS) if kinds else sorted(ALLOWED_KINDS)
+        records = [r for r in self._all_records() if r.kind in target_kinds and r.tag != "superseded"]
+
+        by_kind_hash: dict[tuple[str, str], list[dict]] = {}
+        for record in records:
+            by_kind_hash.setdefault((record.kind, text_hash(record.text)), []).append(record.to_dict())
+        exact_duplicate_groups = [rows for rows in by_kind_hash.values() if len(rows) > 1]
+
+        by_kind_subject: dict[str, set[str]] = {}
+        for record in records:
+            if record.kind == "session":
+                continue
+            by_kind_subject.setdefault(record.kind, set()).add(record.subject)
+        subject_variant_candidates = []
+        for kind, subjects in sorted(by_kind_subject.items()):
+            ordered = sorted(subjects)
+            for left in ordered:
+                for right in ordered:
+                    if left < right and (right.startswith(left + "-") or left.startswith(right + "-")):
+                        subject_variant_candidates.append({"kind": kind, "subjects": [left, right]})
+
+        possible_file_splits = []
+        for kind in target_kinds:
+            directory = self._SUBJECT_SPRAWL_DIRS.get(kind)
+            if not directory:
+                continue
+            base = self.vault.root / directory
+            if not base.exists():
+                continue
+            stems = sorted(p.stem for p in base.glob("*.md"))
+            for left in stems:
+                for right in stems:
+                    if left < right and (right.startswith(left + "-") or left.startswith(right + "-")):
+                        possible_file_splits.append({
+                            "kind": kind,
+                            "paths": [f"/{directory}/{left}.md", f"/{directory}/{right}.md"],
+                        })
+
+        return {
+            "kinds": target_kinds,
+            "exact_duplicate_groups": exact_duplicate_groups,
+            "subject_variant_candidates": subject_variant_candidates,
+            "possible_file_splits": possible_file_splits,
+            "healthy": not (exact_duplicate_groups or subject_variant_candidates or possible_file_splits),
+        }
+
     def project_link(self, source_path: str, target_path: str, *, apply: bool = False) -> dict:
         """Preview or apply an explicit, reversible project-file merge."""
         source = self.vault.resolve(source_path)

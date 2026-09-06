@@ -21,6 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init")
     sub.add_parser("audit")
     sub.add_parser("project-audit")
+    sa = sub.add_parser("subject-audit")
+    sa.add_argument("--kind", action="append", dest="kinds",
+                     help="Limit to this kind (repeatable); default is every kind.")
     pl = sub.add_parser("project-link")
     pl.add_argument("--source", required=True)
     pl.add_argument("--target", required=True)
@@ -102,6 +105,8 @@ def main():
             jprint(manager.audit())
         elif args.command == "project-audit":
             jprint(manager.project_audit())
+        elif args.command == "subject-audit":
+            jprint(manager.subject_audit(args.kinds))
         elif args.command == "project-link":
             jprint(manager.project_link(args.source, args.target, apply=args.apply))
         elif args.command == "reindex":

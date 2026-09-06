@@ -105,6 +105,13 @@ def project_link(source_path: str, target_path: str, apply: bool = False) -> dic
     return manager.project_link(source_path, target_path, apply=apply)
 
 @mcp.tool()
+def subject_audit(kinds: list[str] | None = None) -> dict:
+    """Report exact duplicates and subject-variant candidates across memory kinds
+    (project, preference, topic, decision, person, profile, session) without
+    changing memory. Pass kinds to limit the scope; omit it to check everything."""
+    return manager.subject_audit(kinds)
+
+@mcp.tool()
 def memory_reindex() -> dict:
     """Rebuild the disposable SQLite search index from the Markdown vault."""
     return {"indexed": manager.reindex()}
