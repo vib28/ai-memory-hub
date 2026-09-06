@@ -7,7 +7,7 @@
 Local-first, human-readable, and MCP-native. Keep durable context in one Obsidian vault and make every write pass through validation, review, and policy.
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
-![Tests: 147 passing](https://img.shields.io/badge/tests-147%20passing-brightgreen.svg)
+![Tests: 150 passing](https://img.shields.io/badge/tests-150%20passing-brightgreen.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
@@ -162,7 +162,7 @@ sequenceDiagram
 - 📜 **Optional transcript ingestion** for clients that can't call MCP tools directly, via any local server that exposes a standard chat-completions API — Ollama, LM Studio, llama.cpp, vLLM, and similar (nothing has to leave your machine)
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
-- ✅ **147 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, lifecycle-event normalization, safe duplicate-scan pruning, context-size/retrieval benchmarking, and all verified client hook formats, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+- ✅ **150 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, kind/subject-aware embedding text, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, structured review-queue payload rendering, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, session context priming, lifecycle-event normalization, safe duplicate-scan pruning, context-size/retrieval benchmarking, and all verified client hook formats, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
 
 ## Documentation
 
@@ -455,6 +455,12 @@ settings and hook groups are preserved. Kimi's TOML file is edited as a marked t
 so comments and unrelated configuration are retained.
 
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
+
+Each record is embedded with its kind and subject prefixed (`[kind] subject: text`), not the raw text alone — otherwise two records with similar wording under unrelated kinds (a project note and a preference both about "response format", say) would embed as indistinguishable vectors. Query text stays unprefixed (#39). **If you already had embeddings before this change, run `reindex` once** so existing vectors pick up the new format — old and new vectors otherwise aren't directly comparable:
+
+```powershell
+python -m memory_hub.cli --vault "<vault>" reindex
+```
 
 ### Opt-in vault history
 

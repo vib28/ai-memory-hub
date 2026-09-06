@@ -11,6 +11,22 @@ from .models import MemoryRecord
 from .utils import text_hash
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
 
+
+def embedding_text_for(record: MemoryRecord) -> str:
+    """String actually handed to the embedding model for one record (#39).
+
+    record.text alone carries no signal about which kind or subject bucket it
+    belongs to, so two records with similar wording under unrelated kinds
+    (a project note and a preference both about "response format", say) can
+    embed as near-identical vectors with nothing to tell them apart. Prefixing
+    kind and subject gives the model that context at negligible cost.
+
+    Query embedding (MemoryIndex.search) deliberately does NOT use this -- a
+    search query has no kind/subject of its own, and prefixing only the
+    indexed side is the standard asymmetric-retrieval pattern.
+    """
+    return f"[{record.kind}] {record.subject}: {record.text}"
+
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 
@@ -113,14 +129,15 @@ class MemoryIndex:
     def _embed_record(self, record: MemoryRecord) -> None:
         if not self.embedding_provider:
             return
+        text = embedding_text_for(record)
         try:
-            vector = self.embedding_provider.embed([record.text])[0]
+            vector = self.embedding_provider.embed([text])[0]
         except Exception:
             return
         with self.conn:
             self.conn.execute(
                 "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)",
-                (record.memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(record.text)),
+                (record.memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text)),
             )
 
     def remove(self, memory_id: str) -> None:
