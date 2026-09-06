@@ -11,7 +11,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [Connect your tools](#connect-your-ai-tools) · [Roadmap](#roadmap-and-planning)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Documentation](#documentation) · [Connect your tools](#connect-your-ai-tools) · [Roadmap](#roadmap-and-planning)
 
 </div>
 
@@ -40,6 +40,7 @@ Local-first, human-readable, and MCP-native. Keep durable context in one Obsidia
 - [Supported AI tools at a glance](#supported-ai-tools-at-a-glance)
 - [Why this exists](#why-this-exists)
 - [How it works](#how-it-works)
+- [Documentation](#documentation)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
@@ -162,6 +163,23 @@ sequenceDiagram
 - 🧺 **Generic local observation buffer** — lifecycle hooks can append bounded, retry-safe observations to a local SQLite queue without writing raw tool output into the vault
 - 🕰️ **Opt-in vault history** — local Git undo for automated consolidation; disposable indexes, locks, and temp files are ignored
 - ✅ **127 passing tests** covering the manager, dashboard workflows, session capture, local consolidation, hybrid retrieval, pattern-linked memories and historical backfill, conflict resolution, entity identity and shared-file alias linking, subject-sprawl auditing, secret detection, file-locking edge cases, vault history, hook configuration safety and installer wiring, MCP error propagation, and lifecycle-event normalization, run on every push/PR via GitHub Actions (Windows + Ubuntu, Python 3.10-3.12)
+
+## Documentation
+
+The documentation is organized for two audiences. These user-facing guides explain what
+the system does and how to use it; GitHub issues and roadmap entries remain the structured
+engineering record and are intentionally kept separate.
+
+| Guide | Purpose |
+|---|---|
+| [`docs/INSTALLATION.md`](docs/INSTALLATION.md) | Install, connect a client, and verify the setup |
+| [`docs/USAGE.md`](docs/USAGE.md) | Everyday memory, search, review, backfill, and undo workflows |
+| [`docs/FAQ.md`](docs/FAQ.md) | Common questions and safety boundaries |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Data flow, public boundaries, and invariants |
+| [`docs/local-memory-plan.md`](docs/local-memory-plan.md) | Tracked implementation plan and current state |
+| [`INSTALLATION_GUIDE.md`](INSTALLATION_GUIDE.md) | Full Windows installation walkthrough |
+| [`QUICK_START.md`](QUICK_START.md) | Five-minute Windows setup |
+| [`FIXLOG.md`](FIXLOG.md) | Verified bug and security fix history |
 
 ## Requirements
 
