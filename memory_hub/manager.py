@@ -240,7 +240,18 @@ class MemoryManager:
             linked = self.propose(MemoryCandidate(
                 text=f"Session summary [[{slug}]]: {candidate.text}", kind="project", tag="stated",
                 subject=data["project"], writer=data["model"]))
-        return {"status": "stored", "memory": record.to_dict(), "project": linked}
+        result = {"status": "stored", "memory": record.to_dict(), "project": linked}
+        # The session itself is written, but a cross-link that came back
+        # `possible_update` wrote nothing. Reporting a bare "stored" here loses it
+        # silently, which is exactly the trap that makes sessions drift out of their
+        # project files (#22). Surface it, and hand back what supersede() needs.
+        if linked and linked.get("status") == "possible_update":
+            result["status"] = "stored_without_project_link"
+            result["project_link_supersedes"] = linked["memory"]["memory_id"]
+            result["hint"] = ("Session stored; its project cross-link matched an existing "
+                              "entry and was not written. Call supersede() with "
+                              "project_link_supersedes to apply it.")
+        return result
 
     def _patterns(self) -> dict:
         path = self.vault.resolve("/patterns.md")
@@ -276,13 +287,30 @@ class MemoryManager:
             candidate = MemoryCandidate(project_text, "project", "stated", subject, writer)
             row = self.index.enqueue(candidate.to_dict(), payload=payload)
             return {"status": "queued", "proposal": row, "label": label}
-        project = self.propose(MemoryCandidate(project_text, "project", "stated", subject, writer))
+        # Both halves are validated before either is written. The two writes are what
+        # make a pattern a pattern: committing the project fact and then failing on the
+        # preference rule leaves an orphaned fact whose linked rule never existed (#23).
+        project_candidate = MemoryCandidate(project_text, "project", "stated", subject, writer)
+        preference_candidate = MemoryCandidate(
+            preference_text, "preference", "preference", subject, writer,
+            supersedes_id=existing["memory_id"] if confirmed else None)
+        for candidate in (project_candidate, preference_candidate):
+            problem = self._validate(candidate)
+            if problem:
+                return {**problem, "label": label, "half": candidate.kind}
+
+        project = self.propose(project_candidate)
         if project.get("status") not in {"stored", "duplicate"}:
-            return project
-        preference = self.propose(MemoryCandidate(preference_text, "preference", "preference", subject, writer,
-                                                  supersedes_id=existing["memory_id"] if confirmed else None))
-        return {"status": "stored" if preference.get("status") in {"stored", "duplicate"} else preference.get("status"),
-                "label": label, "project": project, "preference": preference}
+            return {**project, "label": label, "half": "project"}
+        preference = self.propose(preference_candidate)
+        if preference.get("status") not in {"stored", "duplicate"}:
+            # The project half is already committed; say so rather than reporting a
+            # bare status the caller cannot act on.
+            return {**preference, "label": label, "half": "preference",
+                    "project": project,
+                    "hint": "The project fact was written but its linked preference rule "
+                            "was not. Resolve the preference half to complete the pattern."}
+        return {"status": "stored", "label": label, "project": project, "preference": preference}
 
     def propose(self, candidate: MemoryCandidate) -> dict:
         problem = self._validate(candidate)
@@ -333,7 +361,9 @@ class MemoryManager:
             payload = json.loads(row["payload"])
             if payload.get("type") == "session":
                 result = self.propose_session(payload["data"], write_mode="auto")
-                self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
+                # The session is written in both cases; only its cross-link differs (#22).
+                stored = result["status"] in {"stored", "stored_without_project_link"}
+                self.index.set_pending_status(proposal_id, "approved" if stored else result["status"])
                 return result
             if payload.get("type") == "pattern":
                 result = self.propose_pattern_match(payload["pattern_id"], payload["project_fact_text"],

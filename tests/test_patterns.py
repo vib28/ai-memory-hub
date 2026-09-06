@@ -32,6 +32,31 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(approved["status"], "stored")
         self.assertEqual(len(self.manager.search("regression coverage")), 1)
 
+    def test_rejected_preference_half_writes_neither_half(self):
+        """A pattern is its two linked halves. Committing one and failing the other
+        leaves an orphaned project fact whose rule never existed (#23)."""
+        secret = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef"
+        result = self.manager.propose_pattern_match("regression", "A regression was fixed.",
+                                                    secret, "atomic-demo", writer="codex")
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["half"], "preference")
+        self.assertIsNotNone(result.get("reason"))
+        self.assertFalse((self.manager.vault.root / "projects" / "atomic-demo.md").exists())
+
+    def test_rejected_project_half_writes_neither_half(self):
+        secret = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef"
+        result = self.manager.propose_pattern_match("regression", secret,
+                                                    "Add a regression test.", "atomic-demo2",
+                                                    writer="codex")
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["half"], "project")
+        self.assertNotIn("[[atomic-demo2]]", self.manager.read("/preferences.md"))
+
+    def test_unknown_pattern_is_rejected_with_reason(self):
+        result = self.manager.propose_pattern_match("nosuchpattern", "fact", "rule", "demo")
+        self.assertEqual(result["status"], "rejected")
+        self.assertIn("unknown pattern", result["reason"])
+
     def test_later_match_is_confirmed_and_updates_preference(self):
         first = self.manager.propose_pattern_match("regression", "First regression.",
                                                    "Check regression coverage.", "demo-project", writer="codex")

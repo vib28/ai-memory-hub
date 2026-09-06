@@ -114,8 +114,15 @@ def propose_pattern_match(
     pattern_id: str, project_fact_text: str, preference_rule_text: str, subject: str,
 ) -> dict:
     """Propose the linked project fact and global preference rule for a recognized pattern."""
-    return manager.propose_pattern_match(pattern_id, project_fact_text, preference_rule_text,
-                                         subject, write_mode=WRITE_MODE, writer=WRITER)
+    result = manager.propose_pattern_match(pattern_id, project_fact_text, preference_rule_text,
+                                           subject, write_mode=WRITE_MODE, writer=WRITER)
+    # Same contract as session_write: a rejected pattern must not reach the caller
+    # looking like a successful tool call.
+    if result.get("status") == "rejected":
+        half = f" ({result['half']} half)" if result.get("half") else ""
+        raise ValueError(
+            f"pattern match rejected{half}: {result.get('reason', 'unknown reason')}")
+    return result
 
 def main():
     mcp.run()
