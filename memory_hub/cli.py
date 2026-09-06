@@ -6,7 +6,14 @@ from pathlib import Path
 
 from .extractor import extract_candidates
 from .history import commit_vault_change, history_status, initialize_history
-from .hooks import install_hook, install_nested_hook, uninstall_hook, uninstall_nested_hook
+from .hooks import (
+    install_hook,
+    install_nested_hook,
+    install_toml_hook,
+    uninstall_hook,
+    uninstall_nested_hook,
+    uninstall_toml_hook,
+)
 from .manager import MemoryManager
 from .models import MemoryCandidate
 
@@ -44,11 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     hi.add_argument("--event", default="PostToolUse")
     hi.add_argument("--command", dest="hook_command", default="ai-memory-hook")
     hi.add_argument("--arg", action="append", default=[])
-    hi.add_argument("--format", choices=("claude", "nested"), default="claude")
+    hi.add_argument("--format", choices=("claude", "nested", "kimi-toml"), default="claude")
     hi.add_argument("--matcher", default="*")
     hu = sub.add_parser("hooks-uninstall")
     hu.add_argument("--settings", required=True)
-    hu.add_argument("--format", choices=("claude", "nested"), default="claude")
+    hu.add_argument("--format", choices=("claude", "nested", "kimi-toml"), default="claude")
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -92,11 +99,18 @@ def main():
             if args.format == "nested":
                 jprint(install_nested_hook(args.settings, event=args.event,
                                            command=args.hook_command, matcher=args.matcher))
+            elif args.format == "kimi-toml":
+                jprint(install_toml_hook(args.settings, event=args.event, command=args.hook_command))
             else:
                 jprint(install_hook(args.settings, event=args.event, command=args.hook_command, args=args.arg))
         else:
-            jprint(uninstall_nested_hook(args.settings) if getattr(args, "format", "claude") == "nested"
-                                        else uninstall_hook(args.settings))
+            hook_format = getattr(args, "format", "claude")
+            if hook_format == "nested":
+                jprint(uninstall_nested_hook(args.settings))
+            elif hook_format == "kimi-toml":
+                jprint(uninstall_toml_hook(args.settings))
+            else:
+                jprint(uninstall_hook(args.settings))
         return
     if not args.vault:
         raise SystemExit("--vault is required for this command")

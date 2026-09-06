@@ -73,8 +73,8 @@ what each connected client proposes.
 - Enable opt-in vault history with `history-init` before automatic consolidation.
 - Install generic hooks only after reading the safety gates in
   [`ARCHITECTURE.md`](../ARCHITECTURE.md).
-- `connect-ai-tools.ps1 -InstallHooks` also installs verified nested hook entries for
-  Gemini CLI and Qwen Code. Kimi Code and Codex hook configuration is not modified
-  automatically until their schemas are verified.
+- `connect-ai-tools.ps1 -InstallHooks` also installs verified hook entries for Gemini CLI,
+  Qwen Code, and Kimi Code. Kimi uses a marked block in `~/.kimi/config.toml`; Codex hook
+  configuration is not modified automatically until its schema is verified.
 
 For the full setup walkthrough, see [`INSTALLATION_GUIDE.md`](../INSTALLATION_GUIDE.md).

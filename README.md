@@ -437,9 +437,9 @@ python -m memory_hub.cli hooks-uninstall `
 
 This generic layer does not guess a client-specific settings path or event schema. Client
 adapters call it with the correct path and event name. The connection script now wires the
-verified nested schemas for Gemini CLI (`AfterTool`) and Qwen Code (`PostToolUse`) when
-`-InstallHooks` is supplied. Kimi Code and Codex hook adapters remain manual until their
-schemas are verified.
+verified schemas for Gemini CLI (`AfterTool`), Qwen Code (`PostToolUse`), and Kimi Code
+(`PostToolUse`) when `-InstallHooks` is supplied. Codex hook configuration remains manual
+until its schema is verified.
 
 `connect-ai-tools.ps1` is that adapter for Claude Code, Gemini CLI, and Qwen Code:
 
@@ -452,7 +452,8 @@ It resolves Claude Code's `settings.json` from `$env:CLAUDE_CONFIG_DIR` (falling
 `~/.claude`) and points the hook at the venv's own `ai-memory-hook.exe`, so it works without
 relying on PATH. Both flags are idempotent and mutually exclusive with each other; neither
 touches the vault. Existing settings are backed up before modification and unrelated
-settings and hook groups are preserved.
+settings and hook groups are preserved. Kimi's TOML file is edited as a marked text block,
+so comments and unrelated configuration are retained.
 
 For optional semantic retrieval, point `MEMORY_EMBED_BASE_URL` at a local OpenAI-compatible embeddings endpoint and set `MEMORY_EMBED_MODEL` (for example, `nomic-embed-text`). SQLite FTS remains active and is used automatically if the embedding server is unavailable.
 
@@ -560,7 +561,7 @@ GitHub issues [#2–#12](https://github.com/vib28/ai-memory-hub/issues) track th
 
 Closed on `enhancements/roadmap`: [#12](https://github.com/vib28/ai-memory-hub/issues/12), [#16](https://github.com/vib28/ai-memory-hub/issues/16), [#18](https://github.com/vib28/ai-memory-hub/issues/18), [#19–#26](https://github.com/vib28/ai-memory-hub/issues), [#28–#37](https://github.com/vib28/ai-memory-hub/issues) — pattern-linked memories and historical backfill (#16, #18, #28), vault history and hook install/uninstall (#29), the compression-engine decision (#30), the history/index isolation fix (#31), lifecycle-event normalization (#32), project entity identity, audit, and reversible linking (#33), subject-sprawl auditing generalized to every kind (#34), the same identity model extended to shared-file kinds with dashboard grouping (#35), MCP rejection reasons preserved across the tool boundary (#36), and the identity-less prefix-merge fix (#37).
 
-Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout), [#14](https://github.com/vib28/ai-memory-hub/issues/14) (client-specific hook adapters), [#15](https://github.com/vib28/ai-memory-hub/issues/15) (session consolidation/verification), [#17](https://github.com/vib28/ai-memory-hub/issues/17) (client prompt sync test + remaining docs), [#27](https://github.com/vib28/ai-memory-hub/issues/27) (write-path duplicate-scan performance + benchmark).
+Still open: [#13](https://github.com/vib28/ai-memory-hub/issues/13) (roadmap/closeout), [#14](https://github.com/vib28/ai-memory-hub/issues/14) (remaining Codex hook verification and end-to-end adapters), and [#27](https://github.com/vib28/ai-memory-hub/issues/27) (remaining worst-case write-path duplicate-scan performance).
 
 ## Roadmap and planning
 

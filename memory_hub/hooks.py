@@ -11,6 +11,7 @@ from typing import Any
 
 
 MANAGED_KEY = "ai_memory_hub_managed"
+TOML_MARKER = "# ai-memory-hub managed hook"
 
 
 class HookConfigError(RuntimeError):
@@ -167,3 +168,77 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
     backup = _backup(path)
     _write(path, config)
     return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
+
+
+def _toml_managed_ranges(content: str) -> list[tuple[int, int]]:
+    """Return exact managed block ranges without parsing/reformatting TOML."""
+    lines = content.splitlines(keepends=True)
+    ranges: list[tuple[int, int]] = []
+    offset = 0
+    for index, line in enumerate(lines):
+        if line.rstrip("\r\n") != TOML_MARKER:
+            offset += len(line)
+            continue
+        if index + 3 >= len(lines):
+            raise HookConfigError("managed Kimi hook marker is incomplete")
+        table, event, command = lines[index + 1:index + 4]
+        if table.rstrip("\r\n") != "[[hooks]]" or not event.startswith("event = ") or not command.startswith("command = "):
+            raise HookConfigError("managed Kimi hook marker has an unexpected TOML shape")
+        end = offset + sum(len(item) for item in lines[index:index + 4])
+        ranges.append((offset, end))
+        offset += len(line)
+    return ranges
+
+
+def _toml_quote(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(content, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def install_toml_hook(settings: Path | str, *, event: str, command: str) -> dict[str, Any]:
+    """Install a marked Kimi-style TOML hook while preserving source text."""
+    path = Path(settings).expanduser().resolve()
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    ranges = _toml_managed_ranges(content)
+    desired = (
+        f"{TOML_MARKER}\n[[hooks]]\nevent = {_toml_quote(event)}\n"
+        f"command = {_toml_quote(command)}\n"
+    )
+    if len(ranges) == 1 and content[ranges[0][0]:ranges[0][1]] == desired:
+        return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
+    if len(ranges) > 1:
+        raise HookConfigError("multiple managed Kimi hook blocks found")
+    backup = _backup(path) if path.exists() else None
+    if ranges:
+        start, end = ranges[0]
+        updated = content[:start] + desired + content[end:]
+    else:
+        separator = "" if not content else ("" if content.endswith("\n") else "\n")
+        if content and not content.endswith("\n\n"):
+            separator += "\n"
+        updated = content + separator + desired
+    _write_text(path, updated)
+    return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+
+def uninstall_toml_hook(settings: Path | str) -> dict[str, Any]:
+    """Remove only the marked Kimi-style TOML hook block."""
+    path = Path(settings).expanduser().resolve()
+    if not path.exists():
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    content = path.read_text(encoding="utf-8")
+    ranges = _toml_managed_ranges(content)
+    if not ranges:
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    if len(ranges) > 1:
+        raise HookConfigError("multiple managed Kimi hook blocks found")
+    start, end = ranges[0]
+    backup = _backup(path)
+    _write_text(path, content[:start] + content[end:])
+    return {"status": "removed", "settings": str(path), "removed": 1, "backup": backup}

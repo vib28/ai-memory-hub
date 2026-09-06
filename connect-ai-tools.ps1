@@ -28,8 +28,8 @@
     settings.json (see #14/#29). Idempotent: safe to pass on every run. Takes a
     timestamped backup of settings.json before writing and touches only the single
     entry it owns — every other hook and setting is left exactly as found. Applies
-    to Claude Code, Gemini CLI, and Qwen Code when those clients are detected. Kimi and
-    Codex hook schemas are not installed automatically until their adapters are verified.
+    to Claude Code, Gemini CLI, Qwen Code, and Kimi Code when those clients are detected.
+    Codex hook schema is not installed automatically until its adapter is verified.
 
 .PARAMETER RemoveHooks
     Remove the ai-memory-hook entry this script installed from Claude Code's
@@ -192,8 +192,35 @@ function Remove-NestedClientHook {
     $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
 }
 
+function Install-TomlClientHook {
+    param([string]$Client, [string]$SettingsPath, [string]$Event)
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $SettingsPath --format kimi-toml --event $Event --command $hookCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    $Client hook install: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
+}
+
+function Remove-TomlClientHook {
+    param([string]$Client, [string]$SettingsPath)
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $SettingsPath --format kimi-toml 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    $Client hook removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
+}
+
 function Get-GeminiSettingsPath { return Join-Path $HOME ".gemini\settings.json" }
 function Get-QwenSettingsPath { return Join-Path $HOME ".qwen\settings.json" }
+function Get-KimiSettingsPath {
+    $kimiConfigHome = if ($env:KIMI_CONFIG_DIR) { $env:KIMI_CONFIG_DIR } else { Join-Path $HOME ".kimi" }
+    return Join-Path $kimiConfigHome "config.toml"
+}
 
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
@@ -402,6 +429,8 @@ if (Get-Command kimi -ErrorAction SilentlyContinue) {
 
         Install-Instructions (Join-Path $kimiHome "AGENTS.md") "kimi.md"
         $results.Add("[connected] Kimi Code")
+        if ($InstallHooks) { Install-TomlClientHook "Kimi Code" (Get-KimiSettingsPath) "PostToolUse" }
+        if ($RemoveHooks) { Remove-TomlClientHook "Kimi Code" (Get-KimiSettingsPath) }
     }
     catch {
         $results.Add("[failed]    Kimi Code ($($_.Exception.Message))")
@@ -409,6 +438,7 @@ if (Get-Command kimi -ErrorAction SilentlyContinue) {
 }
 else {
     $results.Add("[skipped]   Kimi Code (not found on PATH)")
+    if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Kimi Code hooks (Kimi Code CLI not found on PATH)") }
 }
 
 # --- Hermes Agent ------------------------------------------------------------

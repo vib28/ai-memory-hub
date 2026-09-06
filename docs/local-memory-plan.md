@@ -55,7 +55,7 @@ path and human-readable Obsidian vault.
   reaching the caller as a bare `Error executing tool <name>` with no reason
   ([#36](https://github.com/vib28/ai-memory-hub/issues/36)).
 - Generic hook install/removal wired into the default connection script for Claude Code,
-  Gemini CLI, and Qwen Code: `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`,
+  Gemini CLI, Qwen Code, and Kimi Code: `connect-ai-tools.ps1 -InstallHooks` / `-RemoveHooks`,
   idempotent, with a timestamped backup before each write
   ([#29](https://github.com/vib28/ai-memory-hub/issues/29),
   [#14](https://github.com/vib28/ai-memory-hub/issues/14)).
@@ -71,8 +71,9 @@ path and human-readable Obsidian vault.
 
 ### In progress
 
-- Client-specific lifecycle-hook adapters for Kimi Code and Codex CLI; Gemini CLI and
-  Qwen Code adapters are verified and installed by the connection script.
+- Client-specific lifecycle-hook adapter for Codex CLI and end-to-end host-client tests;
+  Claude, Gemini, Qwen, and Kimi adapters are verified and installed by the connection
+  script.
 - Per-turn context priming beyond the bounded session-start `memory_context` packet.
 - End-to-end host-client adapters.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
@@ -87,9 +88,9 @@ path and human-readable Obsidian vault.
 - Opt-in vault Git initialization and status inspection.
 - Disposable index, WAL/SHM, lock, and temporary-file ignores.
 - Session-ID commit support for successful automated consolidation.
-- Provider-neutral JSON hook installation/removal with timestamped backups and managed-entry
+- Provider-neutral hook installation/removal with timestamped backups and managed-entry
   preservation, **now wired into the default connection script** for Claude Code, Gemini CLI,
-  and Qwen Code (`-InstallHooks`/`-RemoveHooks`).
+  Qwen Code, and Kimi Code (`-InstallHooks`/`-RemoveHooks`).
 
 Automated commits refuse to mix with pre-staged user changes.
 
@@ -248,7 +249,8 @@ Do not claim a fixed percentage saving until these measurements exist.
 - #27 — optional local embeddings and hybrid memory search; the write-path duplicate scan
   and its benchmark are the part still open
 - #29 — vault undo plus hook install/uninstall safety gate — **closed**;
-  `-InstallHooks`/`-RemoveHooks` wired into `connect-ai-tools.ps1` for Claude Code
+  `-InstallHooks`/`-RemoveHooks` wired into `connect-ai-tools.ps1` for Claude Code, Gemini,
+  Qwen, and Kimi
 - #32 — normalized resilient lifecycle events without an HTTP hook dependency — closed
 - #33 — stable project identity, read-only audit, and reversible linking — closed
 - #34 — subject-sprawl audit generalized from project-only to every memory kind — closed

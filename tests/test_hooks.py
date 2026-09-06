@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
 from memory_hub.hooks import (HookConfigError, install_hook, install_nested_hook,
-                              uninstall_hook, uninstall_nested_hook)
+                              install_toml_hook, uninstall_hook, uninstall_nested_hook,
+                              uninstall_toml_hook)
 
 
 class HookConfigTests(unittest.TestCase):
@@ -71,6 +73,42 @@ class HookConfigTests(unittest.TestCase):
         self.assertEqual(removed["status"], "removed")
         config = json.loads(self.settings.read_text(encoding="utf-8"))
         self.assertEqual(len(config["hooks"]["AfterTool"]), 1)
+
+    def test_kimi_toml_hook_preserves_text_and_is_idempotent(self):
+        settings = self.settings.with_suffix(".toml")
+        original = "# keep this comment\nmodel = \"local\"\n\n[[hooks]]\nevent = \"Stop\"\ncommand = \"other\"\n"
+        settings.write_text(original, encoding="utf-8")
+        first = install_toml_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        second = install_toml_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        content = settings.read_text(encoding="utf-8")
+        self.assertEqual(first["status"], "installed")
+        self.assertEqual(second["status"], "already_installed")
+        self.assertIn(original, content)
+        self.assertEqual(content.count("# ai-memory-hub managed hook"), 1)
+        with settings.open("rb") as stream:
+            parsed = tomllib.load(stream)
+        managed = [hook for hook in parsed["hooks"] if hook["command"] == "ai-memory-hook"]
+        self.assertEqual(managed[0]["event"], "PostToolUse")
+        self.assertTrue(Path(first["backup"]).exists())
+
+    def test_kimi_toml_uninstall_removes_only_managed_block(self):
+        settings = self.settings.with_suffix(".toml")
+        settings.write_text("model = \"local\"\n", encoding="utf-8")
+        install_toml_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        settings.write_text(settings.read_text(encoding="utf-8") + "\n[[hooks]]\nevent = \"Stop\"\ncommand = \"other\"\n", encoding="utf-8")
+        result = uninstall_toml_hook(settings)
+        content = settings.read_text(encoding="utf-8")
+        self.assertEqual(result["status"], "removed")
+        self.assertIn('event = "Stop"', content)
+        self.assertNotIn("ai-memory-hub managed", content)
+
+    def test_kimi_toml_malformed_marker_is_not_rewritten(self):
+        settings = self.settings.with_suffix(".toml")
+        original = "# ai-memory-hub managed hook\n[[hooks]]\nevent = \"PostToolUse\"\n"
+        settings.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(HookConfigError, "incomplete"):
+            install_toml_hook(settings, event="PostToolUse", command="ai-memory-hook")
+        self.assertEqual(settings.read_text(encoding="utf-8"), original)
 
 
 if __name__ == "__main__":
