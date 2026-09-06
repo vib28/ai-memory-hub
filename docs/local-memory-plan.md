@@ -182,6 +182,14 @@ Record:
 
 Do not claim a fixed percentage saving until these measurements exist.
 
+## Final documentation action item
+
+- [ ] Rewrite every GitHub issue, including closed issues, and every roadmap entry in
+  clear layman language with explicit **where**, **why**, **how**, reproduction steps,
+  acceptance criteria, implementation details, and verification results. Do not infer
+  missing evidence; mark it as unavailable or ask for clarification. Complete this
+  after the implementation work and testing are finished.
+
 ## Issue mapping
 
 - #14 — generic lifecycle hooks and local observation buffering
