@@ -20,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init")
     sub.add_parser("audit")
+    sub.add_parser("project-audit")
     sub.add_parser("reindex")
     sub.add_parser("history-init")
     sub.add_parser("history-status")
@@ -46,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--kind", required=True)
     a.add_argument("--tag", required=True)
     a.add_argument("--subject", default="general")
+    a.add_argument("--entity-id")
     a.add_argument("--target-path")
     a.add_argument("--text", required=True)
 
@@ -58,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     su.add_argument("--kind", required=True)
     su.add_argument("--tag", required=True)
     su.add_argument("--subject", default="general")
+    su.add_argument("--entity-id")
     su.add_argument("--target-path")
     su.add_argument("--text", required=True)
 
@@ -93,6 +96,8 @@ def main():
             jprint(manager.initialize(template))
         elif args.command == "audit":
             jprint(manager.audit())
+        elif args.command == "project-audit":
+            jprint(manager.project_audit())
         elif args.command == "reindex":
             jprint({"indexed": manager.reindex()})
         elif args.command == "search":
@@ -107,6 +112,7 @@ def main():
                 subject=args.subject,
                 writer=args.writer,
                 target_path=args.target_path,
+                entity_id=args.entity_id,
             )))
         elif args.command == "forget":
             jprint(manager.forget(args.memory_id))
@@ -118,6 +124,7 @@ def main():
                 subject=args.subject,
                 writer=args.writer,
                 target_path=args.target_path,
+                entity_id=args.entity_id,
             )))
         elif args.command == "ingest":
             transcript = Path(args.transcript_file).read_text(encoding="utf-8")

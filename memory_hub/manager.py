@@ -71,6 +71,8 @@ class MemoryManager:
         candidate.tag = candidate.tag.strip().lower()
         candidate.writer = candidate.writer.strip().lower()
         candidate.subject = slugify(candidate.subject.strip() or "general")
+        if candidate.entity_id:
+            candidate.entity_id = slugify(candidate.entity_id.strip())
         if candidate.kind not in ALLOWED_KINDS:
             return {"status": "rejected", "reason": f"invalid kind: {candidate.kind}"}
         if candidate.tag not in ALLOWED_TAGS - {"superseded"}:
@@ -326,7 +328,9 @@ class MemoryManager:
                      "hint": "Nearly identical to an existing memory. Call supersede() with this "
                              "memory_id (or set supersedes_id) if this is meant to update it."}
 
-        relative = candidate.target_path or self.vault.canonical_path(candidate.kind, candidate.subject)
+        relative = candidate.target_path or self.vault.canonical_path(
+            candidate.kind, candidate.subject, entity_id=candidate.entity_id
+        )
         relative = "/" + relative.replace("\\", "/").lstrip("/")
         if not relative.endswith(".md"):
             return {"status": "rejected", "reason": "target_path must be a Markdown file"}
@@ -346,7 +350,10 @@ class MemoryManager:
             f"- [{candidate.tag}] {candidate.text} "
             f"<!-- mem:{memory_id} source:{candidate.writer} subject:{candidate.subject} date:{stamp} -->"
         )
-        self.vault.append_entry(relative, line, kind=candidate.kind, writer=candidate.writer)
+        self.vault.append_entry(
+            relative, line, kind=candidate.kind, writer=candidate.writer,
+            entity_id=candidate.entity_id, alias=candidate.subject,
+        )
         self.vault.ensure_index_entry(relative, candidate.kind, self._covers(candidate))
 
         record = MemoryRecord(memory_id, relative, candidate.text, candidate.kind, candidate.tag,
@@ -539,4 +546,47 @@ class MemoryManager:
             "orphan_session_blocks": orphan_sessions,
             "healthy": not (duplicate_ids or missing_from_index or stale_in_index
                             or malformed_files or orphan_sessions),
+        }
+
+    def project_audit(self) -> dict:
+        """Report project identity collisions and duplicate candidates without mutation."""
+        projects_dir = self.vault.root / "projects"
+        projects = []
+        identity_paths: dict[str, list[str]] = {}
+        if projects_dir.exists():
+            paths = sorted(projects_dir.glob("*.md"))
+        else:
+            paths = []
+        for path in paths:
+            meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+            identity = slugify(str(meta.get("id") or path.stem))
+            aliases = meta.get("aliases") or []
+            if not isinstance(aliases, list):
+                aliases = [str(aliases)]
+            aliases = sorted({slugify(str(value)) for value in aliases if str(value).strip()})
+            relative = "/" + path.relative_to(self.vault.root).as_posix()
+            projects.append({"path": relative, "entity_id": identity, "aliases": aliases})
+            for name in [identity, *aliases]:
+                identity_paths.setdefault(name, []).append(relative)
+        alias_collisions = [
+            {"alias": alias, "paths": sorted(set(paths))}
+            for alias, paths in sorted(identity_paths.items()) if len(set(paths)) > 1
+        ]
+        records = [r for r in self._all_records() if r.kind == "project" and r.tag != "superseded"]
+        by_hash: dict[str, list[dict]] = {}
+        for record in records:
+            by_hash.setdefault(text_hash(record.text), []).append(record.to_dict())
+        exact_duplicates = [rows for rows in by_hash.values() if len(rows) > 1]
+        stems = [Path(item["path"]).stem for item in projects]
+        possible_splits = []
+        for left in sorted(stems):
+            for right in sorted(stems):
+                if left < right and (right.startswith(left + "-") or left.startswith(right + "-")):
+                    possible_splits.append({"paths": [f"/projects/{left}.md", f"/projects/{right}.md"]})
+        return {
+            "projects": projects,
+            "alias_collisions": alias_collisions,
+            "exact_duplicate_groups": exact_duplicates,
+            "possible_name_splits": possible_splits,
+            "healthy": not (alias_collisions or exact_duplicates or possible_splits),
         }

@@ -52,11 +52,12 @@ def memory_propose(
     tag: str,
     subject: str = "general",
     target_path: str | None = None,
+    entity_id: str | None = None,
 ) -> dict:
     """Validate a durable memory candidate. Auto mode stores it; review mode queues it."""
     candidate = MemoryCandidate(
         text=text, kind=kind, tag=tag, subject=subject,
-        writer=WRITER, target_path=target_path,
+        writer=WRITER, target_path=target_path, entity_id=entity_id,
     )
     if WRITE_MODE == "review":
         return manager.queue(candidate)
@@ -70,11 +71,13 @@ def memory_supersede(
     tag: str,
     subject: str = "general",
     target_path: str | None = None,
+    entity_id: str | None = None,
 ) -> dict:
     """Supersede an old memory. In review mode the replacement is queued for approval."""
     candidate = MemoryCandidate(
         text=text, kind=kind, tag=tag, subject=subject,
         writer=WRITER, target_path=target_path, supersedes_id=old_memory_id,
+        entity_id=entity_id,
     )
     if WRITE_MODE == "review":
         return manager.queue(candidate)
@@ -89,6 +92,11 @@ def memory_forget(memory_id: str) -> dict:
 def memory_audit() -> dict:
     """Check file/index integrity without modifying memory."""
     return manager.audit()
+
+@mcp.tool()
+def project_audit() -> dict:
+    """Report project identity collisions and duplicate candidates without changing memory."""
+    return manager.project_audit()
 
 @mcp.tool()
 def memory_reindex() -> dict:

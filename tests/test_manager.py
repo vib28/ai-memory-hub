@@ -77,6 +77,41 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(result["status"], "stored")
         self.assertEqual(result["memory"]["writer"], "qwen")
 
+    def test_project_identity_routes_aliases_to_one_file(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="The repository uses a local-first memory pipeline.",
+            kind="project", tag="stated", subject="ai-memory-hub",
+            writer="codex", entity_id="vib28-ai-memory-hub",
+        ))
+        second = self.manager.propose(MemoryCandidate(
+            text="The repository keeps the Obsidian vault as canonical storage.",
+            kind="project", tag="constraint", subject="repository-memory",
+            writer="claude", entity_id="vib28-ai-memory-hub",
+        ))
+        self.assertEqual(first["status"], "stored")
+        self.assertEqual(second["status"], "stored")
+        self.assertEqual(first["memory"]["path"], second["memory"]["path"])
+        content = (self.vault / first["memory"]["path"].lstrip("/")).read_text(encoding="utf-8")
+        self.assertIn("id: vib28-ai-memory-hub", content)
+        self.assertIn("repository-memory", content)
+
+    def test_project_audit_reports_exact_duplicates_and_name_splits(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="Same project fact.", kind="project", tag="stated",
+            subject="alpha", writer="codex",
+        ))
+        self.assertEqual(first["status"], "stored")
+        duplicate_path = self.vault / "projects" / "alpha-copy.md"
+        duplicate_path.write_text(
+            "---\ntype: project\nid: alpha-copy\naliases:\n---\n\n"
+            "- [stated] Same project fact. <!-- mem:duplicate-project source:claude subject:alpha-copy date:2026-09-06 -->\n",
+            encoding="utf-8",
+        )
+        report = self.manager.project_audit()
+        self.assertFalse(report["healthy"])
+        self.assertTrue(report["exact_duplicate_groups"])
+        self.assertTrue(report["possible_name_splits"])
+
     def test_new_entry_timestamp_and_subject_survive_reindex(self):
         first = self.manager.propose(MemoryCandidate(
             text="Uses Windows as the primary development OS.",

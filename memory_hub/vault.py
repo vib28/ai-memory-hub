@@ -75,7 +75,8 @@ def dump_frontmatter(meta: dict) -> str:
     lines.append("---")
     return "\n".join(lines) + "\n"
 
-def ensure_metadata(content: str, *, kind: str, writer: str) -> str:
+def ensure_metadata(content: str, *, kind: str, writer: str,
+                    entity_id: str | None = None, alias: str | None = None) -> str:
     meta, body = parse_frontmatter(content)
     now = today()
     if not meta:
@@ -87,6 +88,9 @@ def ensure_metadata(content: str, *, kind: str, writer: str) -> str:
             "updated": now,
             "sources": [writer],
         }
+        if kind == "project":
+            meta["id"] = entity_id or "general"
+            meta["aliases"] = [alias] if alias else []
     else:
         meta["updated"] = now
         sources = meta.get("sources") or []
@@ -99,6 +103,14 @@ def ensure_metadata(content: str, *, kind: str, writer: str) -> str:
         meta.setdefault("status", "active")
         meta.setdefault("aliases", [])
         meta.setdefault("type", kind)
+        if kind == "project":
+            meta.setdefault("id", entity_id or "general")
+            aliases = meta.get("aliases") or []
+            if not isinstance(aliases, list):
+                aliases = [str(aliases)]
+            if alias and alias not in aliases and alias != meta["id"]:
+                aliases.append(alias)
+            meta["aliases"] = aliases
     return dump_frontmatter(meta) + body.lstrip("\n")
 
 def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
@@ -175,7 +187,8 @@ class Vault:
                 continue
             yield p
 
-    def canonical_path(self, kind: str, subject: str, *, project: str | None = None) -> str:
+    def canonical_path(self, kind: str, subject: str, *, project: str | None = None,
+                       entity_id: str | None = None) -> str:
         subject_slug = slugify(subject)
         if kind == "profile":
             return "/profile.md"
@@ -184,7 +197,7 @@ class Vault:
         if kind == "person":
             return f"/people/{subject_slug}.md"
         if kind == "project":
-            return f"/projects/{self._merge_into_existing_project(subject_slug)}.md"
+            return f"/projects/{self._project_slug(subject_slug, entity_id)}.md"
         if kind == "decision":
             return f"/decisions/{subject_slug}.md"
         if kind == "session":
@@ -193,37 +206,47 @@ class Vault:
             # project. Sessions naming no project stay at the writer-major root path.
             model_slug = slugify(subject.split("-", 1)[0] or "other")
             if project:
-                project_slug = self._merge_into_existing_project(slugify(project))
+                project_slug = self._project_slug(slugify(project), None)
                 return f"/sessions/{project_slug}/{model_slug}.md"
             return f"/sessions/{model_slug}.md"
         return f"/topics/{subject_slug}.md"
 
-    def _merge_into_existing_project(self, subject_slug: str) -> str:
-        """Route a new project subject onto an existing project file when the two
-        are clearly the same project under different naming (e.g. 'ai-memory-hub'
-        and 'ai-memory-hub-dashboard'), so writers proposing slightly different
-        subject strings for one project don't fork it into separate files.
+    def _project_slug(self, subject_slug: str, entity_id: str | None) -> str:
+        """Resolve by explicit identity or an existing exact alias.
 
-        Only merges on a hyphen-segment prefix relationship (one slug plus a
-        trailing '-something'), never on loose similarity, so distinct projects
-        that merely share a word (e.g. 'app-frontend' vs 'app-backend') are left
-        as separate files.
+        Similar-looking names are reported by project-audit and require an explicit
+        link decision instead of a silent merge (#33).
         """
         projects_dir = self.root / "projects"
         if not projects_dir.exists():
-            return subject_slug
-        existing_slugs = [p.stem for p in projects_dir.glob("*.md")]
-        if subject_slug in existing_slugs:
-            return subject_slug
-        related = [
-            s for s in existing_slugs
-            if s != subject_slug and (subject_slug.startswith(s + "-") or s.startswith(subject_slug + "-"))
-        ]
-        if not related:
-            return subject_slug
-        return min(related, key=len)
+            return slugify(entity_id or subject_slug)
+        wanted_id = slugify(entity_id) if entity_id else None
+        for path in projects_dir.glob("*.md"):
+            meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+            current_id = slugify(str(meta.get("id", ""))) if meta.get("id") else path.stem
+            aliases = meta.get("aliases") or []
+            if not isinstance(aliases, list):
+                aliases = [str(aliases)]
+            aliases = {slugify(str(value)) for value in aliases}
+            if (wanted_id and current_id == wanted_id) or subject_slug == current_id or subject_slug in aliases:
+                return path.stem
+        if not wanted_id:
+            # Legacy compatibility: retain the old narrow prefix fallback for callers
+            # that do not yet provide an entity_id. New integrations should pass one;
+            # project-audit reports these relationships for explicit review (#33).
+            existing_slugs = [path.stem for path in projects_dir.glob("*.md")]
+            related = [
+                value for value in existing_slugs
+                if value != subject_slug and (
+                    subject_slug.startswith(value + "-") or value.startswith(subject_slug + "-")
+                )
+            ]
+            if related:
+                return min(related, key=len)
+        return slugify(entity_id or subject_slug)
 
-    def append_entry(self, relative: str, line: str, *, kind: str, writer: str) -> None:
+    def append_entry(self, relative: str, line: str, *, kind: str, writer: str,
+                     entity_id: str | None = None, alias: str | None = None) -> None:
         p = self.resolve(relative)
         p.parent.mkdir(parents=True, exist_ok=True)
         # File creation happens *inside* the lock: two writers racing on a brand-new
@@ -234,7 +257,10 @@ class Vault:
             else:
                 title = p.stem.replace("-", " ").title()
                 current = f"\n# {title}\n"
-            current = ensure_metadata(current, kind=kind, writer=writer).rstrip() + "\n"
+            current = ensure_metadata(
+                current, kind=kind, writer=writer,
+                entity_id=entity_id or (p.stem if kind == "project" else None), alias=alias
+            ).rstrip() + "\n"
             if line not in current:
                 if not current.endswith("\n\n"):
                     current += "\n"

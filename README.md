@@ -144,12 +144,12 @@ sequenceDiagram
 
 ## Features
 
-- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `memory_reindex`, `memory_policy`
+- 🔌 **MCP server** — `memory_search`, `memory_read`, `memory_propose`, `memory_supersede`, `memory_forget`, `session_write`, `session_consolidate`, `propose_pattern_match`, `memory_audit`, `project_audit`, `memory_reindex`, `memory_policy`
 - 📥 **Review history** — review queue shows open, rejected, and approved proposals, with filters for those three statuses
 - 🗂️ **Obsidian vault** as the canonical, human-readable store
 - 🛡️ **Secret rejection** — blocks probable passwords, API keys, private keys, seed phrases, card numbers
 - 🔁 **Deduplication & conflict review** — duplicate text is rejected across the vault; conflict candidates are limited to singleton facts (`profile`, `preference`) with the same subject, while log-like kinds can accumulate distinct facts
-- 🗃️ **Fragmentation-resistant project routing** — a new subject that's a hyphen-prefixed variant of an existing project file (e.g. `widget-app-ui` → `widget-app.md`) is folded into it instead of forking a new file
+- 🗃️ **Project identity and audit** — explicit `entity_id` values route aliases to one canonical project file; `project_audit` reports exact duplicates, alias collisions, and possible name splits without modifying memory
 - 🕐 **Full local timestamps** on every entry's create/edit, not just the date (old date-only entries stay valid and parseable)
 - 🖥️ **Redesigned local dashboard** (`127.0.0.1` only) — sidebar navigation with live counts, in-page modals, toast feedback, kind filters, subject-grouped lists with the newest entry first in each group and one most-recent marker per group, and a readable audit view
 - 🔒 **Origin-protected dashboard API** — every state-changing request is checked against the `Host`/`Origin` headers and a random per-launch token, so binding to localhost isn't the only thing standing between the vault and a rogue page in your browser
@@ -626,6 +626,7 @@ at the moment you click, even if the page is still open and showing data from be
 | `memory_forget(memory_id)` | Delete a specific memory by its stable ID, including session summary blocks |
 | `memory_supersede(old_memory_id, ...)` | Mark an old memory superseded and record the new fact |
 | `memory_audit()` | Check for duplicate IDs, missing index entries, malformed entries, orphaned session blocks, index drift |
+| `project_audit()` | Report project identity collisions, exact duplicate candidates, and possible name splits without changing memory |
 | `memory_reindex()` | Rebuild the disposable SQLite index from Markdown |
 | `memory_policy()` | Return the automatic-retention rules to the host model |
 
@@ -652,7 +653,7 @@ Facts are routed to one canonical home by kind:
 | session (with a project) | `/sessions/<project>/<writer>.md` |
 | session (no project) | `/sessions/<writer>.md` |
 
-New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. A project first uses an exact matching file. Otherwise, a hyphen-segment prefix match routes to the shortest existing project file (`widget-app-ui` routes to `widget-app.md`); unrelated shared-prefix projects stay separate. A caller may explicitly set `target_path`, which is validated to stay inside the vault and bypasses automatic routing. Existing fragmented files are not merged automatically.
+New and edited entries receive local timestamps with second precision; date-only legacy entries remain readable. Projects may provide an explicit `entity_id`; matching IDs and approved aliases route to one canonical project file. For legacy callers without an entity ID, the narrow hyphen-segment prefix fallback remains for compatibility (`widget-app-ui` routes to `widget-app.md`). `project_audit()` reports possible name splits and exact duplicates without changing memory. Existing fragmented files are not merged automatically.
 
 ## Safety
 

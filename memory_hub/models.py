@@ -22,6 +22,7 @@ class MemoryCandidate:
     writer: str = "other"
     target_path: Optional[str] = None
     supersedes_id: Optional[str] = None
+    entity_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
