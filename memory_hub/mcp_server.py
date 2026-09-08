@@ -134,13 +134,29 @@ def memory_reindex() -> dict:
 def session_write(
     title: str, investigated: list[str], learned: list[str], completed: list[str],
     next_steps: list[str], project: str | None = None, session_date: str | None = None,
+    session_group_id: str | None = None, host_session_id: str | None = None,
+    checkpoint_id: str | None = None, sequence: int | None = None,
+    entry_type: str | None = None, previous_id: str | None = None,
+    final_id: str | None = None, source_client: str | None = None,
+    worktree: str | None = None, evidence_start: str | None = None,
+    evidence_end: str | None = None, token_count: int | None = None,
+    token_basis: str | None = None, session_tags: list[str] | None = None,
 ) -> dict:
     """Write a four-section session summary for the current client/model."""
-    result = manager.propose_session({
+    payload = {
         "model": WRITER, "title": title, "date": session_date,
         "project": project, "investigated": investigated, "learned": learned,
         "completed": completed, "next_steps": next_steps,
-    }, write_mode=WRITE_MODE)
+    }
+    metadata = {
+        "session_group_id": session_group_id, "host_session_id": host_session_id,
+        "checkpoint_id": checkpoint_id, "sequence": sequence, "entry_type": entry_type,
+        "previous_id": previous_id, "final_id": final_id, "source_client": source_client,
+        "worktree": worktree, "evidence_start": evidence_start, "evidence_end": evidence_end,
+        "token_count": token_count, "token_basis": token_basis, "session_tags": session_tags,
+    }
+    payload.update({key: value for key, value in metadata.items() if value is not None})
+    result = manager.propose_session(payload, write_mode=WRITE_MODE)
     # MCP transports can return a successful tool call even when the
     # application-level operation was rejected. Surface that distinction to
     # callers so they cannot mistake a rejected write for persisted memory.

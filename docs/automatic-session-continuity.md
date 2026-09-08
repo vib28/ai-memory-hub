@@ -3,8 +3,9 @@
 Status: **partially implemented and tracked**. Reviewed 2026-09-08 against
 `enhancements/roadmap`. Native hook mapping, managed-handler preservation, bounded
 leased capture claims, project-scoped context and separate local-model roles are
-implemented. Linked checkpoints, the supervised worker and automatic startup handoff
-remain roadmap work. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
+implemented. Opt-in checkpoint metadata and manifest persistence are implemented as a
+prerequisite; the supervised worker, automatic startup handoff and full final-rollup
+workflow remain roadmap work. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ## Where the problem exists
 
@@ -288,7 +289,7 @@ crash-at-each-write-boundary tests remain open acceptance gates.
    [#53](https://github.com/vib28/ai-memory-hub/issues/53) safe hook updates.
 2. [#54](https://github.com/vib28/ai-memory-hub/issues/54) queue correctness and
    [#55](https://github.com/vib28/ai-memory-hub/issues/55) session identity.
-3. [#57](https://github.com/vib28/ai-memory-hub/issues/57) checkpoint metadata and links.
+3. [#57](https://github.com/vib28/ai-memory-hub/issues/57) checkpoint metadata and links (opt-in metadata/manifest support implemented).
 4. [#58](https://github.com/vib28/ai-memory-hub/issues/58) local automatic worker.
 5. [#56](https://github.com/vib28/ai-memory-hub/issues/56) context scope/budget and
    [#59](https://github.com/vib28/ai-memory-hub/issues/59) automatic startup handoff.

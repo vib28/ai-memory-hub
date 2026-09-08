@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from datetime import date, datetime
@@ -28,6 +29,7 @@ ENTRY_RE = re.compile(
 )
 SESSION_RE = re.compile(r"^## (?P<slug>[a-zA-Z0-9_-]+)\s*\n(?P<body>.*?)(?=^## |\Z)", re.M | re.S)
 SESSION_ID_RE = re.compile(r"<!-- session:(?P<id>[a-zA-Z0-9_-]+) -->")
+SESSION_META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
 
 def today() -> str:
     return date.today().isoformat()
@@ -335,6 +337,43 @@ class Vault:
                 rebuilt = dump_frontmatter(meta) if meta else ""
                 if kept:
                     rebuilt += ("\n" if rebuilt else "") + "\n\n".join(kept) + "\n"
+                atomic_write(p, rebuilt)
+            return changed
+
+    def update_session_metadata(self, relative: str, memory_id: str, metadata: dict) -> bool:
+        """Replace or add the machine-readable metadata line for one session block."""
+        p = self.resolve(relative)
+        if not p.exists():
+            return False
+        encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+        marker = f"<!-- session-meta:{encoded} -->"
+        with file_lock(p):
+            content = p.read_text(encoding="utf-8")
+            meta, body = parse_frontmatter(content)
+            blocks = []
+            changed = False
+            for block in SESSION_RE.finditer(body):
+                text = block.group(0)
+                found = SESSION_ID_RE.search(text)
+                if found and found.group("id") == memory_id:
+                    lines = text.rstrip().splitlines()
+                    replaced = False
+                    for index, line in enumerate(lines):
+                        if SESSION_META_RE.fullmatch(line.strip()):
+                            lines[index] = marker
+                            replaced = True
+                            break
+                    if not replaced:
+                        marker_index = next((i for i, line in enumerate(lines)
+                                             if SESSION_ID_RE.search(line)), len(lines))
+                        lines.insert(marker_index, marker)
+                    text = "\n".join(lines)
+                    changed = True
+                blocks.append(text.rstrip())
+            if changed:
+                rebuilt = dump_frontmatter(meta) if meta else ""
+                if blocks:
+                    rebuilt += ("\n" if rebuilt else "") + "\n\n".join(blocks) + "\n"
                 atomic_write(p, rebuilt)
             return changed
 

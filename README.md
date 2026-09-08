@@ -40,7 +40,7 @@ The writer records where it came from; it is not an access restriction.
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links and project-scoped retry identity | No linked token-batch chain yet |
+| Sessions | Four-section summaries, structured project links, project-scoped retry identity and optional checkpoint manifests | No automatic checkpoint worker yet |
 | Capture | Native payload mapping, managed hook schemas, bounded leased queue | No supervised periodic worker yet |
 | Retrieval | Keyword search, optional vectors and bounded project-scoped context | No automatic startup handoff yet |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
@@ -136,7 +136,9 @@ checkpoints and automatic handoff. [Acceptance #62](https://github.com/vib28/ai-
 requires matched Claude/Codex token and task-quality measurements.
 
 Use the [tracked roadmap](docs/local-memory-plan.md) for order and dependencies, and
-the [GitHub project](https://github.com/users/vib28/projects/1) for open and closed work.
+the [open issue priority order](docs/issue-priority-order.md) for the recommended
+implementation sequence. The [GitHub project](https://github.com/users/vib28/projects/1)
+tracks open and closed work.
 Issues and planning documents retain their prescribed seven-section format.
 
 [FIXLOG](FIXLOG.md) and [release notes](RELEASE_NOTES_v0.2.md) are historical records;

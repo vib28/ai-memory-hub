@@ -1,4 +1,5 @@
 import sys
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +45,49 @@ class SessionTests(unittest.TestCase):
         beta = self.manager.propose_session({**payload, "project": "beta"})
         self.assertEqual(alpha["status"], "stored")
         self.assertEqual(beta["status"], "stored")
+
+    def test_checkpoint_metadata_manifest_links_and_reindex(self):
+        base = {
+            "model": "codex", "project": "alpha", "investigated": ["Reviewed the queue"],
+            "learned": ["Leases prevent duplicate claims"], "completed": [],
+            "next_steps": ["Continue the worker"], "session_group_id": "group-alpha",
+            "host_session_id": "host-1", "source_client": "codex", "session_tags": ["handoff"],
+            "token_count": 120, "token_basis": "estimated-evidence",
+        }
+        first = self.manager.propose_session({**base, "title": "Checkpoint one",
+                                              "checkpoint_id": "batch-1", "sequence": 1,
+                                              "entry_type": "checkpoint"})
+        second = self.manager.propose_session({**base, "title": "Checkpoint two",
+                                               "investigated": ["Reviewed the worker"],
+                                               "checkpoint_id": "batch-2", "sequence": 2,
+                                               "entry_type": "checkpoint"})
+        final = self.manager.propose_session({**base, "title": "Final rollup",
+                                              "investigated": ["Reviewed every batch"],
+                                              "completed": ["Recorded the final state"],
+                                              "next_steps": ["Resume from the handoff"],
+                                              "checkpoint_id": "final-1", "sequence": 3,
+                                              "entry_type": "final"})
+        self.assertEqual(first["status"], "stored")
+        self.assertIn(second["status"], {"stored", "stored_without_project_link"})
+        self.assertIn(final["status"], {"stored", "stored_without_project_link"})
+        manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
+        entries = manifest["groups"]["group-alpha"]["entries"]
+        self.assertEqual([entry["checkpoint_id"] for entry in entries],
+                         ["batch-1", "batch-2", "final-1"])
+        self.assertEqual(entries[1]["previous_id"], "batch-1")
+        self.assertEqual(entries[0]["next_id"], "batch-2")
+        self.assertEqual(entries[0]["final_id"], "final-1")
+        block = self.manager.read(second["memory"]["path"])
+        self.assertIn("session-meta:", block)
+        self.assertIn("#group-group-alpha", block)
+        self.manager.reindex()
+        self.assertIsNotNone(self.manager.index.by_id(final["memory"]["memory_id"]))
+        self.assertEqual(json.loads(self.manager.read("/sessions/session-manifest.json"))["version"], 1)
+        retry = self.manager.propose_session({**base, "title": "Different retry title",
+                                              "checkpoint_id": "batch-2", "sequence": 2,
+                                              "entry_type": "checkpoint"})
+        self.assertEqual(retry["status"], "duplicate")
+        self.assertEqual(retry["checkpoint_id"], "batch-2")
 
     def test_review_approval_preserves_session_sections(self):
         result = self.manager.propose_session({

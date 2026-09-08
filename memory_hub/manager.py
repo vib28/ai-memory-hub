@@ -179,11 +179,48 @@ class MemoryManager:
         clean["model"] = str(clean["model"]).strip().lower()
         clean["title"] = str(clean["title"]).strip()
         clean["project"] = str(clean["project"]).strip() if clean["project"] else None
+        group = data.get("session_group_id")
+        checkpoint = data.get("checkpoint_id")
+        if group or checkpoint or data.get("entry_type"):
+            clean["session_group_id"] = slugify(str(group or uuid.uuid4().hex[:12]))
+            clean["host_session_id"] = str(data.get("host_session_id") or "").strip()[:200] or None
+            clean["checkpoint_id"] = slugify(str(checkpoint or uuid.uuid4().hex[:12]))
+            entry_type = str(data.get("entry_type") or "checkpoint").strip().lower()
+            if entry_type not in {"checkpoint", "final"}:
+                raise ValueError("session entry_type must be checkpoint or final")
+            clean["entry_type"] = entry_type
+            try:
+                clean["sequence"] = max(0, int(data.get("sequence") or 0))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("session sequence must be an integer") from exc
+            clean["previous_id"] = slugify(str(data["previous_id"])) if data.get("previous_id") else None
+            clean["next_id"] = slugify(str(data["next_id"])) if data.get("next_id") else None
+            clean["final_id"] = slugify(str(data["final_id"])) if data.get("final_id") else None
+            clean["source_client"] = str(data.get("source_client") or clean["model"]).strip()[:100]
+            clean["worktree"] = str(data.get("worktree") or "").strip()[:500] or None
+            clean["state"] = str(data.get("state") or "accepted").strip().lower()[:40]
+            clean["token_basis"] = str(data.get("token_basis") or "").strip()[:100] or None
+            clean["token_count"] = data.get("token_count")
+            if clean["token_count"] is not None:
+                try:
+                    clean["token_count"] = max(0, int(clean["token_count"]))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("session token_count must be an integer") from exc
+            clean["evidence_start"] = str(data.get("evidence_start") or "").strip()[:100] or None
+            clean["evidence_end"] = str(data.get("evidence_end") or "").strip()[:100] or None
+            raw_tags = data.get("session_tags") or []
+            if isinstance(raw_tags, str):
+                raw_tags = [raw_tags]
+            clean["session_tags"] = [slugify(str(tag)) for tag in raw_tags if str(tag).strip()][:20]
         return clean
 
-    def _session_block(self, data: dict, memory_id: str) -> tuple[str, str]:
+    def _session_block(self, data: dict, memory_id: str,
+                       metadata: dict | None = None) -> tuple[str, str]:
         slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
         tags = f"#{slugify(data['model'])} #{str(data['date'])[:10]}"
+        if metadata:
+            tags += f" #group-{metadata['session_group_id']} #{metadata['entry_type']}"
+            tags += " " + " ".join(f"#{tag}" for tag in metadata.get("session_tags", []))
         project = f"[[{slugify(data['project'])}]]" if data.get("project") else "None"
         lines = [f"## {slug}", f"**Model:** {data['model']}", f"**Session title:** {data['title']}",
                  f"**Date:** {data['date']}", f"**Project:** {project}", f"**Tags:** {tags}", ""]
@@ -192,8 +229,113 @@ class MemoryManager:
             lines.append(f"### {heading}")
             lines.extend(f"- {item}" for item in data[key])
             lines.append("")
+        if metadata:
+            lines.append(f"**Checkpoint:** {metadata['checkpoint_id']}")
+            lines.append(f"**Sequence:** {metadata['sequence']}")
+            lines.append(f"**Entry type:** {metadata['entry_type']}")
+            if metadata.get("previous_url"):
+                lines.append(f"**Previous:** {metadata['previous_url']}")
+            if metadata.get("next_url"):
+                lines.append(f"**Next:** {metadata['next_url']}")
+            if metadata.get("final_url"):
+                lines.append(f"**Final:** {metadata['final_url']}")
+            lines.append(f"<!-- session-meta:{json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))} -->")
         lines.append(f"<!-- session:{memory_id} -->")
         return slug, "\n".join(lines).rstrip()
+
+    def _session_manifest_path(self):
+        return self.vault.resolve("/sessions/session-manifest.json")
+
+    def _load_session_manifest(self) -> dict:
+        path = self._session_manifest_path()
+        if not path.exists():
+            return {"version": 1, "groups": {}}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("session manifest is invalid; repair it before adding a checkpoint") from exc
+        if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("groups"), dict):
+            raise ValueError("session manifest has an unsupported format")
+        return value
+
+    def _write_session_manifest(self, manifest: dict) -> None:
+        path = self._session_manifest_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(path):
+            atomic_write(path, json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+
+    def _checkpoint_metadata(self, data: dict, memory_id: str, slug: str,
+                             relative: str) -> dict | None:
+        if not data.get("session_group_id"):
+            return None
+        manifest = self._load_session_manifest()
+        group_id = data["session_group_id"]
+        group = manifest["groups"].setdefault(group_id, {
+            "session_group_id": group_id, "host_session_id": data.get("host_session_id"),
+            "project": data.get("project"), "source_client": data.get("source_client"),
+            "worktree": data.get("worktree"), "entries": [], "revision": 0,
+        })
+        entries = group.setdefault("entries", [])
+        previous = None
+        if data.get("previous_id"):
+            previous = next((item for item in entries if item.get("checkpoint_id") == data["previous_id"]), None)
+        if previous is None and entries:
+            previous = max(entries, key=lambda item: (item.get("sequence", 0), item.get("checkpoint_id", "")))
+        checkpoint_id = data["checkpoint_id"]
+        existing = next((item for item in entries if item.get("checkpoint_id") == checkpoint_id), None)
+        if existing:
+            return existing
+        sequence = data["sequence"] or (int(previous.get("sequence", 0)) + 1 if previous else 0)
+        base = {
+            "version": 1, "memory_id": memory_id, "checkpoint_id": checkpoint_id,
+            "session_group_id": group_id, "sequence": sequence,
+            "entry_type": data["entry_type"], "path": relative, "heading": slug,
+            "previous_id": previous.get("checkpoint_id") if previous else None,
+            "next_id": data.get("next_id"), "final_id": data.get("final_id"),
+            "state": data.get("state", "accepted"), "source_client": data.get("source_client"),
+            "host_session_id": data.get("host_session_id"), "project": data.get("project"),
+            "worktree": data.get("worktree"), "evidence_start": data.get("evidence_start"),
+            "evidence_end": data.get("evidence_end"), "token_count": data.get("token_count"),
+            "token_basis": data.get("token_basis"), "session_tags": data.get("session_tags", []),
+        }
+        base["previous_url"] = (f"[[{previous['path'].lstrip('/')}#{previous['heading']}]"
+                                 f"]" if previous else None)
+        entries.append(base)
+        entries.sort(key=lambda item: (item.get("sequence", 0), item.get("checkpoint_id", "")))
+        group["revision"] = int(group.get("revision", 0)) + 1
+        self._write_session_manifest(manifest)
+        return base
+
+    def _complete_checkpoint_links(self, metadata: dict) -> None:
+        manifest = self._load_session_manifest()
+        group = manifest["groups"].get(metadata["session_group_id"])
+        if not group:
+            return
+        entries = group.get("entries", [])
+        current = next((item for item in entries
+                        if item.get("checkpoint_id") == metadata["checkpoint_id"]), None)
+        if not current:
+            return
+        current_url = f"[[{current['path'].lstrip('/')}#{current['heading']}]]"
+        if current.get("previous_id"):
+            previous = next((item for item in entries
+                             if item.get("checkpoint_id") == current["previous_id"]), None)
+            if previous:
+                previous["next_id"] = current["checkpoint_id"]
+                previous["next_url"] = current_url
+        if current.get("entry_type") == "final":
+            for entry in entries:
+                entry["final_id"] = current["checkpoint_id"]
+                entry["final_url"] = current_url
+            current["final_id"] = current["checkpoint_id"]
+            current["final_url"] = current_url
+        group["revision"] = int(group.get("revision", 0)) + 1
+        self._write_session_manifest(manifest)
+        for entry in entries:
+            if (entry.get("memory_id") == current.get("memory_id")
+                    or entry.get("checkpoint_id") == current.get("previous_id")
+                    or entry.get("final_id") == current.get("checkpoint_id")):
+                self.vault.update_session_metadata(entry["path"], entry["memory_id"], entry)
 
     def _duplicate_session(self, model: str, title: str, text: str,
                            project: str | None = None) -> dict | None:
@@ -248,10 +390,21 @@ class MemoryManager:
         if write_mode == "review":
             row = self.index.enqueue(candidate.to_dict(), payload={"type": "session", "data": data})
             return {"status": "queued", "proposal": row, "label": "session summary"}
-        memory_id = uuid.uuid4().hex[:12]
-        slug, block = self._session_block(data, memory_id)
         relative = self.vault.canonical_path("session", data["model"], project=data.get("project"))
+        memory_id = uuid.uuid4().hex[:12]
+        slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
+        metadata = self._checkpoint_metadata(data, memory_id, slug, relative)
+        if metadata and metadata.get("memory_id") != memory_id:
+            existing = self.index.by_id(metadata["memory_id"]) or metadata
+            return {"status": "duplicate", "memory": existing,
+                    "checkpoint_id": metadata.get("checkpoint_id")}
+        if metadata:
+            metadata["final_url"] = (f"[[{relative.lstrip('/')}#{slug}]]"
+                                      if data.get("entry_type") == "final" else metadata.get("final_url"))
+        slug, block = self._session_block(data, memory_id, metadata)
         self.vault.append_session_block(relative, block, writer=data["model"])
+        if metadata:
+            self._complete_checkpoint_links(metadata)
         covers = f"Session summaries for {data['model']}"
         if data.get("project"):
             covers += f" on {data['project']}"

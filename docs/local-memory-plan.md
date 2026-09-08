@@ -37,7 +37,7 @@ over embedding improvements and unrelated documentation cleanup.
   success from fewer tokens with worse task results. Positive median end-to-end savings
   without a lower completion/essential-fact retention rate is required to claim benefit
   in the measured suite; otherwise the gate remains open.
-- **Implementation:** #52/#53 → #54/#55 → #57 → #58 → #56/#59 → #60, with closeout in
+- **Implementation:** #52/#53 → #54/#55 → #57 (opt-in metadata/manifest support) → #58 → #56/#59 → #60, with closeout in
   [#61](https://github.com/vib28/ai-memory-hub/issues/61). #56 can be prepared earlier.
 - **Verification:** prerequisite capture, hook and context fixes are covered by 180 tests;
   no real-client handoff, supervised worker or paired token-saving benchmark has been
