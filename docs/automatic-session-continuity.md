@@ -41,6 +41,22 @@ the source client never emitted. Local continuity comes before optional GitHub p
 | FTS / optional vectors | Related-memory retrieval | Deterministic active-session selection and strict context scope |
 | Hook installers | Backups and managed installation | Correct schemas, mixed-handler preservation, full lifecycle setup |
 
+### Separate model roles
+
+The continuity pipeline uses two independent local-model roles. The embedding model
+(`MEMORY_EMBED_MODEL`, default name `nomic-embed-text`) is limited to retrieval,
+related-memory ranking and semantic audit candidates. It never authors, rewrites or
+silently deletes durable memory. Exact duplicate and near-update decisions remain
+deterministic and reviewable.
+
+The local chat model (`MEMORY_LLM_MODEL`) is used by consolidation and transcript
+extraction. It produces conservative JSON which is rendered into the four session
+sections and atomic durable-memory candidates. A missing or unavailable chat model
+falls back to evidence-only session capture where possible; it must not invent
+completion, decisions or facts. These roles may use the same OpenAI-compatible local
+server, but they must remain separately configured so model replacement cannot change
+the duplicate-safety boundary.
+
 The capture database is **durable operational state**, not a disposable search index.
 Unsummarized evidence cannot be reconstructed from the Markdown vault. Pending review
 payloads also currently live in SQLite and are not recoverable from accepted Markdown

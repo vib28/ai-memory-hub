@@ -62,6 +62,19 @@ $env:MEMORY_EMBED_MODEL = "<loaded-embedding-model>"
 The bracketed model names are placeholders, not commands to run unchanged. The code
 adds /chat/completions or /embeddings to the base URL; do not include those suffixes twice.
 
+These settings intentionally define two different model roles:
+
+| Role | Settings | Responsibility | Safe failure behavior |
+| --- | --- | --- | --- |
+| Embedding model | `MEMORY_EMBED_BASE_URL`, `MEMORY_EMBED_MODEL` | Search, related-memory ranking and semantic audit candidates | Keyword search and lexical duplicate/update checks continue; it never deletes a memory by itself |
+| Local chat model | `MEMORY_LLM_BASE_URL`, `MEMORY_LLM_MODEL` | Session consolidation and durable-memory extraction | Consolidation uses the deterministic evidence-only fallback; extraction fails explicitly when no model is configured |
+
+The recommended setup is a small embedding model such as `nomic-embed-text` plus a
+separate local chat model such as Qwen, Llama or Mistral. The chat model writes the
+four structured session sections and atomic memory candidates; the embedding model
+does not generate or rewrite memory text. Similarity is advisory: exact duplicates are
+blocked by deterministic checks, while close matches are surfaced as reviewable updates.
+
 Consolidation without a configured language model uses a deterministic fallback.
 Transcript extraction requires a configured language model. Embeddings are optional;
 search can use keyword matching alone.

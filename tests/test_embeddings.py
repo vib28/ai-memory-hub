@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,6 +109,16 @@ class EmbeddingTests(unittest.TestCase):
         import unittest.mock
         with unittest.mock.patch("urllib.request.urlopen", provider_urlopen):
             self.assertEqual(provider.embed(["a", "b"]), [[1.0], [2.0]])
+
+    def test_embedding_model_role_is_configured_separately(self):
+        from unittest.mock import patch
+        with patch.dict(os.environ, {
+            "MEMORY_EMBED_BASE_URL": "http://embed/v1",
+            "MEMORY_EMBED_MODEL": "nomic-embed-text",
+        }, clear=False):
+            provider = LocalEmbeddingProvider.from_environment()
+        self.assertEqual(provider.base_url, "http://embed/v1")
+        self.assertEqual(provider.model, "nomic-embed-text")
 
 if __name__ == "__main__":
     unittest.main()
