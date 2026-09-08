@@ -386,6 +386,13 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"| Destination-stage common tokens | {aggregate['off']['destination_stage_tokens']} | {aggregate['on']['destination_stage_tokens']} | {aggregate['savings']['destination_stage']['absolute']} | {aggregate['savings']['destination_stage']['percent']}% |",
         f"| Whole-workflow common tokens | {aggregate['off']['whole_workflow_tokens']} | {aggregate['on']['whole_workflow_tokens']} | {aggregate['savings']['whole_workflow']['absolute']} | {aggregate['savings']['whole_workflow']['percent']}% |",
         "",
+        f"Destination-stage spread (min–max): OFF {aggregate['off']['destination_stage_tokens_spread']['min']}–{aggregate['off']['destination_stage_tokens_spread']['max']}; "
+        f"ON {aggregate['on']['destination_stage_tokens_spread']['min']}–{aggregate['on']['destination_stage_tokens_spread']['max']}.",
+        f"Whole-workflow spread (min–max): OFF {aggregate['off']['whole_workflow_tokens_spread']['min']}–{aggregate['off']['whole_workflow_tokens_spread']['max']}; "
+        f"ON {aggregate['on']['whole_workflow_tokens_spread']['min']}–{aggregate['on']['whole_workflow_tokens_spread']['max']}.",
+        f"Replay latency spread (min–max ms): OFF {aggregate['off']['latency_ms']['min']}–{aggregate['off']['latency_ms']['max']}; "
+        f"ON {aggregate['on']['latency_ms']['min']}–{aggregate['on']['latency_ms']['max']}.",
+        "",
         f"Completion rate: OFF {aggregate['off']['completion_rate']}; ON {aggregate['on']['completion_rate']}. "
         f"Essential-fact retention: OFF {aggregate['off']['fact_retention_rate']}; ON {aggregate['on']['fact_retention_rate']}.",
         "These are deterministic replay estimates, not a demonstrated provider-token saving.",

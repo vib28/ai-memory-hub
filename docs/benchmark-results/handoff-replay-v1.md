@@ -27,6 +27,10 @@ flowchart LR
 | Destination-stage common tokens | 189.0 | 159.0 | 30.0 | 15.873% |
 | Whole-workflow common tokens | 527.0 | 497.0 | 30.0 | 5.6926% |
 
+Destination-stage spread (min–max): OFF 188–191; ON 158–161.
+Whole-workflow spread (min–max): OFF 524–533; ON 494–503.
+Replay latency spread (min–max ms): OFF 0.0617–0.11; ON 0.0586–0.0798.
+
 Completion rate: OFF 1.0; ON 1.0. Essential-fact retention: OFF 1.0; ON 1.0.
 These are deterministic replay estimates, not a demonstrated provider-token saving.
 
@@ -36,4 +40,4 @@ These are deterministic replay estimates, not a demonstrated provider-token savi
 - Live Claude/Codex adapters, model versions, billing counters, cache state and authorized cost ceiling were not supplied.
 - The #62 gate remains open. The replay is CI-safe regression evidence and does not certify live cross-tool behavior or advertise a universal percentage.
 
-Generated at `2026-09-08T20:14:33.801317+00:00`.
+Generated at `2026-09-08T20:18:02.140454+00:00`.
