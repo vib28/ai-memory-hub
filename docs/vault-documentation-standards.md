@@ -8,6 +8,15 @@ tracks the *capture pipeline*; this document tracks the *quality of what ends up
 Raised from a review of a real, in-use vault (49+ records across every kind). Findings and
 priority order below; each has its own GitHub issue.
 
+```mermaid
+flowchart TD
+    Writer[Human or AI writer] --> Template[Kind-specific template]
+    Template --> Validate[Existing validation and one-line parser]
+    Validate --> Markdown[Readable Markdown vault]
+    Markdown --> Index[Rebuildable search index]
+    Markdown --> Review[Audit and human review]
+```
+
 ## Where the template lives
 
 `vault_template/AI_INSTRUCTIONS.md` is the "generation structure" file: it is copied into

@@ -3,6 +3,15 @@
 Follow this route from a fresh checkout to a verified memory connection. Detailed
 instructions have one home in docs/ so setup steps do not drift between copies.
 
+```mermaid
+flowchart TD
+    Prepare[Prepare prerequisites] --> Initialize[Initialize vault]
+    Initialize --> Connect[Connect client]
+    Connect --> Verify[Verify review behavior]
+    Verify --> Configure[Configure optional models and history]
+    Configure --> Maintain[Use and troubleshoot]
+```
+
 ## 1. Prepare the environment
 
 Read [installation prerequisites and source setup](docs/INSTALLATION.md).

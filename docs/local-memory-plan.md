@@ -11,7 +11,7 @@ truth for the public repository roadmap.
 [Issue #64](https://github.com/vib28/ai-memory-hub/issues/64) and the
 [reviewed dashboard plan](dashboard-redesign-plan.md) track the readable workspace,
 single tray/dashboard launcher, four color modes and ID-based tag/link editing.
-Implementation passes 180 automated tests. The user's initial sanity test passed;
+Implementation passes 181 automated tests. The user's initial sanity test passed;
 the next-visit real-vault checklist in #64 is still open. The plan uses the required Where / Why / How / Reproduction / Acceptance /
 Implementation / Verification format. This UI work does not mark automatic
 continuity or the token benchmark complete.
@@ -19,6 +19,18 @@ continuity or the token benchmark complete.
 The user's current first priority is automatic periodic session saves and cross-client
 handoff, with shared metadata, forward/backward links and tags. This takes precedence
 over embedding improvements and unrelated documentation cleanup.
+
+```mermaid
+flowchart LR
+    A["Capture reliability<br/>#54"] --> B["Context scope<br/>#56"]
+    B --> C["Checkpoint metadata<br/>#57"]
+    C --> D["Local worker<br/>#58"]
+    D --> E["Automatic handoff<br/>#59"]
+    E --> F["GitHub publication<br/>#60"]
+    F --> G["Roadmap closeout<br/>#61"]
+    G --> H["Token and quality benchmark<br/>#62"]
+    R["Section embeddings<br/>#40"] -. separate track .-> G
+```
 
 - **Where:** the client-hook → capture → consolidation → session → startup-context path.
 - **Why:** continue in Codex after Claude stops without manually saving or re-explaining;
@@ -37,9 +49,11 @@ over embedding improvements and unrelated documentation cleanup.
   success from fewer tokens with worse task results. Positive median end-to-end savings
   without a lower completion/essential-fact retention rate is required to claim benefit
   in the measured suite; otherwise the gate remains open.
-- **Implementation:** #52/#53 → #54/#55 → #57 (opt-in metadata/manifest support) → #58 → #56/#59 → #60, with closeout in
-  [#61](https://github.com/vib28/ai-memory-hub/issues/61). #56 can be prepared earlier.
-- **Verification:** prerequisite capture, hook and context fixes are covered by 180 tests;
+- **Implementation order:** follow the canonical [open issue priority order](issue-priority-order.md).
+  The continuity chain is #54 → #56/#57 → #58 → #59 → #60 → #61 → #62. #57's
+  opt-in metadata/manifest foundation is implemented; the worker, handoff and
+  benchmark gates remain open.
+- **Verification:** prerequisite capture, hook and context fixes are covered by 181 tests;
   no real-client handoff, supervised worker or paired token-saving benchmark has been
   certified yet.
 

@@ -4,6 +4,13 @@ For Windows users with a repository checkout and Python, Git and uv already inst
 
 [Full installation](docs/INSTALLATION.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 
+```mermaid
+flowchart LR
+    Setup[setup.ps1] --> Connect[connect-ai-tools.ps1]
+    Connect --> Start[start-memory-hub.ps1]
+    Start --> Verify[Check review queue]
+```
+
 ## Set up and connect
 
 Run from the repository directory:

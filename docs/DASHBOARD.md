@@ -3,6 +3,14 @@
 The dashboard runs on your computer. It does not need a model server, a cloud account,
 Node.js or a separate frontend installation.
 
+```mermaid
+flowchart LR
+    Launcher[Unified launcher] --> Server[Local HTTP server]
+    Server --> Browser[Browser dashboard]
+    Server --> Tray[Optional tray icon]
+    Browser --> Vault[Canonical vault and rebuildable index]
+```
+
 ## Start once
 
 From the repository folder:
@@ -107,4 +115,3 @@ The tracked [redesign plan](dashboard-redesign-plan.md) and
 [issue #64](https://github.com/vib28/ai-memory-hub/issues/64) record implementation,
 automated checks and any outstanding verification. A temporary demo vault is not your
 real memory vault.
-

@@ -4,6 +4,14 @@ Install the repository environment, initialize a vault, then connect a client.
 
 [Documentation](README.md) · [Client connections](CLIENTS.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
+```mermaid
+flowchart LR
+    Source[Clone the intended branch] --> Env[Create Python environment]
+    Env --> Vault[Initialize a dedicated vault]
+    Vault --> Client[Connect an AI client]
+    Client --> Check[Verify policy and a harmless proposal]
+```
+
 ## Before you start
 
 You need Python 3.10+, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),

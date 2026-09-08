@@ -17,6 +17,14 @@ $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 The helper attempts each detected client independently. These are the paths implemented
 by the script, not a guarantee about every version of the third-party clients.
 
+```mermaid
+flowchart LR
+    Setup[Installation and vault path] --> Helper[connect-ai-tools.ps1]
+    Helper --> Register[Client MCP registration]
+    Register --> Prompt[Client-specific instructions]
+    Prompt --> Verify[Verify vault, writer and write mode]
+```
+
 | Client | Registration path in this project | Behavioral instructions |
 | --- | --- | --- |
 | Claude Code | Client mcp add command | User-home .claude/CLAUDE.md |

@@ -5,6 +5,14 @@ four color modes and editable tag/link lookups.
 
 Start with [AI Memory Hub](../README.md) for what the project does and what is still planned.
 
+```mermaid
+flowchart TD
+    Guide[User guides] --> Install[Install and connect]
+    Guide --> Operate[Use and troubleshoot]
+    Guide --> Plan[Roadmaps and benchmarks]
+    Guide --> Contribute[Develop and audit]
+```
+
 ## Install and operate
 
 | Guide | Purpose |
@@ -29,6 +37,8 @@ These retain their existing structured tracking format:
 
 - [Implementation roadmap](local-memory-plan.md).
 - [Automatic session continuity](automatic-session-continuity.md).
+- [Open issue priority order](issue-priority-order.md): the canonical execution sequence
+  for the current open issues.
 - [Two-tool handoff benchmark](session-handoff-benchmark.md).
 - [Vault documentation standards](vault-documentation-standards.md).
 

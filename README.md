@@ -4,7 +4,8 @@ Shared, local-first memory for AI tools. Store accepted preferences, decisions a
 project notes as readable Markdown, then retrieve them through one MCP server.
 
 [Installation](docs/INSTALLATION.md) · [Connect a client](docs/CLIENTS.md) ·
-[Usage](docs/USAGE.md) · [Architecture](ARCHITECTURE.md) · [Roadmap](docs/local-memory-plan.md)
+[Usage](docs/USAGE.md) · [Architecture](ARCHITECTURE.md) · [Roadmap](docs/local-memory-plan.md) ·
+[Issue priority order](docs/issue-priority-order.md)
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -17,6 +18,15 @@ Context Protocol—is the interface a connected AI uses to search or propose mem
 
 A preference written by Claude is available to Codex and other connected clients.
 The writer records where it came from; it is not an access restriction.
+
+```mermaid
+flowchart LR
+    Client[AI client] --> MCP[MCP server]
+    MCP --> Govern[Validate, deduplicate and apply policy]
+    Govern --> Vault[Local Markdown vault]
+    Vault --> Search[Keyword and optional vector search]
+    Search --> Client
+```
 
 - Save preferences, project facts, decisions, people, topics and session summaries.
 - Read full memory sections in a local workspace with four light/dark color modes.

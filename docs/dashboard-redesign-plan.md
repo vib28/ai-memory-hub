@@ -18,6 +18,16 @@ One Python application owns the HTTP server and optional tray. A single PowerShe
 
 Tags and links have search-based selectors. Record classification (stated, preference, superseded) remains distinct from user organization tags. Explicit user-added tags and memory-ID links live in a reserved Markdown metadata file in the vault, survive reindexing, and never silently merge records. Existing source tags and wiki-links remain visible separately.
 
+```mermaid
+flowchart LR
+    Launcher[One launcher] --> Server[Shared local server]
+    Server --> Browser[Readable dashboard]
+    Server --> Tray[Optional system tray]
+    Browser --> Reader[Canonical Markdown reader]
+    Browser --> Metadata[Revision-checked tags and links]
+    Metadata --> Vault[Reserved vault metadata]
+```
+
 ## Reproduction steps
 
 1. Open a stored session with several sections in the current dashboard: compare the flattened card to its Markdown source.
@@ -68,7 +78,7 @@ reopening the unified app recognizes the same vault and port.
 
 Plan reviewed against dashboard.py, tray.py, vault.py, manager.py and existing dashboard tests before implementation.
 
-- Full automated suite: **180 passed** on Windows, using a fresh disposable test directory.
+- Full automated suite: **181 passed** on Windows, using a fresh disposable test directory.
 - Ruff: passed. JavaScript syntax check and dependency-free interaction tests: passed.
 - Interaction tests cover immediate lookup choices, filtering, selection, tag creation,
   invalid tag names, non-submitting lookup buttons, escaping and all four theme combinations.

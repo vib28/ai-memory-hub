@@ -6,6 +6,19 @@ prerequisites, and the amount of change each item introduces. GitHub remains
 the source for issue acceptance criteria; this file records the order and the
 reasoning so work can resume without reconstructing the dependency graph.
 
+```mermaid
+flowchart LR
+    A["#54 capture recovery"] --> B["#56 context scope"]
+    B --> C["#57 checkpoint metadata"]
+    C --> D["#58 local worker"]
+    D --> E["#59 automatic handoff"]
+    E --> F["#60 GitHub publication"]
+    F --> G["#61 continuity closeout"]
+    G --> H["#62 paired benchmark"]
+    I["#40 retrieval quality"] -. independent .-> C
+    J["#64 dashboard verification"] -. opportunistic .-> G
+```
+
 ## Continuity and handoff first
 
 | Order | Issue | Work | Reason for position |

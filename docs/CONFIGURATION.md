@@ -5,6 +5,15 @@ do not automatically update an already-running MCP server.
 
 [Client setup](CLIENTS.md) · [Architecture](../ARCHITECTURE.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
+```mermaid
+flowchart LR
+    Env[Process environment] --> Server[MCP server]
+    Server --> Vault[AI_MEMORY_VAULT]
+    Server --> Policy[Write mode and policy]
+    Server --> Chat[Optional chat model]
+    Server --> Embed[Optional embedding model]
+```
+
 ## Server settings
 
 | Variable | Purpose | Current default |

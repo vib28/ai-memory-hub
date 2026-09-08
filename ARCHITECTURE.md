@@ -234,10 +234,23 @@ Ordinary proposals are not all automatically committed.
 
 ## Planned extension
 
-[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is first priority:
-native hook fixes, reliable queue claims, linked checkpoint metadata, a supervised
-worker and automatic cross-client startup context. Sanitized GitHub publication follows
-local continuity. Graph retrieval and embedding upgrades are not prerequisites.
+[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is first priority;
+follow the canonical [issue priority order](docs/issue-priority-order.md): queue and
+context correctness, linked checkpoint metadata, a supervised worker, automatic
+cross-client startup context, then sanitized GitHub publication and benchmark closeout.
+Graph retrieval and embedding upgrades are not prerequisites.
+
+```mermaid
+flowchart TD
+    Client[AI client] --> MCP[MCP server]
+    MCP --> Policy[Validation and write policy]
+    Policy --> Vault[Canonical Markdown vault]
+    Vault --> Index[Rebuildable SQLite index]
+    MCP --> Context[Scoped context selection]
+    Context --> Client
+    Capture[Lifecycle capture] --> Queue[Leased local queue]
+    Queue --> MCP
+```
 
 The required [paired benchmark](docs/session-handoff-benchmark.md) measures both token
 overhead and task quality. No implementation or savings percentage is implied by this

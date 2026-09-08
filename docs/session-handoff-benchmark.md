@@ -2,6 +2,18 @@
 
 Required acceptance gate for #61; tracked in #62. This is a test design, not a measured result.
 
+```mermaid
+flowchart LR
+    Source[Fixed source session] --> Snapshot[Identical state snapshot]
+    Snapshot --> Off[Destination arm: handoff OFF]
+    Snapshot --> On[Destination arm: handoff ON]
+    Off --> ScoreOff[Usage and task-quality checks]
+    On --> ScoreOn[Usage and task-quality checks]
+    ScoreOff --> Compare[Paired comparison]
+    ScoreOn --> Compare
+    Compare --> Report[Median, spread, failures and retention]
+```
+
 ## Where the problem exists
 
 The evaluation section of docs/local-memory-plan.md and the automatic-continuity phase #61. Existing scripts/benchmark_context.py compares context packet sizes; it does not perform matched work across two different AI tools or measure re-explanation after switching.
@@ -51,4 +63,3 @@ Implement deterministic fixture/replay harness alongside the handoff code, then 
 ## Verification results
 
 Acceptance design added at the user's explicit request on 2026-09-07. No matched two-tool benchmark has been run and no token-saving number is available. Existing unit-test and packet-size results do not satisfy this gate.
-

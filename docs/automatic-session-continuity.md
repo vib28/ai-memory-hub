@@ -7,6 +7,17 @@ implemented. Opt-in checkpoint metadata and manifest persistence are implemented
 prerequisite; the supervised worker, automatic startup handoff and full final-rollup
 workflow remain roadmap work. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
+```mermaid
+flowchart LR
+    H[Client lifecycle hooks] --> C[Capture and queue]
+    C --> Q[Lease-safe recovery]
+    Q --> M[Checkpoint metadata]
+    M --> W[Supervised worker]
+    W --> S[Scoped startup context]
+    S --> X[Cross-client continuation]
+    X --> B[Measured ON/OFF benchmark]
+```
+
 ## Where the problem exists
 
 The capture-to-handoff path spans client installation, observation buffering,
@@ -283,30 +294,19 @@ crash-at-each-write-boundary tests remain open acceptance gates.
 
 ## Implementation details
 
-**Top-priority order**, ahead of #40 and unrelated #41–#51 cleanup:
+The canonical execution sequence is maintained in
+[`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
+chain is `#54 → #56/#57 → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
+independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
-1. [#52](https://github.com/vib28/ai-memory-hub/issues/52) native adapters and
-   [#53](https://github.com/vib28/ai-memory-hub/issues/53) safe hook updates.
-2. [#54](https://github.com/vib28/ai-memory-hub/issues/54) queue correctness and
-   [#55](https://github.com/vib28/ai-memory-hub/issues/55) session identity.
-3. [#57](https://github.com/vib28/ai-memory-hub/issues/57) checkpoint metadata and links (opt-in metadata/manifest support implemented).
-4. [#58](https://github.com/vib28/ai-memory-hub/issues/58) local automatic worker.
-5. [#56](https://github.com/vib28/ai-memory-hub/issues/56) context scope/budget and
-   [#59](https://github.com/vib28/ai-memory-hub/issues/59) automatic startup handoff.
-   The boundary fix can be prepared earlier.
-6. [#60](https://github.com/vib28/ai-memory-hub/issues/60) GitHub publication.
-7. Automated cross-client/failure tests and the required paired ON/OFF benchmark #62,
-   with measured token/quality closeout in #61.
-
-Keep this dependency line coordinated. #42 retains ownership of readable project
-cross-links; #41 remains authoring guidance. #40's section vectors can improve later
-retrieval but do not capture missing events or establish session identity. #50/#51
-are not prerequisites for using the already-supported multi-line session kind.
-Do not duplicate or silently close these existing open items.
+Do not copy a second numbered priority list into this document. Keep issue acceptance
+criteria and implementation status here, while the linked priority file owns ordering.
+Closed prerequisites #52, #53 and #55 remain historical evidence for the capture,
+hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **180 passed** with a workspace-local pytest base directory;
+Full repository verification: **181 passed** with a workspace-local pytest base directory;
 Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
 preservation, concurrent queue claims, live leases, project-scoped context and separate
 embedding/chat-model configuration.

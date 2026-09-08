@@ -16,6 +16,17 @@ a guaranteed event-driven capture service. [Automatic session continuity](automa
 remains the first-priority roadmap phase; native capture, leased queue claims and bounded
 context selection are implemented prerequisites, not the complete worker/handoff service.
 
+```mermaid
+flowchart TD
+    Search[Search relevant memory] --> Propose[Propose durable fact or session]
+    Propose --> Review{Write mode}
+    Review -->|review| Approve[User approves in dashboard]
+    Review -->|auto| Accept[Validation and deduplication]
+    Approve --> Accept
+    Accept --> Markdown[Accepted Markdown]
+    Markdown --> Reindex[Search index]
+```
+
 ## Review proposals
 
 Open the dashboard against the same vault as the client:

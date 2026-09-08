@@ -4,6 +4,14 @@ Keep accepted memories readable, changes reviewable and evidence honest.
 
 [Architecture](ARCHITECTURE.md) · [Roadmap](docs/local-memory-plan.md) · [Documentation](docs/README.md)
 
+```mermaid
+flowchart LR
+    Issue[Document the issue] --> Fix[Implement the smallest scoped change]
+    Fix --> Tests[Run targeted and broader checks]
+    Tests --> Evidence[Add verification comment]
+    Evidence --> Close[Close only when acceptance is verified]
+```
+
 ## Development environment
 
 From the repository root:
@@ -73,6 +81,7 @@ as a side effect of editing user guides.
 ## Current priority
 
 [Automatic continuity #61](https://github.com/vib28/ai-memory-hub/issues/61) is the first
-runtime priority. Keep its capture/session dependency chain coordinated. The
+runtime priority. Follow the [canonical issue priority order](docs/issue-priority-order.md)
+and keep its capture/session dependency chain coordinated. The
 [paired token benchmark](docs/session-handoff-benchmark.md) is required acceptance,
 not an optional marketing measurement.

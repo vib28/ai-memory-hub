@@ -4,6 +4,15 @@ Start with the symptom and preserve evidence before changing configuration or da
 
 [Installation](INSTALLATION.md) · [Client connections](CLIENTS.md) · [Configuration](CONFIGURATION.md)
 
+```mermaid
+flowchart TD
+    Symptom[Observed symptom] --> Evidence[Read result, logs and configuration]
+    Evidence --> Safe[Make the smallest reversible change]
+    Safe --> Verify[Run a harmless verification]
+    Verify -->|still failing| Evidence
+    Verify -->|resolved| Record[Record the cause and result]
+```
+
 ## Setup cannot find uv or Python
 
 Open a fresh terminal after installing prerequisites. Confirm uv and Python are available
