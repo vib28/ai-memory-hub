@@ -134,18 +134,19 @@ than making the companion-block pattern safe.
 |---|---|---|---|
 | 1 | #41 — Document per-kind entry templates | Foundation | Nothing else is worth doing consistently until writers know the target shape |
 | 2 | #42 — Session-to-project cross-links lose structure | Code, active harm | Every new session naming a project makes this worse right now |
-| 3 | #50 — Make the companion block safe on forget | Code, small | Unlocks safe use of #41's companion-block option; small and fully scoped |
-| 4 | #43 — Migrate legacy writer-major session files | Vault hygiene | Zero risk, tooling already exists, purely deferred maintenance |
-| 5 | #44 — Remove empty test/throwaway vault files | Vault hygiene | Zero risk, immediate declutter |
-| 6 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene | Zero risk, one line, actively misleading as-is |
-| 7 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision | Needs the Priority-1 template landed first to do it in the new shape |
-| 8 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
-| 9 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
-| 10 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
-| 11 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision, largest scope | Explicitly a decide-first item; a "yes" here would be the biggest single change in this whole series |
+| 3 | #40 — Section embedding vectors for improved retrieval | Code, retrieval improvement | Section embedding vectors can improve later retrieval but do not capture missing events or establish session identity |
+| 4 | #50 — Make the companion block safe on forget | Code, small | Unlocks safe use of #41's companion-block option; small and fully scoped |
+| 5 | #43 — Migrate legacy writer-major session files | Vault hygiene | Zero risk, tooling already exists, purely deferred maintenance |
+| 6 | #44 — Remove empty test/throwaway vault files | Vault hygiene | Zero risk, immediate declutter |
+| 7 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene | Zero risk, one line, actively misleading as-is |
+| 8 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision | Needs the Priority-1 template landed first to do it in the new shape |
+| 9 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
+| 10 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
+| 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
+| 12 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision, largest scope | Explicitly a decide-first item; a "yes" here would be the biggest single change in this whole series |
 
-All eleven are filed and on the project board (`Todo`, priority matching the table above:
-#41/#42 High, #43–#47 and #50 Medium, #48/#49/#51 Low). See each issue for the full
+All twelve are filed and on the project board (`Todo`, priority matching the table above:
+#41/#42 High, #40,#43–#47 and #50 Medium, #48/#49/#51 Low). See each issue for the full
 where/why/how/repro/acceptance-criteria/verification detail — this document is the index
 and the rationale for the order, not a duplicate of each issue's content.
 

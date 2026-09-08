@@ -56,8 +56,7 @@ One-time setup is required; routine saves, finalization and restoration must nee
 manual trigger. Explicit session-auto and GitHub export permissions remain separate.
 
 Existing open work is retained: #40 (section embeddings), #41/#42 (readable templates
-and project cross-links), #46/#47 (vault cleanup), #48/#49 (index/audit improvements),
-#50/#51 (companion-block safety and format decision). Coordinate #42 with checkpoint
+and project cross-links), #43 (migrate legacy writer-major session files), #44 (remove empty test/throwaway vault files), #45 (refresh stale "not yet implemented" plan status), #46/#47 (consolidate duplicated preference rule via "Applies to" and resolve flagged project/plan file-split), #48/#49 (index/audit improvements and variant/duplicate detection), #50/#51 (companion-block safety and format decision). Coordinate #42 with checkpoint
 links; the rest does not block this first-priority phase. Closed #13 records the earlier
 v1 scope, not completion of the new unattended workflow.
 
