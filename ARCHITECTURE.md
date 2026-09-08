@@ -178,9 +178,10 @@ Write matching uses normalized hashes and lexical similarity. The current thresh
 are 0.985 for duplicate suppression and 0.85 for the update-review band. Embeddings
 remain advisory for search/audit; they do not decide write-time removal.
 
-The current session retry check has a cross-project identity defect
-([#55](https://github.com/vib28/ai-memory-hub/issues/55)).
-Do not infer that identical session prose always represents the same session.
+Session retry detection is scoped to the canonical project session path
+([#55](https://github.com/vib28/ai-memory-hub/issues/55)); identical prose in distinct
+projects remains distinct. Do not infer that identical session prose always represents
+the same session.
 
 ## Retrieval and local models
 
@@ -193,9 +194,10 @@ on choosing a local endpoint; code does not make an arbitrary URL local or priva
 Consolidation can use a local language model or an evidence-only fallback.
 Transcript extraction separately requires a configured model.
 
-`memory_context` currently selects search results on demand. It is not automatic
-session restoration; its first-item budget and project isolation need correction
-([#56](https://github.com/vib28/ai-memory-hub/issues/56)).
+`memory_context` currently selects bounded search results on demand. It filters project
+scope, excludes superseded records and deterministically prepends the newest canonical
+project session. It is not automatic session restoration; startup injection remains
+roadmap work.
 
 ## Security and consistency boundaries
 
@@ -214,8 +216,8 @@ runtime or model service.
   create a transaction covering Markdown, SQLite, Git and an external service.
 - The dashboard binds locally by default and checks requests. Do not expose it as an
   internet service or assume local storage is encrypted.
-- The generic capture queue bounds text but does not yet provide the complete
-  privacy-filtered native pipeline proposed for automatic continuity.
+- The capture queue bounds native evidence, preserves host event identity and uses
+  owner/lease claims; it is not yet a complete privacy-filtered supervised worker.
 - Review, rejected and failed states must remain distinguishable from accepted data.
 
 ## Opt-in history

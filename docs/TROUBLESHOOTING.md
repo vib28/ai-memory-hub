@@ -33,7 +33,7 @@ Look at the application-level result:
 | --- | --- |
 | queued | Review queue; content is not accepted yet |
 | possible_update | Existing candidate and replacement intent; no automatic write |
-| duplicate | Existing matched record; session project identity has a known defect |
+| duplicate | Existing exact or same-project matched record; distinct project sessions are scoped separately |
 | rejected | Validation reason, length and probable-secret checks |
 | stored_without_project_link | Session file exists, but project cross-link needs attention |
 | Nothing was proposed | Client instructions and whether the fact qualifies as durable |
@@ -80,13 +80,13 @@ initialization itself fails. There is no automatic corrupt-database recovery com
 
 ## Hooks appear installed but no useful session is saved
 
-Current hooks only buffer observations, with native field/schema and queue defects
-tracked in [#52–#54](automatic-session-continuity.md#reproduction-steps).
-There is no supervised periodic consolidation worker yet. Do not repeatedly reinstall
-hooks into personal settings to diagnose this: mixed groups can lose unrelated handlers.
+Current hooks map native event/tool fields, preserve managed-hook siblings and buffer
+through a bounded leased queue. There is still no supervised periodic consolidation
+worker. If a session is not summarized, inspect the capture database and lease state;
+do not repeatedly reinstall hooks into personal settings.
 
-Use the [continuity plan](automatic-session-continuity.md) for the verified gaps and
-required tests. CLI help or valid JSON alone does not certify event delivery.
+Use the [continuity plan](automatic-session-continuity.md) for worker and startup-handoff
+gaps. CLI help or valid JSON alone does not certify event delivery.
 
 ## Tests cannot create a temporary directory
 

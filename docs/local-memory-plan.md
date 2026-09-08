@@ -11,7 +11,7 @@ truth for the public repository roadmap.
 [Issue #64](https://github.com/vib28/ai-memory-hub/issues/64) and the
 [reviewed dashboard plan](dashboard-redesign-plan.md) track the readable workspace,
 single tray/dashboard launcher, four color modes and ID-based tag/link editing.
-Implementation passes 169 automated tests. The user's initial sanity test passed;
+Implementation passes 180 automated tests. The user's initial sanity test passed;
 the next-visit real-vault checklist in #64 is still open. The plan uses the required Where / Why / How / Reproduction / Acceptance /
 Implementation / Verification format. This UI work does not mark automatic
 continuity or the token benchmark complete.
@@ -25,8 +25,9 @@ over embedding improvements and unrelated documentation cleanup.
   measure reduced context/repetition rather than promise a token-saving percentage.
 - **How:** fix native capture and queue correctness, add linked checkpoints and a local
   worker, then install automatic startup handoff. GitHub publishing follows local continuity.
-- **Reproduction:** current hooks only buffer observations; there is no scheduled worker,
-  batch chain or guaranteed startup injection. Confirmed defects are tracked in #52–#56.
+- **Reproduction:** hooks now preserve native evidence and queue claims are lease-protected,
+  but there is no scheduled worker, batch chain or guaranteed startup injection. Remaining
+  gates are tracked in #54, #56–#62.
 - **Acceptance:** unattended checkpoints and final rollup, valid links/tags, bidirectional
   Claude/Codex handoff, crash/retry safety, strict scope/budget and measured token/quality results.
 - **Required benchmark acceptance (#62):** compare matched Claude→Codex and Codex→Claude
@@ -38,9 +39,9 @@ over embedding improvements and unrelated documentation cleanup.
   in the measured suite; otherwise the gate remains open.
 - **Implementation:** #52/#53 → #54/#55 → #57 → #58 → #56/#59 → #60, with closeout in
   [#61](https://github.com/vib28/ai-memory-hub/issues/61). #56 can be prepared earlier.
-- **Verification:** design and disposable reproductions only; these runtime changes are
-  not implemented. Existing suite had 148 passes and two temp-folder setup errors; those
-  two tests passed in a fresh folder. No real-client handoff has been certified.
+- **Verification:** prerequisite capture, hook and context fixes are covered by 180 tests;
+  no real-client handoff, supervised worker or paired token-saving benchmark has been
+  certified yet.
 
 Full design, evidence and acceptance tests:
 [`automatic-session-continuity.md`](automatic-session-continuity.md).
@@ -117,9 +118,9 @@ path and human-readable Obsidian vault.
   ([#29](https://github.com/vib28/ai-memory-hub/issues/29),
   [#14](https://github.com/vib28/ai-memory-hub/issues/14)).
 - Documentation and tests for the above paths.
-- On-demand context priming through `memory_context`; selected records only. The first
-  item can exceed the requested budget and project isolation needs correction (#56).
-  This is not an installed startup-injection hook (#59).
+- On-demand context priming through `memory_context`; selected records are now bounded,
+  project-filtered, superseded-free and newest-session-first. This is not an installed
+  startup-injection hook (#59).
 - Historical session import through the public `session_write` boundary, with dry-run,
   duplicate-safe reruns, and post-import `memory_audit()` verification.
 - Read-only semantic candidate reporting through `subject_audit()` when local embeddings
@@ -130,7 +131,7 @@ path and human-readable Obsidian vault.
 ### In progress
 
 - Reliable startup and per-turn priming beyond the current on-demand `memory_context`
-  packet, including the scope/budget correction in #56.
+  packet; the scope/budget and deterministic active-session corrections in #56 are complete.
 - The write path deliberately remains exact-hash plus lexical review matching. Embeddings
   remain advisory for search and audit; they do not silently change write decisions
   ([#27](https://github.com/vib28/ai-memory-hub/issues/27)).

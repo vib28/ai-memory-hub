@@ -1,7 +1,10 @@
 # Automatic session continuity
 
-Status: **designed and tracked, not implemented**. Reviewed 2026-09-07 against
-`enhancements/roadmap` at `0bac560`. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
+Status: **partially implemented and tracked**. Reviewed 2026-09-08 against
+`enhancements/roadmap`. Native hook mapping, managed-handler preservation, bounded
+leased capture claims, project-scoped context and separate local-model roles are
+implemented. Linked checkpoints, the supervised worker and automatic startup handoff
+remain roadmap work. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ## Where the problem exists
 
@@ -237,7 +240,7 @@ reproduction, acceptance, implementation and verification.
 
 ## Reproduction steps
 
-Disposable checks on the baseline produced:
+Historical disposable checks on the pre-fix baseline produced:
 
 | Issue | Reproduction | Observed result |
 |---|---|---|
@@ -246,11 +249,12 @@ Disposable checks on the baseline produced:
 | #54 | 501 ordered rows, first 500 completed | Consolidation empty although session still pending |
 | #54 | Recover a freshly claimed processing row | Reclaimed immediately, no lease/owner check |
 | #55 | Same writer/title/sections in alpha then beta | First stored, second duplicate |
-| #56 | Stub one 2,000-character foreign-project result, budget=500 | 2,101 characters and foreign path returned |
+| #56 | Stub one 2,000-character foreign-project result, budget=500 | 2,101 characters and foreign path returned; fixed and covered now |
 
-The context check used a stub to isolate the boundary; it is not a real-client
-injection test. Queue recovery proves the missing lease guard, not an observed
-simultaneous double-write. Issue bodies give reproduction and acceptance detail.
+Those rows document the original defects, not current behavior. Current regression
+coverage verifies bounded project filtering, deterministic newest-session selection,
+live lease protection and concurrent claim isolation. Real-client injection and
+crash-at-each-write-boundary tests remain open acceptance gates.
 
 ## Acceptance criteria
 
@@ -301,11 +305,12 @@ Do not duplicate or silently close these existing open items.
 
 ## Verification results
 
-Existing tests: 148 passed, two setup errors accessing the existing pytest temporary
-root; the two affected pruning tests passed in a fresh temporary folder. Ruff passed.
-This is not a single clean 150-test full run and not certification of automation.
+Full repository verification: **180 passed** with a workspace-local pytest base directory;
+Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
+preservation, concurrent queue claims, live leases, project-scoped context and separate
+embedding/chat-model configuration.
 
-No runtime feature, personal hook configuration, startup service or real memory
-vault was changed by this review. No automatic GitHub session content was published.
-Native host event delivery, live quota interruption and full cross-client restoration
-remain acceptance work. Proposed issues stay open until implemented and verified.
+No personal hook configuration, startup service or real memory vault was changed by
+this review. Native host event delivery across every supported client, live quota
+interruption, linked checkpoint metadata and full cross-client restoration remain
+acceptance work. No automatic GitHub session content was published.

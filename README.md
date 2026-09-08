@@ -24,6 +24,7 @@ The writer records where it came from; it is not an access restriction.
 - Start dashboard and optional tray together with one launcher.
 - Review proposed changes in a local dashboard before accepting them.
 - Search with SQLite keyword search and optional local embeddings.
+- Use separate local models for embeddings and chat-based consolidation/extraction.
 - Inspect identity conflicts and possible duplicates without automatic merging.
 - Keep optional Git history for accepted vault changes.
 
@@ -39,14 +40,17 @@ The writer records where it came from; it is not an access restriction.
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries and historical import | No linked token-batch chain yet |
-| Capture | Local observation queue and hook configuration helpers | Native adapters and queue safety need fixes |
-| Retrieval | Keyword search and optional vectors | Context budget/project isolation need correction |
+| Sessions | Four-section summaries, structured project links and project-scoped retry identity | No linked token-batch chain yet |
+| Capture | Native payload mapping, managed hook schemas, bounded leased queue | No supervised periodic worker yet |
+| Retrieval | Keyword search, optional vectors and bounded project-scoped context | No automatic startup handoff yet |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | Component context-size benchmark | No measured cross-tool savings claim |
 
-Known capture, identity and context defects are tracked in
-[the continuity plan](docs/automatic-session-continuity.md#reproduction-steps).
+The core capture, hook, queue, session-identity and context-boundary defects have
+regression coverage. Remaining continuity work is tracked in
+[the continuity plan](docs/automatic-session-continuity.md), especially linked
+checkpoint metadata (#57), the supervised worker (#58), startup handoff (#59),
+GitHub export (#60), and the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
 sessions with context passing enabled and disabled.
 
@@ -135,8 +139,8 @@ Use the [tracked roadmap](docs/local-memory-plan.md) for order and dependencies,
 the [GitHub project](https://github.com/users/vib28/projects/1) for open and closed work.
 Issues and planning documents retain their prescribed seven-section format.
 
-[FIXLOG](FIXLOG.md) and [release notes](RELEASE_NOTES_v0.2.md) are historical records,
-not proof that later features are complete.
+[FIXLOG](FIXLOG.md) and [release notes](RELEASE_NOTES_v0.2.md) are historical records;
+the current capability table and roadmap above are authoritative.
 
 ## License
 

@@ -44,8 +44,9 @@ are not governed by MCP review mode; see [configuration](CONFIGURATION.md).
 ## Are duplicate-looking entries automatically merged?
 
 No automatic semantic merge is intended. Identity audits flag candidates and linking
-requires an explicit action. Write-time duplicate suppression exists, including an
-open cross-project session defect. Similar titles alone do not prove identical facts.
+requires an explicit action. Exact duplicates are suppressed; close matches become
+reviewable updates. Embeddings are advisory and cannot delete a memory. Identical
+session summaries in distinct projects remain separate.
 
 ## Can I delete SQLite and rebuild everything?
 

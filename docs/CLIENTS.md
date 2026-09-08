@@ -118,11 +118,9 @@ post-tool event per client: PostToolUse, or Gemini's AfterTool. It does not inst
 full periodic-save and startup-handoff service.
 
 > [!WARNING]
-> Native schema/payload handling and mixed-handler preservation have open defects
-> [#52](https://github.com/vib28/ai-memory-hub/issues/52) and
-> [#53](https://github.com/vib28/ai-memory-hub/issues/53).
-> Do not enable or refresh hooks on the assumption that unrelated settings are
-> guaranteed safe. Test with isolated configurations and retain backups first.
+> Native payload mapping and mixed-handler preservation are implemented and covered by
+> isolated tests. Hook delivery is still client-version dependent, so retain backups
+> and verify the actual host event payload before relying on unattended capture.
 
 Current hook targets include Claude/Gemini/Qwen JSON settings, Kimi's marked TOML block
 and Codex's hooks.json. This lists intended configuration locations, not certified

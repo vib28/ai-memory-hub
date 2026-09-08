@@ -13,7 +13,8 @@ Use shared memory for durable facts and decisions, not as a dump of every conver
 
 The client prompts encourage these calls automatically, but model instructions are not
 a guaranteed event-driven capture service. [Automatic session continuity](automatic-session-continuity.md)
-is planned first-priority work.
+remains the first-priority roadmap phase; native capture, leased queue claims and bounded
+context selection are implemented prerequisites, not the complete worker/handoff service.
 
 ## Review proposals
 
@@ -36,8 +37,9 @@ a tool suggested a possible replacement.
 ## Search and read
 
 In a connected AI client, use memory_search before reading a relevant memory file.
-memory_context is an on-demand orientation tool; strict project/budget behavior is
-being corrected in [#56](https://github.com/vib28/ai-memory-hub/issues/56).
+memory_context is an on-demand orientation tool. It enforces the serialized character
+budget, filters project scope, excludes superseded records and selects the newest
+project session deterministically; automatic startup injection is still planned.
 
 Administrative read-only examples from the repository directory:
 
@@ -67,8 +69,8 @@ route to /sessions/writer.md. Different clients can read these shared files.
 
 > [!IMPORTANT]
 > There is not yet a periodic checkpoint chain, guaranteed final rollup or automatic
-> cross-client startup restoration. The current retry check also has an open
-> [cross-project defect](https://github.com/vib28/ai-memory-hub/issues/55).
+> cross-client startup restoration. Same-project retry detection is preserved while
+> identical summaries in distinct projects are kept separate.
 
 ## Audit identities without merging
 
