@@ -3,9 +3,11 @@
 Status: **partially implemented and tracked**. Reviewed 2026-09-08 against
 `enhancements/roadmap`. Native hook mapping, managed-handler preservation, bounded
 leased capture claims, project-scoped context and separate local-model roles are
-implemented. Opt-in checkpoint metadata and manifest persistence are implemented as a
-prerequisite; the supervised worker, automatic startup handoff and full final-rollup
-workflow remain roadmap work. Parent: [#61](https://github.com/vib28/ai-memory-hub/issues/61).
+implemented. The #54 queue-correctness gate now includes bounded pagination, live leases,
+crash-idempotent batch identity and bounded retry backoff. Opt-in checkpoint metadata and
+manifest persistence are implemented as a prerequisite; the supervised worker, automatic
+startup handoff and full final-rollup workflow remain roadmap work. Parent:
+[#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ```mermaid
 flowchart LR
@@ -265,8 +267,9 @@ Historical disposable checks on the pre-fix baseline produced:
 
 Those rows document the original defects, not current behavior. Current regression
 coverage verifies bounded project filtering, deterministic newest-session selection,
-live lease protection and concurrent claim isolation. Real-client injection and
-crash-at-each-write-boundary tests remain open acceptance gates.
+live lease protection, concurrent claim isolation, bounded retry backoff and
+crash-boundary batch identity. Real-client injection, supervised scheduling and full
+cross-client restoration remain open acceptance gates.
 
 ## Acceptance criteria
 
@@ -296,7 +299,7 @@ crash-at-each-write-boundary tests remain open acceptance gates.
 
 The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
-chain is `#54 → #56/#57 → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
+chain is `#54 completed → #56/#57 → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
 independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance
@@ -306,7 +309,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **181 passed** with a workspace-local pytest base directory;
+Full repository verification: **187 passed** with a workspace-local pytest base directory;
 Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
 preservation, concurrent queue claims, live leases, project-scoped context and separate
 embedding/chat-model configuration.

@@ -13,7 +13,7 @@ import sqlite3
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -21,6 +21,7 @@ from typing import Any, Iterable
 DEFAULT_MAX_TEXT = 4000
 DEFAULT_MAX_FILES = 100
 DEFAULT_LEASE_SECONDS = 300
+MAX_RETRY_DELAY_SECONDS = 300
 
 
 _EVENT_ALIASES = {
@@ -178,6 +179,7 @@ class ObservationBuffer:
                 last_error TEXT
                 ,claim_token TEXT
                 ,lease_expires_at TEXT
+                ,next_attempt_at TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_observations_session
                 ON observations(session_id, created_at);
@@ -192,6 +194,8 @@ class ObservationBuffer:
             self.conn.execute("ALTER TABLE observations ADD COLUMN claim_token TEXT")
         if "lease_expires_at" not in columns:
             self.conn.execute("ALTER TABLE observations ADD COLUMN lease_expires_at TEXT")
+        if "next_attempt_at" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN next_attempt_at TEXT")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_event ON observations(event, created_at)")
         self.conn.commit()
 
@@ -269,14 +273,16 @@ class ObservationBuffer:
 
     def recover_processing(self, session_id: str) -> int:
         """Return rows left processing by a crashed consolidation to retryable state."""
+        now = datetime.now(timezone.utc)
         with self.conn:
             cursor = self.conn.execute(
                 """UPDATE observations SET status='failed', attempts=attempts+1,
-                   last_error=?, claim_token=NULL, lease_expires_at=NULL
+                   last_error=?, claim_token=NULL, lease_expires_at=NULL,
+                   next_attempt_at=?
                    WHERE session_id=? AND status='processing'
                    AND (lease_expires_at IS NULL OR lease_expires_at <= ?)""",
-                ("recovered after interrupted consolidation", session_id,
-                 datetime.now(timezone.utc).isoformat()),
+                ("recovered after interrupted consolidation", now.isoformat(), session_id,
+                 now.isoformat()),
             )
         return cursor.rowcount
 
@@ -290,14 +296,16 @@ class ObservationBuffer:
             rows = self.conn.execute(
                 """SELECT observation_id FROM observations
                    WHERE session_id=? AND status IN ('pending','failed')
+                     AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
                    ORDER BY created_at, observation_id LIMIT ?""",
-                (session_id, max(1, min(int(limit), 5000))),
+                (session_id, now.isoformat(), max(1, min(int(limit), 5000))),
             ).fetchall()
             ids = [row[0] for row in rows]
             for observation_id in ids:
                 self.conn.execute(
                     """UPDATE observations SET status='processing', attempts=attempts+1,
-                       claim_token=?, lease_expires_at=?, last_error=NULL
+                       claim_token=?, lease_expires_at=?, last_error=NULL,
+                       next_attempt_at=NULL
                        WHERE observation_id=? AND status IN ('pending','failed')""",
                     (owner, expires, observation_id),
                 )
@@ -320,12 +328,30 @@ class ObservationBuffer:
         with self.conn:
             updated = 0
             for observation_id in ids:
+                row = self.conn.execute(
+                    f"SELECT attempts, status FROM observations WHERE observation_id=?"
+                    f"{(' AND claim_token=?' if owner else '')}",
+                    (observation_id, owner) if owner else (observation_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                attempts = int(row[0]) + 1
+                retry_at = None
+                if status == "failed":
+                    # The first retry is immediate; later failures back off up to
+                    # five minutes without hiding the row from inspection.
+                    delay = 0 if row[1] != "failed" else min(
+                        MAX_RETRY_DELAY_SECONDS, 2 ** min(attempts, 8)
+                    )
+                    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
                 cursor = self.conn.execute(
                     f"""UPDATE observations SET status=?, attempts=attempts+1,
-                       last_error=?, claim_token=NULL, lease_expires_at=NULL
+                       last_error=?, claim_token=NULL, lease_expires_at=?, next_attempt_at=?
                        WHERE observation_id=?{(' AND claim_token=?' if owner else '')}""",
-                    ((status, _bounded_text(error, 1000) if error else None, observation_id, owner)
-                     if owner else (status, _bounded_text(error, 1000) if error else None, observation_id)),
+                    ((status, _bounded_text(error, 1000) if error else None, None, retry_at,
+                      observation_id, owner)
+                     if owner else (status, _bounded_text(error, 1000) if error else None, None,
+                                    retry_at, observation_id)),
                 )
                 updated += cursor.rowcount
         return updated

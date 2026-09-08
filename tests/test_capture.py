@@ -66,6 +66,16 @@ class ObservationBufferTests(unittest.TestCase):
         self.assertEqual(self.buffer.mark_status(["one"], "completed"), 1)
         self.assertEqual(self.buffer.pending_sessions(), [])
 
+    def test_failed_rows_back_off_after_the_first_retry(self):
+        self.buffer.append({"observation_id": "retry", "session_id": "s1"})
+        self.assertEqual(self.buffer.mark_status(["retry"], "failed", "first"), 1)
+        first = self.buffer.for_session("s1")[0]
+        self.assertIsNotNone(first["next_attempt_at"])
+        self.assertEqual(self.buffer.mark_status(["retry"], "failed", "second"), 1)
+        second = self.buffer.for_session("s1")[0]
+        self.assertGreater(second["next_attempt_at"], first["next_attempt_at"])
+        self.assertEqual(self.buffer.claim_for_session("s1", owner="worker"), [])
+
     def test_event_names_are_normalized_and_old_payloads_stay_compatible(self):
         row = self.buffer.append({
             "observation_id": "event-one",

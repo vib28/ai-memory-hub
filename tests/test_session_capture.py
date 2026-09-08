@@ -45,6 +45,31 @@ class SessionCaptureTests(unittest.TestCase):
             finally:
                 buffer.close()
 
+    def test_crash_before_write_leaves_batch_retryable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            buffer = ObservationBuffer(Path(temp) / "capture.sqlite3")
+            try:
+                buffer.append({"observation_id": "one", "session_id": "s1", "output_summary": "work"})
+
+                class FailingManager(FakeManager):
+                    def propose_session(self, payload, *, write_mode):
+                        self.calls.append((payload, write_mode))
+                        if len(self.calls) == 1:
+                            raise RuntimeError("simulated write failure")
+                        return {"status": "stored"}
+
+                manager = FailingManager()
+                with self.assertRaises(RuntimeError):
+                    consolidate_buffered_session(buffer, manager, "s1", writer="codex", write_mode="auto")
+                result = consolidate_buffered_session(
+                    buffer, manager, "s1", writer="codex", write_mode="auto"
+                )
+                self.assertEqual(result["status"], "stored")
+                self.assertEqual(manager.calls[0][0]["checkpoint_id"], manager.calls[1][0]["checkpoint_id"])
+                self.assertEqual(buffer.pending_sessions(), [])
+            finally:
+                buffer.close()
+
     def test_crash_after_write_before_ack_reuses_the_same_batch_id(self):
         with tempfile.TemporaryDirectory() as temp:
             buffer = ObservationBuffer(Path(temp) / "capture.sqlite3")
