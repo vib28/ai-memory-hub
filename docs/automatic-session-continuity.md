@@ -300,7 +300,7 @@ cross-client restoration remain open acceptance gates.
 
 The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
-chain is `#54/#56 completed → #57 → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
+chain is `#54/#56/#57 completed → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
 independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance
@@ -310,7 +310,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **190 passed** with a workspace-local pytest base directory;
+Full repository verification: **191 passed** with a workspace-local pytest base directory;
 Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
 preservation, concurrent queue claims, live leases, project-scoped context and separate
 embedding/chat-model configuration.
