@@ -74,6 +74,7 @@ class ObservationBufferTests(unittest.TestCase):
         self.assertEqual(self.buffer.mark_status(["retry"], "failed", "second"), 1)
         second = self.buffer.for_session("s1")[0]
         self.assertGreater(second["next_attempt_at"], first["next_attempt_at"])
+        self.assertEqual(self.buffer.pending_sessions(), ["s1"])
         self.assertEqual(self.buffer.claim_for_session("s1", owner="worker"), [])
 
     def test_event_names_are_normalized_and_old_payloads_stay_compatible(self):
