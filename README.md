@@ -57,11 +57,10 @@ flowchart LR
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | Component context-size benchmark | No measured cross-tool savings claim |
 
-The core capture, hook, queue, session-identity, context-boundary and local-worker defects have
-regression coverage. Remaining continuity work is tracked in
-[the continuity plan](docs/automatic-session-continuity.md), especially linked
-checkpoint metadata (#57), startup handoff (#59),
-GitHub export (#60), and the paired benchmark (#62).
+The core capture, hook, queue, session-identity, context-boundary, local-worker and
+supported startup-handoff defects have regression coverage. Remaining continuity work
+is tracked in [the continuity plan](docs/automatic-session-continuity.md), especially
+GitHub export (#60), continuity closeout (#61), and the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
 sessions with context passing enabled and disabled.
 

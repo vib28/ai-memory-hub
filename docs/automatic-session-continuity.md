@@ -309,7 +309,7 @@ restoration remain open acceptance gates.
 
 The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
-chain is `#54/#56/#57/#58 completed → #59 → #60 → #61 → #62`; #40 and #64 can proceed
+chain is `#54/#56/#57/#58/#59 completed → #60 → #61 → #62`; #40 and #64 can proceed
 independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance

@@ -51,9 +51,9 @@ flowchart LR
   without a lower completion/essential-fact retention rate is required to claim benefit
   in the measured suite; otherwise the gate remains open.
 - **Implementation order:** follow the canonical [open issue priority order](issue-priority-order.md).
-  The continuity chain is #54/#56/#57/#58 completed → #59 → #60 → #61 → #62. #57's
-  opt-in metadata/manifest foundation, supervised worker and supported-client handoff
-  are implemented; publication and benchmark gates remain open.
+  The continuity chain is #54/#56/#57/#58/#59 completed → #60 → #61 → #62. The
+  metadata/manifest foundation, supervised worker and supported-client handoff are
+  implemented; publication and benchmark gates remain open.
 - **Verification:** prerequisite capture, hook, context, metadata, worker and process-level
   Claude/Codex handoff fixtures are covered by 204 tests; installed-client launch and
   paired token-saving benchmark certification remain open.
