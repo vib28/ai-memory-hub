@@ -73,6 +73,23 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(result["memories"], [])
         self.assertEqual(result["truncation_reason"], "context budget reached")
 
+    def test_context_prime_puts_latest_project_session_first(self):
+        older = self.manager.propose_session({
+            "model": "codex", "title": "old", "date": "2026-09-07T10:00:00",
+            "project": "alpha", "investigated": ["old task"], "learned": [],
+            "completed": [], "next_steps": ["old next step"],
+        })
+        newer = self.manager.propose_session({
+            "model": "codex", "title": "new", "date": "2026-09-08T10:00:00",
+            "project": "alpha", "investigated": ["new task"], "learned": [],
+            "completed": [], "next_steps": ["new next step"],
+        })
+        self.assertEqual(older["status"], "stored")
+        self.assertIn(newer["status"], {"stored", "stored_without_project_link"})
+        result = self.manager.context_prime(project="alpha", query="unlikely", limit=1,
+                                            max_chars=12000)
+        self.assertEqual(result["memories"][0]["memory_id"], newer["memory"]["memory_id"])
+
     def test_secret_rejected(self):
         key_like_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         result = self.manager.propose(MemoryCandidate(

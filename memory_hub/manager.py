@@ -515,6 +515,16 @@ class MemoryManager:
                     or path == f"/projects/{project_slug}.md"
                     or path in {"/preferences.md", "/profile.md"})
         rows = [row for row in rows if in_scope(row)]
+        if project_slug:
+            # Session-start context must not depend on vector ranking to find the
+            # active task. Select the newest canonical project session first, then
+            # retain ranked durable facts around it.
+            session_rows = [row for row in self.index.all_rows()
+                            if row.get("kind") == "session" and in_scope(row)]
+            if session_rows:
+                latest = max(session_rows, key=lambda row: (str(row.get("date", "")),
+                                                              str(row.get("memory_id", ""))))
+                rows = [latest] + [row for row in rows if row.get("memory_id") != latest.get("memory_id")]
         selected = []
         used = 0
         budget = max(0, min(int(max_chars), 12000))
