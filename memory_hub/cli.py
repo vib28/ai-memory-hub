@@ -8,6 +8,7 @@ from .extractor import extract_candidates
 from .history import commit_vault_change, history_status, initialize_history
 from .hooks import (
     install_hook,
+    install_claude_hook,
     install_codex_hook,
     install_nested_hook,
     install_toml_hook,
@@ -107,6 +108,10 @@ def main():
             elif args.format == "codex":
                 jprint(install_codex_hook(args.settings, event=args.event,
                                           command=args.hook_command, matcher=args.matcher))
+            elif args.format == "claude":
+                jprint(install_claude_hook(args.settings, event=args.event,
+                                           command=args.hook_command, matcher=args.matcher,
+                                           args=args.arg))
             else:
                 jprint(install_hook(args.settings, event=args.event, command=args.hook_command, args=args.arg))
         else:

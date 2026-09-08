@@ -56,6 +56,23 @@ class ManagerTests(unittest.TestCase):
         self.assertLessEqual(len(result["memories"]), 5)
         self.assertTrue(all("text" in item and "path" in item for item in result["memories"]))
 
+    def test_context_prime_filters_project_and_oversized_first_result(self):
+        rows = [
+            {"memory_id": "other", "path": "/projects/alpha.md", "kind": "project",
+             "subject": "other", "text": "x" * 2000, "tag": "stated"},
+            {"memory_id": "alpha", "path": "/projects/alpha.md", "kind": "project",
+             "subject": "alpha", "text": "alpha", "tag": "stated"},
+        ]
+        original = self.manager.search
+        try:
+            self.manager.search = lambda query, limit: rows
+            result = self.manager.context_prime(project="alpha", max_chars=500)
+        finally:
+            self.manager.search = original
+        self.assertLessEqual(result["characters"], 500)
+        self.assertEqual(result["memories"], [])
+        self.assertEqual(result["truncation_reason"], "context budget reached")
+
     def test_secret_rejected(self):
         key_like_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         result = self.manager.propose(MemoryCandidate(

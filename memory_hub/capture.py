@@ -20,6 +20,7 @@ from typing import Any, Iterable
 
 DEFAULT_MAX_TEXT = 4000
 DEFAULT_MAX_FILES = 100
+DEFAULT_LEASE_SECONDS = 300
 
 
 _EVENT_ALIASES = {
@@ -97,21 +98,38 @@ class Observation:
         created_at = _bounded_text(payload.get("created_at"), 80).strip()
         if not created_at:
             created_at = datetime.now(timezone.utc).isoformat()
+        tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+        tool_response = payload.get("tool_response")
+        tool = payload.get("tool") or payload.get("tool_name") or payload.get("name")
+        files = payload.get("files")
+        if not files:
+            file_path = tool_input.get("file_path") or tool_input.get("path")
+            files = [file_path] if file_path else []
+        input_summary = payload.get("input_summary")
+        if input_summary is None and tool_input:
+            input_summary = json.dumps(tool_input, ensure_ascii=False, sort_keys=True)
+        output_summary = payload.get("output_summary")
+        if output_summary is None and tool_response is not None:
+            output_summary = (json.dumps(tool_response, ensure_ascii=False, sort_keys=True)
+                              if isinstance(tool_response, (dict, list)) else str(tool_response))
+        event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
+        event = event or payload.get("hook_event_name")
         return cls(
-            observation_id=_bounded_text(payload.get("observation_id"), 100).strip() or uuid.uuid4().hex,
+            observation_id=_bounded_text(
+                payload.get("observation_id") or payload.get("event_id") or payload.get("hook_event_id"),
+                100,
+            ).strip() or uuid.uuid4().hex,
             session_id=session_id,
             project=_bounded_text(payload.get("project"), 200).strip(),
             cwd=_bounded_text(payload.get("cwd"), 1000).strip(),
-            tool=_bounded_text(payload.get("tool"), 100).strip() or "unknown",
-            files=_bounded_files(payload.get("files")),
-            input_summary=_bounded_text(payload.get("input_summary")),
-            output_summary=_bounded_text(payload.get("output_summary")),
+            tool=_bounded_text(tool, 100).strip() or "unknown",
+            files=_bounded_files(files),
+            input_summary=_bounded_text(input_summary),
+            output_summary=_bounded_text(output_summary),
             git_commit=_bounded_text(payload.get("git_commit"), 200).strip(),
             created_at=created_at,
-            source=_bounded_text(payload.get("source"), 100).strip() or "generic-hook",
-            event=normalize_event(
-                payload.get("event", payload.get("event_name", payload.get("hook_event")))
-            ),
+            source=_bounded_text(payload.get("source") or payload.get("client"), 100).strip() or "generic-hook",
+            event=normalize_event(event),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -158,6 +176,8 @@ class ObservationBuffer:
                 status TEXT NOT NULL DEFAULT 'pending',
                 attempts INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT
+                ,claim_token TEXT
+                ,lease_expires_at TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_observations_session
                 ON observations(session_id, created_at);
@@ -168,6 +188,10 @@ class ObservationBuffer:
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(observations)")}
         if "event" not in columns:
             self.conn.execute("ALTER TABLE observations ADD COLUMN event TEXT NOT NULL DEFAULT 'observation'")
+        if "claim_token" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN claim_token TEXT")
+        if "lease_expires_at" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN lease_expires_at TEXT")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_event ON observations(event, created_at)")
         self.conn.commit()
 
@@ -206,10 +230,18 @@ class ObservationBuffer:
         result["duplicate"] = cursor.rowcount == 0
         return result
 
-    def for_session(self, session_id: str, limit: int = 500) -> list[dict[str, Any]]:
+    def for_session(self, session_id: str, limit: int = 500,
+                    statuses: Iterable[str] | None = None) -> list[dict[str, Any]]:
+        params: list[Any] = [session_id]
+        where = "session_id=?"
+        if statuses:
+            values = list(statuses)
+            where += " AND status IN (" + ",".join("?" for _ in values) + ")"
+            params.extend(values)
+        params.append(max(1, min(int(limit), 5000)))
         rows = self.conn.execute(
-            "SELECT * FROM observations WHERE session_id=? ORDER BY created_at, observation_id LIMIT ?",
-            (session_id, max(1, min(int(limit), 5000))),
+            f"SELECT * FROM observations WHERE {where} ORDER BY created_at, observation_id LIMIT ?",
+            params,
         ).fetchall()
         return [self._row(row) for row in rows]
 
@@ -227,12 +259,46 @@ class ObservationBuffer:
         with self.conn:
             cursor = self.conn.execute(
                 """UPDATE observations SET status='failed', attempts=attempts+1,
-                   last_error=? WHERE session_id=? AND status='processing'""",
-                ("recovered after interrupted consolidation", session_id),
+                   last_error=?, claim_token=NULL, lease_expires_at=NULL
+                   WHERE session_id=? AND status='processing'
+                   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)""",
+                ("recovered after interrupted consolidation", session_id,
+                 datetime.now(timezone.utc).isoformat()),
             )
         return cursor.rowcount
 
-    def mark_status(self, observation_ids: Iterable[str], status: str, error: str | None = None) -> int:
+    def claim_for_session(self, session_id: str, *, owner: str,
+                          limit: int = 500, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> list[dict[str, Any]]:
+        """Atomically claim one bounded, ordered batch for a worker."""
+        now = datetime.now(timezone.utc)
+        lease = (now.timestamp() + max(1, int(lease_seconds)))
+        expires = datetime.fromtimestamp(lease, timezone.utc).isoformat()
+        with self.conn:
+            rows = self.conn.execute(
+                """SELECT observation_id FROM observations
+                   WHERE session_id=? AND status IN ('pending','failed')
+                   ORDER BY created_at, observation_id LIMIT ?""",
+                (session_id, max(1, min(int(limit), 5000))),
+            ).fetchall()
+            ids = [row[0] for row in rows]
+            for observation_id in ids:
+                self.conn.execute(
+                    """UPDATE observations SET status='processing', attempts=attempts+1,
+                       claim_token=?, lease_expires_at=?, last_error=NULL
+                       WHERE observation_id=? AND status IN ('pending','failed')""",
+                    (owner, expires, observation_id),
+                )
+        if not ids:
+            return []
+        rows = self.conn.execute(
+            "SELECT * FROM observations WHERE session_id=? AND claim_token=? "
+            "ORDER BY created_at, observation_id LIMIT ?",
+            (session_id, owner, len(ids)),
+        ).fetchall()
+        return [self._row(row) for row in rows]
+
+    def mark_status(self, observation_ids: Iterable[str], status: str, error: str | None = None,
+                    owner: str | None = None) -> int:
         if status not in {"pending", "processing", "completed", "failed"}:
             raise ValueError("invalid observation status")
         ids = list(observation_ids)
@@ -242,9 +308,11 @@ class ObservationBuffer:
             updated = 0
             for observation_id in ids:
                 cursor = self.conn.execute(
-                    """UPDATE observations SET status=?, attempts=attempts+1,
-                       last_error=? WHERE observation_id=?""",
-                    (status, _bounded_text(error, 1000) if error else None, observation_id),
+                    f"""UPDATE observations SET status=?, attempts=attempts+1,
+                       last_error=?, claim_token=NULL, lease_expires_at=NULL
+                       WHERE observation_id=?{(' AND claim_token=?' if owner else '')}""",
+                    ((status, _bounded_text(error, 1000) if error else None, observation_id, owner)
+                     if owner else (status, _bounded_text(error, 1000) if error else None, observation_id)),
                 )
                 updated += cursor.rowcount
         return updated

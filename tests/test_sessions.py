@@ -36,6 +36,15 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(project["path"], "/projects/ai-memory-hub.md")
         self.assertIn(f"[[{memory['subject']}]]", self.manager.read(project["path"]))
 
+    def test_identical_summary_in_distinct_projects_is_not_duplicate(self):
+        payload = {"model": "claude", "title": "Checkpoint", "date": "2026-09-06T12:00:00",
+                   "investigated": [], "learned": ["Checked the parser"], "completed": [],
+                   "next_steps": []}
+        alpha = self.manager.propose_session({**payload, "project": "alpha"})
+        beta = self.manager.propose_session({**payload, "project": "beta"})
+        self.assertEqual(alpha["status"], "stored")
+        self.assertEqual(beta["status"], "stored")
+
     def test_review_approval_preserves_session_sections(self):
         result = self.manager.propose_session({
             "model": "gemini", "title": "review", "investigated": ["One thing"],

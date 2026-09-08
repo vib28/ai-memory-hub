@@ -6,7 +6,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from memory_hub.hooks import (HookConfigError, install_codex_hook, install_hook,
+from memory_hub.hooks import (HookConfigError, install_claude_hook, install_codex_hook, install_hook,
                               install_nested_hook, install_toml_hook, uninstall_codex_hook,
                               uninstall_hook, uninstall_nested_hook, uninstall_toml_hook)
 
@@ -74,6 +74,31 @@ class HookConfigTests(unittest.TestCase):
         config = json.loads(self.settings.read_text(encoding="utf-8"))
         self.assertEqual(len(config["hooks"]["AfterTool"]), 1)
 
+    def test_nested_reinstall_preserves_sibling_in_same_group(self):
+        self.settings.write_text(json.dumps({"hooks": {"AfterTool": [
+            {"matcher": "*", "hooks": [
+                {"type": "command", "command": "user-hook"},
+                {"type": "command", "command": "ai-memory-hub", "name": "ai-memory-hub"},
+            ]}
+        ]}}), encoding="utf-8")
+        install_nested_hook(self.settings, event="AfterTool", command="new-hook")
+        handlers = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["AfterTool"][0]["hooks"]
+        self.assertEqual([item.get("command") for item in handlers], ["user-hook", "new-hook"])
+        uninstall_nested_hook(self.settings)
+        groups = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["AfterTool"]
+        self.assertEqual([item.get("command") for item in groups[0]["hooks"]], ["user-hook"])
+
+    def test_claude_hook_uses_nested_matcher_schema_and_preserves_sibling(self):
+        self.settings.write_text(json.dumps({"hooks": {"PostToolUse": [
+            {"matcher": "*", "hooks": [{"type": "command", "command": "user-hook"}]}
+        ]}}), encoding="utf-8")
+        install_claude_hook(self.settings, event="PostToolUse", command="C:/Program Files/hook.exe")
+        groups = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"]
+        group = next(group for group in groups if any(item.get("ai_memory_hub_managed") for item in group["hooks"]))
+        self.assertEqual(group["matcher"], "*")
+        self.assertEqual([item["command"] for item in group["hooks"]], ["C:/Program Files/hook.exe"])
+        self.assertTrue(any(item["command"] == "user-hook" for group in groups for item in group["hooks"]))
+
     def test_kimi_toml_hook_preserves_text_and_is_idempotent(self):
         settings = self.settings.with_suffix(".toml")
         original = "# keep this comment\nmodel = \"local\"\n\n[[hooks]]\nevent = \"Stop\"\ncommand = \"other\"\n"
@@ -134,6 +159,16 @@ class HookConfigTests(unittest.TestCase):
         config = json.loads(settings.read_text(encoding="utf-8"))
         self.assertEqual(result["status"], "removed")
         self.assertEqual(config["hooks"]["PostToolUse"][0]["hooks"], [{"type": "command", "command": "other"}])
+
+    def test_codex_reinstall_preserves_sibling_and_updates_path(self):
+        settings = self.settings.with_name("hooks.json")
+        install_codex_hook(settings, event="PostToolUse", command="old-hook")
+        config = json.loads(settings.read_text(encoding="utf-8"))
+        config["hooks"]["PostToolUse"][0]["hooks"].append({"type": "command", "command": "user-hook"})
+        settings.write_text(json.dumps(config), encoding="utf-8")
+        install_codex_hook(settings, event="PostToolUse", command="new-hook")
+        handlers = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"]
+        self.assertEqual([item["command"] for item in handlers], ["user-hook", "new-hook"])
 
 
 if __name__ == "__main__":

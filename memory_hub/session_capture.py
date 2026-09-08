@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import uuid
 
 from .capture import ObservationBuffer
 from .consolidator import consolidate_session
@@ -17,11 +18,11 @@ def consolidate_buffered_session(
     write_mode: str,
 ) -> dict[str, Any]:
     recovered = buffer.recover_processing(session_id)
-    rows = [row for row in buffer.for_session(session_id) if row["status"] in {"pending", "failed"}]
+    owner = uuid.uuid4().hex
+    rows = buffer.claim_for_session(session_id, owner=owner)
     if not rows:
         return {"status": "empty", "session_id": session_id, "observations": 0}
     observation_ids = [row["observation_id"] for row in rows]
-    buffer.mark_status(observation_ids, "processing")
     try:
         summary = consolidate_session(rows)
         result = manager.propose_session({
@@ -34,12 +35,12 @@ def consolidate_buffered_session(
             "next_steps": summary["next_steps"],
         }, write_mode=write_mode)
     except Exception as exc:
-        buffer.mark_status(observation_ids, "failed", str(exc))
+        buffer.mark_status(observation_ids, "failed", str(exc), owner=owner)
         raise
     if result.get("status") in {"stored", "stored_without_project_link", "queued", "queued_as_update", "duplicate"}:
-        buffer.mark_status(observation_ids, "completed")
+        buffer.mark_status(observation_ids, "completed", owner=owner)
     elif result.get("status") == "rejected":
-        buffer.mark_status(observation_ids, "failed", result.get("reason"))
+        buffer.mark_status(observation_ids, "failed", result.get("reason"), owner=owner)
     return {
         "status": result.get("status", "unknown"),
         "session_id": session_id,

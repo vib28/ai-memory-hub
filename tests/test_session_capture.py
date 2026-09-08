@@ -62,6 +62,22 @@ class SessionCaptureTests(unittest.TestCase):
             finally:
                 buffer.close()
 
+    def test_pending_rows_after_first_page_are_consolidated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            buffer = ObservationBuffer(Path(temp) / "capture.sqlite3")
+            try:
+                for index in range(501):
+                    buffer.append({"observation_id": f"row-{index:03}", "session_id": "s1",
+                                   "created_at": f"2026-01-01T00:00:{index:02}Z"})
+                first_page = [row["observation_id"] for row in buffer.for_session("s1", limit=500)]
+                buffer.mark_status(first_page, "completed")
+                result = consolidate_buffered_session(buffer, FakeManager("stored"), "s1",
+                                                       writer="codex", write_mode="auto")
+                self.assertEqual(result["observations"], 1)
+                self.assertEqual(buffer.pending_sessions(), [])
+            finally:
+                buffer.close()
+
 
 if __name__ == "__main__":
     unittest.main()

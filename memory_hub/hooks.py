@@ -82,6 +82,33 @@ def install_hook(settings: Path | str, *, event: str, command: str, args: list[s
     return {"status": "installed" if changed else "already_installed", "settings": str(path), "event": event, "backup": backup}
 
 
+def install_claude_hook(settings: Path | str, *, event: str, command: str,
+                        matcher: str = "*", args: list[str] | None = None) -> dict[str, Any]:
+    """Install a Claude nested matcher group without disturbing sibling handlers."""
+    path = Path(settings).expanduser().resolve()
+    config = _load(path)
+    groups = _hook_list(config, event)
+    managed = {"type": "command", "command": command, "args": list(args or []), MANAGED_KEY: True}
+    matches = []
+    for index, group in enumerate(groups):
+        if isinstance(group, dict) and any(isinstance(h, dict) and h.get(MANAGED_KEY) for h in group.get("hooks", [])):
+            matches.append(index)
+    if len(matches) > 1:
+        raise HookConfigError("multiple managed Claude hook groups found")
+    desired = {"matcher": matcher, "hooks": [managed]}
+    if matches and groups[matches[0]] == desired:
+        return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
+    backup = _backup(path) if path.exists() else None
+    if matches:
+        group = groups[matches[0]]
+        siblings = [h for h in group.get("hooks", []) if not (isinstance(h, dict) and h.get(MANAGED_KEY))]
+        group["hooks"] = siblings + [managed]
+    else:
+        groups.append(desired)
+    _write(path, config)
+    return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+
 def uninstall_hook(settings: Path | str) -> dict[str, Any]:
     path = Path(settings).expanduser().resolve()
     if not path.exists():
@@ -131,7 +158,11 @@ def install_nested_hook(settings: Path | str, *, event: str, command: str,
         return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
     backup = _backup(path) if path.exists() else None
     if matches:
-        groups[matches[0]] = managed_group
+        existing = groups[matches[0]]
+        siblings = [hook for hook in existing.get("hooks", [])
+                    if not (isinstance(hook, dict) and hook.get("name") == "ai-memory-hub")]
+        existing["hooks"] = siblings + [entry]
+        existing["matcher"] = existing.get("matcher", matcher)
         for index in reversed(matches[1:]):
             groups.pop(index)
     else:
@@ -153,13 +184,19 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
     for event, groups in list(hooks.items()):
         if not isinstance(groups, list):
             continue
-        kept = [item for item in groups if not (
-            isinstance(item, dict) and any(
+        kept = []
+        for item in groups:
+            if not isinstance(item, dict) or not isinstance(item.get("hooks"), list):
+                kept.append(item)
+                continue
+            handlers = item["hooks"]
+            remaining = [hook for hook in handlers if not (
                 isinstance(hook, dict) and hook.get("name") == "ai-memory-hub"
-                for hook in item.get("hooks", [])
-            )
-        )]
-        removed += len(groups) - len(kept)
+            )]
+            removed += len(handlers) - len(remaining)
+            if remaining:
+                item["hooks"] = remaining
+                kept.append(item)
         if kept:
             hooks[event] = kept
         else:
@@ -189,7 +226,6 @@ def install_codex_hook(settings: Path | str, *, event: str, command: str,
         return isinstance(item, dict) and any(
             isinstance(hook, dict)
             and hook.get("type") == "command"
-            and hook.get("command") == command
             and hook.get("statusMessage") == CODEX_STATUS_MESSAGE
             for hook in item.get("hooks", [])
         )
@@ -201,7 +237,13 @@ def install_codex_hook(settings: Path | str, *, event: str, command: str,
         raise HookConfigError("multiple managed Codex hook groups found")
     backup = _backup(path) if path.exists() else None
     if matches:
-        groups[matches[0]] = managed_group
+        existing = groups[matches[0]]
+        siblings = [hook for hook in existing.get("hooks", []) if not (
+            isinstance(hook, dict) and hook.get("type") == "command"
+            and hook.get("statusMessage") == CODEX_STATUS_MESSAGE
+        )]
+        existing["hooks"] = siblings + [entry]
+        existing["matcher"] = existing.get("matcher", matcher)
     else:
         groups.append(managed_group)
     _write(path, config)
@@ -236,7 +278,7 @@ def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any
             if kept_handlers:
                 group["hooks"] = kept_handlers
                 kept_groups.append(group)
-            elif len(group["hooks"]) == 0:
+            elif group.get("hooks"):
                 kept_groups.append(group)
         if kept_groups:
             hooks[event] = kept_groups

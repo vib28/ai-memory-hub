@@ -78,6 +78,19 @@ class ObservationBufferTests(unittest.TestCase):
         self.assertEqual(row["event"], "post-tool-use")
         self.assertEqual(old_row["event"], "observation")
 
+    def test_native_hook_payload_preserves_event_tool_file_and_host_id(self):
+        row = self.buffer.append({
+            "session_id": "s1", "event_id": "host-1", "hook_event_name": "PostToolUse",
+            "tool_name": "Edit", "tool_input": {"file_path": "a.py"},
+            "tool_response": {"success": True}, "client": "claude",
+        })
+        self.assertEqual(row["observation_id"], "host-1")
+        self.assertEqual(row["event"], "post-tool-use")
+        self.assertEqual(row["tool"], "Edit")
+        self.assertEqual(row["files"], ["a.py"])
+        self.assertEqual(row["source"], "claude")
+        self.assertIn("success", row["output_summary"])
+
     def test_existing_database_gets_event_column(self):
         legacy_db = Path(self.tmp.name) / "legacy.sqlite3"
         connection = sqlite3.connect(legacy_db)

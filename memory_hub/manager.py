@@ -195,7 +195,8 @@ class MemoryManager:
         lines.append(f"<!-- session:{memory_id} -->")
         return slug, "\n".join(lines).rstrip()
 
-    def _duplicate_session(self, model: str, title: str, text: str) -> dict | None:
+    def _duplicate_session(self, model: str, title: str, text: str,
+                           project: str | None = None) -> dict | None:
         """An already-stored session by the same writer, under the same title, with a
         byte-identical body.
 
@@ -207,11 +208,13 @@ class MemoryManager:
         """
         target = text_hash(text)
         prefix = slugify(f"{model}-{title}") + "-"
+        expected_path = self.vault.canonical_path("session", model, project=project)
         for row in self.index.all_rows():
             if row["kind"] != "session" or row["tag"] == "superseded":
                 continue
             if (row["writer"] == model and row["normalized_hash"] == target
-                    and str(row["subject"]).startswith(prefix)):
+                    and str(row["subject"]).startswith(prefix)
+                    and row["path"] == expected_path):
                 return row
         return None
 
@@ -238,7 +241,8 @@ class MemoryManager:
         # Sessions are a log kind, so near-matches must still both be stored — but an
         # identical payload is a retry (client timeout, or a crash sweep re-firing a
         # completed session), not a second session. Key on identity, not similarity (#25).
-        duplicate = self._duplicate_session(data["model"], data["title"], candidate.text)
+        duplicate = self._duplicate_session(data["model"], data["title"], candidate.text,
+                                            data.get("project"))
         if duplicate:
             return {"status": "duplicate", "memory": duplicate}
         if write_mode == "review":
@@ -256,8 +260,15 @@ class MemoryManager:
         self.index.upsert(record)
         linked = None
         if data.get("project"):
+            parts = []
+            for label, key in (("Investigated", "investigated"), ("Learned", "learned"),
+                               ("Completed", "completed"), ("Next steps", "next_steps")):
+                values = "; ".join(data[key]) if data[key] else "-"
+                parts.append(f"**{label}:** {values}")
+            project_text = f"Session summary [[{slug}]]: " + " ".join(parts) + "."
+
             linked = self.propose(MemoryCandidate(
-                text=f"Session summary [[{slug}]]: {candidate.text}", kind="project", tag="stated",
+                text=project_text, kind="project", tag="stated",
                 subject=data["project"], writer=data["model"]))
         result = {"status": "stored", "memory": record.to_dict(), "project": linked}
         # The session itself is written, but a cross-link that came back
@@ -493,8 +504,21 @@ class MemoryManager:
         query = (query or "").strip()
         search_query = " ".join(part for part in (project, query) if part).strip() or "general"
         rows = self.search(search_query, max(1, min(int(limit), 20)))
+        project_slug = slugify(project) if project else None
+        def in_scope(row: dict) -> bool:
+            if row.get("tag") == "superseded":
+                return False
+            if not project_slug:
+                return True
+            path = str(row.get("path", "")).lower()
+            return (f"/sessions/{project_slug}/" in path
+                    or path == f"/projects/{project_slug}.md"
+                    or path in {"/preferences.md", "/profile.md"})
+        rows = [row for row in rows if in_scope(row)]
         selected = []
         used = 0
+        budget = max(0, min(int(max_chars), 12000))
+        truncated_reason = None
         for row in rows:
             item = {
                 "memory_id": row["memory_id"],
@@ -504,7 +528,8 @@ class MemoryManager:
                 "text": row["text"],
             }
             cost = len(json.dumps(item, ensure_ascii=False))
-            if selected and used + cost > max(500, min(int(max_chars), 12000)):
+            if used + cost > budget:
+                truncated_reason = "context budget reached"
                 break
             selected.append(item)
             used += cost
@@ -515,6 +540,7 @@ class MemoryManager:
             "memories": selected,
             "characters": used,
             "truncated": len(selected) < len(rows),
+            "truncation_reason": truncated_reason,
         }
 
     def read(self, path: str) -> str:
