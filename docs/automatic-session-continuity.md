@@ -312,7 +312,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **196 passed** with a workspace-local pytest base directory;
+Full repository verification: **200 passed** with a workspace-local pytest base directory;
 Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
 preservation, concurrent queue claims, live leases, project-scoped context and separate
 embedding/chat-model configuration.

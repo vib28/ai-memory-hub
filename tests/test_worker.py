@@ -93,6 +93,37 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(payload["state"], "accepted")
         self.assertTrue(payload["host_session_finalized"])
 
+    def test_time_trigger_flushes_older_evidence(self):
+        self.config = WorkerConfig(**{**self.config.__dict__, "token_budget": 10000})
+        self.append(created_at="2026-09-09T11:00:00+00:00")
+        manager = FakeManager()
+        worker = self.worker(manager)
+        try:
+            result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
+        finally:
+            worker.close()
+        self.assertEqual(result["processed"][0]["trigger"], "time")
+
+    def test_idle_closure_is_provisional_and_new_evidence_reopens_session(self):
+        self.config = WorkerConfig(**{
+            **self.config.__dict__, "token_budget": 10000, "flush_seconds": 10000,
+            "idle_seconds": 60,
+        })
+        self.append(created_at="2026-09-09T11:00:00+00:00")
+        manager = FakeManager()
+        worker = self.worker(manager)
+        try:
+            first = worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
+            self.append(event="stop", output="new work after provisional closure",
+                        created_at="2026-09-09T12:02:00+00:00")
+            second = worker.run_once(now=datetime(2026, 9, 9, 12, 3, tzinfo=timezone.utc))
+        finally:
+            worker.close()
+        self.assertEqual(first["processed"][0]["trigger"], "idle")
+        self.assertEqual(manager.calls[0][0]["state"], "provisional")
+        self.assertEqual(second["processed"][0]["trigger"], "turn")
+        self.assertNotEqual(manager.calls[0][0]["checkpoint_id"], manager.calls[1][0]["checkpoint_id"])
+
     def test_model_failure_is_visible_and_rows_remain_retryable(self):
         self.append()
         with patch.dict("os.environ", {"MEMORY_WORKER_HEALTH": str(self.health)}):

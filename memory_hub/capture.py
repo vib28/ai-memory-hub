@@ -7,6 +7,7 @@ step turns observations into the existing four-section ``session_write`` contrac
 from __future__ import annotations
 
 import json
+import fnmatch
 import os
 import re
 import sqlite3
@@ -17,11 +18,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .security import SECRET_PATTERNS, check_text
+
 
 DEFAULT_MAX_TEXT = 4000
 DEFAULT_MAX_FILES = 100
 DEFAULT_LEASE_SECONDS = 300
 MAX_RETRY_DELAY_SECONDS = 300
+DEFAULT_RETENTION_DAYS = 30
+DEFAULT_SENSITIVE_PATHS = (".env", ".env.*", "*/.ssh/*", "*/.aws/*", "*.pem", "*.key",
+                           "*id_rsa*", "*id_ed25519*", "*.p12", "*.pfx")
 
 
 _EVENT_ALIASES = {
@@ -68,10 +74,39 @@ def _bounded_text(value: Any, maximum: int = DEFAULT_MAX_TEXT) -> str:
     return text[:maximum]
 
 
+def _capture_exclude_patterns() -> tuple[str, ...]:
+    configured = os.environ.get("MEMORY_CAPTURE_EXCLUDE_PATHS", "")
+    custom = tuple(item.strip().replace("\\", "/").casefold()
+                   for item in configured.split(",") if item.strip())
+    return DEFAULT_SENSITIVE_PATHS + custom
+
+
+def _sensitive_path(value: str) -> bool:
+    normalized = value.replace("\\", "/").casefold()
+    name = normalized.rsplit("/", 1)[-1]
+    return any(fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(name, pattern)
+               for pattern in _capture_exclude_patterns())
+
+
+def _sanitize_text(value: Any, excluded_paths: Iterable[str] = ()) -> str:
+    text = _bounded_text(value)
+    for pattern, _label in SECRET_PATTERNS:
+        text = pattern.sub("[redacted sensitive evidence]", text)
+    for path in excluded_paths:
+        if path:
+            text = text.replace(path, "[redacted sensitive path]")
+    result = check_text(text)
+    if not result.safe and "sensitive" in result.reason:
+        return "[redacted sensitive evidence]"
+    return text
+
+
 def _bounded_files(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
-    return [_bounded_text(item, 500) for item in value[:DEFAULT_MAX_FILES] if item is not None]
+    return [path for path in (_bounded_text(item, 500) for item in value[:DEFAULT_MAX_FILES]
+                              if item is not None)
+            if path and not _sensitive_path(path)]
 
 
 @dataclass(frozen=True)
@@ -115,6 +150,10 @@ class Observation:
                               if isinstance(tool_response, (dict, list)) else str(tool_response))
         event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
         event = event or payload.get("hook_event_name")
+        raw_files = [_bounded_text(item, 500) for item in (files or [])[:DEFAULT_MAX_FILES]
+                     if item is not None]
+        files = _bounded_files(raw_files)
+        excluded_paths = [path for path in raw_files if _sensitive_path(path)]
         return cls(
             observation_id=_bounded_text(
                 payload.get("observation_id") or payload.get("event_id") or payload.get("hook_event_id"),
@@ -124,9 +163,9 @@ class Observation:
             project=_bounded_text(payload.get("project"), 200).strip(),
             cwd=_bounded_text(payload.get("cwd"), 1000).strip(),
             tool=_bounded_text(tool, 100).strip() or "unknown",
-            files=_bounded_files(files),
-            input_summary=_bounded_text(input_summary),
-            output_summary=_bounded_text(output_summary),
+            files=files,
+            input_summary=_sanitize_text(input_summary, excluded_paths),
+            output_summary=_sanitize_text(output_summary, excluded_paths),
             git_commit=_bounded_text(payload.get("git_commit"), 200).strip(),
             created_at=created_at,
             source=_bounded_text(payload.get("source") or payload.get("client"), 100).strip() or "generic-hook",
@@ -155,6 +194,11 @@ class ObservationBuffer:
 
     def __init__(self, path: Path | str | None = None):
         self.path = Path(path or default_buffer_path()).expanduser()
+        try:
+            self.retention_days = max(0, int(os.environ.get(
+                "MEMORY_CAPTURE_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)))
+        except (TypeError, ValueError):
+            self.retention_days = DEFAULT_RETENTION_DAYS
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
@@ -198,6 +242,22 @@ class ObservationBuffer:
             self.conn.execute("ALTER TABLE observations ADD COLUMN next_attempt_at TEXT")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_event ON observations(event, created_at)")
         self.conn.commit()
+
+    def prune_expired(self, *, now: datetime | None = None, include_pending: bool = False) -> int:
+        """Remove terminal evidence older than retention without losing live work."""
+        if self.retention_days <= 0:
+            return 0
+        now = now or datetime.now(timezone.utc)
+        cutoff = (now - timedelta(days=self.retention_days)).isoformat()
+        statuses = ("completed", "failed") if not include_pending else (
+            "pending", "failed", "processing", "completed")
+        placeholders = ",".join("?" for _ in statuses)
+        with self.conn:
+            cursor = self.conn.execute(
+                f"DELETE FROM observations WHERE created_at < ? AND status IN ({placeholders})",
+                (cutoff, *statuses),
+            )
+        return cursor.rowcount
 
     def close(self) -> None:
         self.conn.close()

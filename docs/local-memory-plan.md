@@ -54,7 +54,7 @@ flowchart LR
   The continuity chain is #54/#56/#57 completed → #58 → #59 → #60 → #61 → #62. #57's
   opt-in metadata/manifest foundation and supervised worker are implemented; handoff and
   benchmark gates remain open.
-- **Verification:** prerequisite capture, hook, context, metadata and worker fixes are covered by 196 tests;
+- **Verification:** prerequisite capture, hook, context, metadata and worker fixes are covered by 200 tests;
   no real-client handoff or paired token-saving benchmark has been
   certified yet.
 

@@ -112,7 +112,9 @@ only when unattended canonical session writes are intended; the worker never aut
 durable preferences. Token, elapsed-time, stop/compaction, idle and explicit session-end
 triggers are coalesced by stable observation IDs. Stop and idle closures are provisional;
 only an explicit session-end creates a final entry. Model or GitHub downtime leaves rows in
-the retryable capture buffer with visible health at `/api/worker-health`.
+the retryable capture buffer with visible health at `/api/worker-health`. Credential-like
+evidence is redacted, built-in sensitive paths are excluded, and terminal rows follow
+`MEMORY_CAPTURE_RETENTION_DAYS`; pending unsummarized evidence is retained by default.
 
 ## Audit identities without merging
 

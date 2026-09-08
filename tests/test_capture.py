@@ -7,6 +7,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
@@ -60,6 +61,30 @@ class ObservationBufferTests(unittest.TestCase):
         })
         self.assertEqual(len(row["input_summary"]), 4000)
         self.assertEqual(len(row["files"]), 100)
+
+    def test_sensitive_capture_evidence_is_redacted_and_paths_excluded(self):
+        row = self.buffer.append({
+            "observation_id": "private",
+            "session_id": "s1",
+            "files": [".env", "src/a.py"],
+            "input_summary": "password=super-secret-value",
+            "output_summary": "Read .env and password=super-secret-value",
+        })
+        self.assertEqual(row["files"], ["src/a.py"])
+        self.assertNotIn("super-secret-value", row["input_summary"])
+        self.assertNotIn("super-secret-value", row["output_summary"])
+        self.assertIn("redacted", row["output_summary"])
+
+    def test_retention_prunes_terminal_rows_but_keeps_unsummarized_rows(self):
+        self.buffer.append({"observation_id": "old-done", "session_id": "done",
+                            "created_at": "2020-01-01T00:00:00Z"})
+        self.buffer.mark_status(["old-done"], "completed")
+        self.buffer.append({"observation_id": "old-pending", "session_id": "pending",
+                            "created_at": "2020-01-01T00:00:00Z"})
+        deleted = self.buffer.prune_expired(now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+        self.assertEqual(deleted, 1)
+        self.assertEqual(self.buffer.for_session("done"), [])
+        self.assertEqual(self.buffer.for_session("pending")[0]["status"], "pending")
 
     def test_status_and_pending_session_tracking(self):
         self.buffer.append({"observation_id": "one", "session_id": "s1"})

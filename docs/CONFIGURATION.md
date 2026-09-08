@@ -23,6 +23,8 @@ flowchart LR
 | MEMORY_WRITE_MODE | MCP proposal policy: review or auto | auto; invalid values also fall back to auto |
 | MEMORY_VAULT_HISTORY | Commit paths from successful MCP consolidation | false |
 | MEMORY_CAPTURE_DB | Local observation database | User-home .ai-memory-hub/observations.sqlite3 |
+| MEMORY_CAPTURE_RETENTION_DAYS | Days to retain terminal capture rows | 30; pending rows are preserved |
+| MEMORY_CAPTURE_EXCLUDE_PATHS | Comma-separated additional sensitive path globs | Built-in `.env`, key and credential paths |
 | MEMORY_WORKER_TOKEN_BUDGET | Estimated captured-evidence tokens before a checkpoint | 4000 |
 | MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
 | MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |

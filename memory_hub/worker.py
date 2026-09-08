@@ -182,6 +182,7 @@ class SessionWorker:
         now = now or datetime.now(timezone.utc)
         stamp = now.isoformat()
         self._write_health(status="running", last_run_at=stamp, last_error=None)
+        retention_deleted = self.buffer.prune_expired(now=now)
         processed: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for session_id in self.buffer.pending_sessions():
@@ -211,8 +212,10 @@ class SessionWorker:
             status=status, last_run_at=stamp, last_success_at=stamp if not errors else None,
             last_error=errors[0]["reason"] if errors else None,
             backlog=backlog, processed=len(processed), errors=errors,
+            retention_deleted=retention_deleted,
         )
-        return {"status": status, "processed": processed, "errors": errors, "backlog": backlog}
+        return {"status": status, "processed": processed, "errors": errors, "backlog": backlog,
+                "retention_deleted": retention_deleted}
 
     def run_forever(self) -> None:
         self._write_health(status="starting", started_at=datetime.now(timezone.utc).isoformat())
