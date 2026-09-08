@@ -22,6 +22,7 @@ memory_hub/
   capture.py         Generic observation receiver and local queue
   consolidator.py    Optional local-model summaries and fallback
   session_capture.py Queue-to-summary bridge
+  worker.py          Optional supervised threshold/time/event checkpoint worker
   history.py         Opt-in Git history
   extractor.py       Transcript-to-candidate extraction
   hooks.py           Client hook configuration helpers
@@ -41,7 +42,8 @@ docs/                User guides and separately governed plans
 ~~~
 
 The Windows setup and connection scripts live at the repository root. They configure
-processes; they do not implement a background checkpoint worker.
+the optional worker's reversible startup entry; the worker itself remains a local
+process that never blocks capture.
 
 ## Runtime data flow
 
@@ -200,6 +202,13 @@ filtered before lexical or vector ranking; superseded records are excluded. The
 complete serialized `{"memories": [...]}` payload is bounded by `max_chars`, and the
 newest canonical project session is deterministically prepended. It is not automatic
 session restoration; startup injection remains roadmap work.
+
+The optional `memory_hub.worker` process is a supervised local consumer of the durable
+capture queue. It uses deterministic evidence-only fallback when no local chat model is
+available, records estimated token provenance, retries failed batches with the queue's
+backoff, and writes a per-vault health file consumed by the dashboard. Capture does not
+wait for the worker, model, or GitHub. A stop/idle checkpoint is provisional; explicit
+session-end evidence is required for a final entry.
 
 ## Security and consistency boundaries
 

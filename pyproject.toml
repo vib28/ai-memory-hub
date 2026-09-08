@@ -33,6 +33,7 @@ ai-memory-dashboard = "memory_hub.dashboard:main"
 ai-memory-tray = "memory_hub.tray:main"
 ai-memory-app = "memory_hub.app:main"
 ai-memory-hook = "memory_hub.capture:hook_main"
+ai-memory-worker = "memory_hub.worker:main"
 
 [tool.setuptools]
 packages = ["memory_hub"]

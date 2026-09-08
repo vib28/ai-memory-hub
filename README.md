@@ -39,10 +39,10 @@ flowchart LR
 - Keep optional Git history for accepted vault changes.
 
 > [!IMPORTANT]
-> Automatic periodic session saves and automatic Claude/Codex handoff are **planned,
-> not implemented**. They are the [first-priority work](docs/automatic-session-continuity.md).
-> Current hook buffering, summary tools and prompt instructions are building blocks,
-> not a complete unattended service.
+> The supervised local checkpoint worker is available behind explicit session-auto
+> setup. Automatic Claude/Codex startup handoff remains the [next first-priority
+> work](docs/automatic-session-continuity.md); hook buffering, worker summaries and
+> prompt instructions still do not form a complete cross-client service.
 
 ## Current state
 
@@ -50,16 +50,16 @@ flowchart LR
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links, project-scoped retry identity and optional checkpoint manifests | No automatic checkpoint worker yet |
-| Capture | Native payload mapping, managed hook schemas, bounded leased queue | No supervised periodic worker yet |
+| Sessions | Four-section summaries, structured project links, checkpoint manifests and provisional/final worker entries | No automatic startup handoff yet |
+| Capture | Native payload mapping, managed hook schemas, bounded leased queue and optional supervised worker | Client lifecycle injection remains #59 |
 | Retrieval | Keyword search, optional vectors and bounded project-scoped context | No automatic startup handoff yet |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | Component context-size benchmark | No measured cross-tool savings claim |
 
-The core capture, hook, queue, session-identity and context-boundary defects have
+The core capture, hook, queue, session-identity, context-boundary and local-worker defects have
 regression coverage. Remaining continuity work is tracked in
 [the continuity plan](docs/automatic-session-continuity.md), especially linked
-checkpoint metadata (#57), the supervised worker (#58), startup handoff (#59),
+checkpoint metadata (#57), startup handoff (#59),
 GitHub export (#60), and the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
 sessions with context passing enabled and disabled.

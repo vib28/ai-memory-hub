@@ -38,8 +38,9 @@ flowchart LR
 - **How:** fix native capture and queue correctness, add linked checkpoints and a local
   worker, then install automatic startup handoff. GitHub publishing follows local continuity.
 - **Reproduction:** hooks now preserve native evidence and queue claims are lease-protected,
-  but there is no scheduled worker, batch chain or guaranteed startup injection. Remaining
-  gates are tracked in #58–#62; #54, #56 and #57's queue/context/metadata-correctness gates are complete.
+  The local worker now handles scheduled/threshold checkpointing, but there is no
+  guaranteed client startup injection. Remaining gates are tracked in #59–#62; #54,
+  #56, #57 and #58's queue/context/metadata/worker gates are complete.
 - **Acceptance:** unattended checkpoints and final rollup, valid links/tags, bidirectional
   Claude/Codex handoff, crash/retry safety, strict scope/budget and measured token/quality results.
 - **Required benchmark acceptance (#62):** compare matched Claude→Codex and Codex→Claude
@@ -51,10 +52,10 @@ flowchart LR
   in the measured suite; otherwise the gate remains open.
 - **Implementation order:** follow the canonical [open issue priority order](issue-priority-order.md).
   The continuity chain is #54/#56/#57 completed → #58 → #59 → #60 → #61 → #62. #57's
-  opt-in metadata/manifest foundation is implemented; the worker, handoff and
+  opt-in metadata/manifest foundation and supervised worker are implemented; handoff and
   benchmark gates remain open.
-- **Verification:** prerequisite capture, hook, context and metadata fixes are covered by 191 tests;
-  no real-client handoff, supervised worker or paired token-saving benchmark has been
+- **Verification:** prerequisite capture, hook, context, metadata and worker fixes are covered by 196 tests;
+  no real-client handoff or paired token-saving benchmark has been
   certified yet.
 
 Full design, evidence and acceptance tests:

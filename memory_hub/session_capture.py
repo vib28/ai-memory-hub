@@ -11,7 +11,9 @@ from .consolidator import consolidate_session
 
 
 def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: ObservationBuffer,
-                    writer: str) -> dict[str, Any]:
+                    writer: str, *, batch_limit: int = 500,
+                    entry_type: str = "checkpoint", state: str = "accepted",
+                    host_session_finalized: bool = False) -> dict[str, Any]:
     """Derive a stable identity from the ordered evidence owned by one batch."""
     observation_ids = [str(row["observation_id"]) for row in rows]
     digest = hashlib.sha256("\0".join(observation_ids).encode("utf-8")).hexdigest()[:24]
@@ -20,8 +22,10 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
         "session_group_id": f"capture-{group}",
         "host_session_id": session_id,
         "checkpoint_id": f"batch-{digest}",
-        "sequence": buffer.batch_sequence(rows),
-        "entry_type": "checkpoint",
+        "sequence": buffer.batch_sequence(rows, limit=batch_limit),
+        "entry_type": entry_type,
+        "state": state,
+        "host_session_finalized": host_session_finalized,
         "source_client": writer,
         "worktree": rows[0].get("cwd") or None,
         "evidence_start": rows[0].get("created_at"),
@@ -37,14 +41,22 @@ def consolidate_buffered_session(
     *,
     writer: str,
     write_mode: str,
+    batch_limit: int = 500,
+    entry_type: str = "checkpoint",
+    state: str = "accepted",
+    host_session_finalized: bool = False,
 ) -> dict[str, Any]:
     recovered = buffer.recover_processing(session_id)
     owner = uuid.uuid4().hex
-    rows = buffer.claim_for_session(session_id, owner=owner)
+    rows = buffer.claim_for_session(session_id, owner=owner, limit=batch_limit)
     if not rows:
         return {"status": "empty", "session_id": session_id, "observations": 0}
     observation_ids = [row["observation_id"] for row in rows]
-    metadata = _batch_metadata(session_id, rows, buffer, writer)
+    metadata = _batch_metadata(
+        session_id, rows, buffer, writer, batch_limit=batch_limit,
+        entry_type=entry_type, state=state,
+        host_session_finalized=host_session_finalized,
+    )
     try:
         summary = consolidate_session(rows)
         result = manager.propose_session({

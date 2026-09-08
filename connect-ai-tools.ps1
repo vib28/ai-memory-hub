@@ -37,6 +37,13 @@
     settings.json, leaving every unrelated hook and setting untouched. Safe to run
     even if no hook was ever installed. Mutually exclusive with -InstallHooks.
 
+.PARAMETER EnableSessionAuto
+    Register the local checkpoint worker in the current user's Windows startup
+    entries. The owned value is hidden, reversible and uses the selected write mode.
+
+.PARAMETER DisableSessionAuto
+    Remove only the AI Memory Hub startup value created by -EnableSessionAuto.
+
 .EXAMPLE
     .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
 
@@ -60,11 +67,15 @@ param(
 
     [switch]$InstallHooks,
 
-    [switch]$RemoveHooks
+    [switch]$RemoveHooks,
+
+    [switch]$EnableSessionAuto,
+
+    [switch]$DisableSessionAuto
 )
 
-if ($InstallHooks -and $RemoveHooks) {
-    throw "-InstallHooks and -RemoveHooks are mutually exclusive; pass at most one."
+if (($InstallHooks -and $RemoveHooks) -or ($EnableSessionAuto -and $DisableSessionAuto)) {
+    throw "Install/remove switches are mutually exclusive; pass at most one of each pair."
 }
 
 $ErrorActionPreference = "Stop"
@@ -73,6 +84,7 @@ Set-StrictMode -Version Latest
 $Root = $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $ServerName = "ai-memory-hub"
+$WorkerValueName = "AI Memory Hub Session Worker"
 
 if (-not (Test-Path $Python)) {
     throw "Virtual environment not found at $Python. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
@@ -83,6 +95,24 @@ if (-not (Test-Path $VaultPath)) {
 }
 
 $results = [System.Collections.Generic.List[string]]::new()
+
+function Set-SessionAuto {
+    param([bool]$Enable)
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    $workerScript = Join-Path $Root "start-worker.ps1"
+    if ($Enable) {
+        $command = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$workerScript`" -VaultPath `"$VaultPath`" -WriteMode $WriteMode"
+        New-ItemProperty -Path $runKey -Name $WorkerValueName -Value $command -PropertyType String -Force | Out-Null
+        $results.Add("[worker]    session-auto enabled ($WriteMode)")
+    }
+    else {
+        Remove-ItemProperty -Path $runKey -Name $WorkerValueName -ErrorAction SilentlyContinue
+        $results.Add("[worker]    session-auto disabled")
+    }
+}
+
+if ($EnableSessionAuto) { Set-SessionAuto $true }
+if ($DisableSessionAuto) { Set-SessionAuto $false }
 
 function Install-Instructions {
     param([string]$TargetPath, [string]$PromptFile)

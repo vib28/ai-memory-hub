@@ -107,6 +107,9 @@ def test_shared_server_security_metadata_and_reopen(manager):
         assert request("GET", "/", headers={"Host": "attacker.invalid"})[0] == 403
         assert running_instance(manager.vault.root, port)
         assert not running_instance(manager.vault.root / "different", port)
+        health_status, health_body = request("GET", "/api/worker-health")
+        assert health_status == 200
+        assert json.loads(health_body)["status"] in {"not_configured", "ok", "stopped", "degraded"}
         with patch("memory_hub.app.MemoryManager") as constructor, patch("memory_hub.app.webbrowser.open") as opened:
             run(manager.vault.root, port)
             constructor.assert_not_called()

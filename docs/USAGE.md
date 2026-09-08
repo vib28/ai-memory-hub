@@ -96,6 +96,24 @@ session writes remain backward-compatible and do not create a manifest.
 > cross-client startup restoration. Same-project retry detection is preserved while
 > identical summaries in distinct projects are kept separate.
 
+## Automatic session worker
+
+Capture is always local and durable; a worker is optional. Run one bounded pass with
+`.\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once`, or enable
+the reversible Windows startup entry explicitly:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableSessionAuto -WriteMode review
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableSessionAuto
+~~~
+
+The default `review` mode keeps proposed summaries in the dashboard. Use `-WriteMode auto`
+only when unattended canonical session writes are intended; the worker never auto-merges
+durable preferences. Token, elapsed-time, stop/compaction, idle and explicit session-end
+triggers are coalesced by stable observation IDs. Stop and idle closures are provisional;
+only an explicit session-end creates a final entry. Model or GitHub downtime leaves rows in
+the retryable capture buffer with visible health at `/api/worker-health`.
+
 ## Audit identities without merging
 
 ~~~powershell

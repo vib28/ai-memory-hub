@@ -179,6 +179,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(self.manager.conflicts())
             if u.path == "/api/audit":
                 return self._json(self.manager.audit())
+            if u.path == "/api/worker-health":
+                from .worker import read_health
+                return self._json(read_health(self.manager.vault.root))
             self._json({"error": "not found"}, 404)
         except KeyError as exc:
             self._json({"error": str(exc)}, 404)

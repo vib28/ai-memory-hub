@@ -5,8 +5,9 @@ Status: **partially implemented and tracked**. Reviewed 2026-09-08 against
 leased capture claims, project-scoped context and separate local-model roles are
 implemented. The #54 queue-correctness gate now includes bounded pagination, live leases,
 crash-idempotent batch identity and bounded retry backoff. Opt-in checkpoint metadata and
-manifest persistence are implemented as a prerequisite; the supervised worker, automatic
-startup handoff and full final-rollup workflow remain roadmap work. Parent:
+manifest persistence are implemented as prerequisites; the supervised worker is now
+available behind explicit session-auto setup, while automatic startup handoff and the
+full final-rollup workflow remain roadmap work. Parent:
 [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ```mermaid
@@ -24,7 +25,8 @@ flowchart LR
 
 The capture-to-handoff path spans client installation, observation buffering,
 consolidation, session persistence, retrieval and dashboard presentation. Current
-components do not yet form an unattended session-saving service.
+components now form an optional unattended local checkpoint service, but do not yet
+form the complete cross-client startup handoff and publication service.
 
 Review coverage: capture.py, hooks.py, session_capture.py, consolidator.py,
 manager.py session/context paths, vault.py routing/parsing/deletion, models.py,
@@ -150,7 +152,7 @@ comes first. These are tunable design defaults, not measured optimum values.
 Additional turn/compaction/failure/end triggers coalesce with scheduled flushes.
 Split oversized events safely and preserve evidence offsets without double-counting.
 
-The worker starts automatically after one-time setup, survives client termination,
+The worker starts automatically after explicit one-time session-auto setup, survives client termination,
 uses leases to avoid concurrent claims and retries failed operations with bounded
 backoff. A missing local SLM uses an honest evidence-only checkpoint; do not infer
 decisions or successful tests from a command merely having been issued.
@@ -310,7 +312,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **191 passed** with a workspace-local pytest base directory;
+Full repository verification: **196 passed** with a workspace-local pytest base directory;
 Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
 preservation, concurrent queue claims, live leases, project-scoped context and separate
 embedding/chat-model configuration.

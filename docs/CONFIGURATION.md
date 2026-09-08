@@ -23,6 +23,10 @@ flowchart LR
 | MEMORY_WRITE_MODE | MCP proposal policy: review or auto | auto; invalid values also fall back to auto |
 | MEMORY_VAULT_HISTORY | Commit paths from successful MCP consolidation | false |
 | MEMORY_CAPTURE_DB | Local observation database | User-home .ai-memory-hub/observations.sqlite3 |
+| MEMORY_WORKER_TOKEN_BUDGET | Estimated captured-evidence tokens before a checkpoint | 4000 |
+| MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
+| MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |
+| MEMORY_WORKER_INTERVAL_SECONDS | Worker polling interval | 15 |
 | MEMORY_LLM_BASE_URL | Chat-completions endpoint base | Unset |
 | MEMORY_LLM_MODEL | Consolidation/extraction model name | Unset |
 | MEMORY_LLM_API_KEY | Optional transcript-extractor authorization | Unset; not used by the consolidator |
@@ -91,6 +95,15 @@ search can use keyword matching alone.
 These URLs are not restricted to loopback by the provider code. Choosing a remote
 endpoint sends content there. Keep credentials out of example files and memory entries.
 
+## Supervised local worker
+
+Enable the worker explicitly with `connect-ai-tools.ps1 -EnableSessionAuto`. It reads
+`MEMORY_CAPTURE_DB`, uses `MEMORY_WRITE_MODE` (review is the worker default), and writes
+health to a per-vault file shown by the dashboard's `/api/worker-health` endpoint. A
+local chat model is optional: failures leave capture rows retryable and the fallback
+summary records evidence-only content. The worker never turns a session checkpoint into
+a durable preference automatically.
+
 ## Optional vault history
 
 Initialize history on a dedicated vault before enabling consolidation commits:
@@ -110,6 +123,6 @@ See [undo and backup](USAGE.md#undo-and-backup).
 
 ## Settings that do not exist yet
 
-There is no installed token-threshold worker, session-only auto-policy variable,
-automatic GitHub exporter or complete startup handoff configuration. Proposed settings
-in [the continuity plan](automatic-session-continuity.md) are design, not usable flags.
+There is no session-only auto-policy variable, automatic GitHub exporter or complete
+startup handoff configuration. Worker settings above are usable flags; GitHub export
+and cross-client startup handoff remain tracked roadmap work.
