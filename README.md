@@ -39,10 +39,11 @@ flowchart LR
 - Keep optional Git history for accepted vault changes.
 
 > [!IMPORTANT]
-> The supervised local checkpoint worker is available behind explicit session-auto
-> setup. Automatic Claude/Codex startup handoff remains the [next first-priority
-> work](docs/automatic-session-continuity.md); hook buffering, worker summaries and
-> prompt instructions still do not form a complete cross-client service.
+> The supervised local checkpoint worker and model-free Claude/Codex startup handoff
+> are available behind explicit setup. Full final-rollup publication and unsupported
+> client coverage remain in the [continuity plan](docs/automatic-session-continuity.md);
+> hook buffering, worker summaries and startup packets still do not form a complete
+> all-client publication service.
 
 ## Current state
 
@@ -50,9 +51,9 @@ flowchart LR
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links, checkpoint manifests and provisional/final worker entries | No automatic startup handoff yet |
-| Capture | Native payload mapping, managed hook schemas, bounded leased queue and optional supervised worker | Client lifecycle injection remains #59 |
-| Retrieval | Keyword search, optional vectors and bounded project-scoped context | No automatic startup handoff yet |
+| Sessions | Four-section summaries, structured project links, checkpoint manifests and provisional/final worker entries | Final rollup/publication remains #60 |
+| Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Unsupported clients have no claimed startup automation |
+| Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | GitHub publication and paired measurement remain open |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | Component context-size benchmark | No measured cross-tool savings claim |
 

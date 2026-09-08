@@ -29,6 +29,7 @@ flowchart LR
 | MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
 | MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |
 | MEMORY_WORKER_INTERVAL_SECONDS | Worker polling interval | 15 |
+| MEMORY_HANDOFF_MAX_CHARS | Maximum serialized startup evidence packet | 6000 |
 | MEMORY_LLM_BASE_URL | Chat-completions endpoint base | Unset |
 | MEMORY_LLM_MODEL | Consolidation/extraction model name | Unset |
 | MEMORY_LLM_API_KEY | Optional transcript-extractor authorization | Unset; not used by the consolidator |
@@ -123,8 +124,18 @@ History does not automatically commit every kind of memory operation. It is not 
 backup of ignored pending-review databases or the external capture buffer.
 See [undo and backup](USAGE.md#undo-and-backup).
 
-## Settings that do not exist yet
+## Startup handoff
 
-There is no session-only auto-policy variable, automatic GitHub exporter or complete
-startup handoff configuration. Worker settings above are usable flags; GitHub export
-and cross-client startup handoff remain tracked roadmap work.
+The local handoff reader is independent from MCP, embeddings, the chat model and
+GitHub. Install it separately from capture and Windows session-auto registration:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
+~~~
+
+The helper currently installs `SessionStart` for Claude Code 2.1.263 and Codex CLI
+0.153.4, with managed backups and a bounded `additionalContext` packet. The packet
+shows checkpoint age and a pending-evidence warning, and lists ambiguous work groups
+separately. Other clients report unsupported startup automation rather than claiming
+coverage. GitHub publication remains a separate permission and roadmap item.

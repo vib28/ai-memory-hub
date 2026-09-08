@@ -19,10 +19,10 @@ Writer identity records provenance; it does not restrict a preference to that wr
 
 ## Will switching tools restore my entire conversation?
 
-Not today. Clients can retrieve stored memories and session summaries. Automatic
-periodic saves and startup handoff are the [first-priority plan](automatic-session-continuity.md),
-not implemented runtime behavior. The design transfers useful task state, not a
-guaranteed verbatim replay of everything said.
+Not the entire conversation. Clients can retrieve stored memories and session summaries;
+the optional worker and supported Claude/Codex startup handoff restore bounded useful
+task state after explicit setup. The design does not promise verbatim replay of everything
+said or startup automation for unsupported clients.
 
 ## Do vectors make handoff automatic?
 

@@ -1,13 +1,14 @@
 # Automatic session continuity
 
-Status: **partially implemented and tracked**. Reviewed 2026-09-08 against
+Status: **partially implemented and tracked**. Reviewed 2026-09-09 against
 `enhancements/roadmap`. Native hook mapping, managed-handler preservation, bounded
 leased capture claims, project-scoped context and separate local-model roles are
 implemented. The #54 queue-correctness gate now includes bounded pagination, live leases,
 crash-idempotent batch identity and bounded retry backoff. Opt-in checkpoint metadata and
-manifest persistence are implemented as prerequisites; the supervised worker is now
-available behind explicit session-auto setup, while automatic startup handoff and the
-full final-rollup workflow remain roadmap work. Parent:
+manifest persistence and the supervised worker are implemented behind explicit
+session-auto setup. A model-free SessionStart handoff is now available for the
+tested Claude Code and Codex CLI surfaces; full final-rollup publication remains
+roadmap work. Parent:
 [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ```mermaid
@@ -25,8 +26,9 @@ flowchart LR
 
 The capture-to-handoff path spans client installation, observation buffering,
 consolidation, session persistence, retrieval and dashboard presentation. Current
-components now form an optional unattended local checkpoint service, but do not yet
-form the complete cross-client startup handoff and publication service.
+components now form an optional unattended local checkpoint plus tested
+Claude/Codex startup handoff service, but do not yet form the complete all-client
+startup and publication service.
 
 Review coverage: capture.py, hooks.py, session_capture.py, consolidator.py,
 manager.py session/context paths, vault.py routing/parsing/deletion, models.py,
@@ -58,7 +60,7 @@ the source client never emitted. Local continuity comes before optional GitHub p
 | Public MCP write policy / review queue | Govern accepted durable memory | Idempotent batch submission and explicit session-auto scope |
 | Git history | Reversible accepted changes | Recoverable batch/manifest publication and history error tracking |
 | FTS / optional vectors | Related-memory retrieval | Deterministic active-session selection and strict context scope |
-| Hook installers | Backups and managed installation | Correct schemas, mixed-handler preservation, full lifecycle setup |
+| Hook installers | Backups, managed installation and tested SessionStart output | Version-specific support outside Claude Code/Codex and GitHub publication |
 
 ### Separate model roles
 
@@ -104,20 +106,24 @@ age and a bounded, sanitized pending-evidence delta rather than pretending it is
 
 ### Lifecycle and client capability
 
-Current connection code installs only PostToolUse, except Gemini's AfterTool. Hermes
-and other MCP clients have separate memory access but no lifecycle installation here.
-The receiver's event aliases do not establish native event delivery.
+The connection helper separates capture hooks (`-InstallHooks`) from the model-free
+startup handoff (`-InstallHandoff`). Claude Code and Codex CLI receive a SessionStart
+handoff plus the supported capture lifecycle events; Gemini, Qwen, Kimi, Hermes and
+other MCP clients retain their existing provider-specific capture limits and are not
+claimed to have startup automation here. The receiver's event aliases do not by
+themselves establish native event delivery.
 
 The current [Claude hook reference](https://code.claude.com/docs/en/hooks) documents
 start, prompt, tool, stop, compaction and end events, plus StopFailure with rate_limit.
-Start-hook output can add context. These are possible adapter inputs, not installed
-features of this repository. Failure notification is not advance warning of quota
+Start-hook output can add context. The helper installs the SessionStart adapter for
+the tested Claude Code CLI surface. Failure notification is not advance warning of quota
 exhaustion; abrupt termination may emit nothing.
 
 The current [Codex hook guide](https://learn.chatgpt.com/docs/hooks) documents
 SessionStart context output and lifecycle events. MCP may not be ready at start;
 SessionEnd does not support MCP hooks. Background hooks may be cancelled when a
-session ends. Therefore use a quick command hook and a separately supervised worker.
+session ends. The helper installs the SessionStart adapter for the tested Codex CLI
+surface; use a quick command hook and a separately supervised worker.
 Transcript format is not a stable hook interface: any optional tail reader must be
 versioned, bounded and allowlisted rather than silently scanning all histories.
 
@@ -270,9 +276,10 @@ Historical disposable checks on the pre-fix baseline produced:
 Those rows document the original defects, not current behavior. Current regression
 coverage verifies pre-ranking project filtering, complete serialized packet bounds,
 global scope labels, superseded exclusion, deterministic newest-session selection,
-live lease protection, concurrent claim isolation, bounded retry backoff and
-crash-boundary batch identity. Real-client injection, supervised scheduling and full
-cross-client restoration remain open acceptance gates.
+live lease protection, concurrent claim isolation, bounded retry backoff,
+crash-boundary batch identity and process-level Claude/Codex SessionStart fixtures.
+Installed-client launch certification, final rollup/publication and full cross-client
+restoration remain open acceptance gates.
 
 ## Acceptance criteria
 
@@ -302,7 +309,7 @@ cross-client restoration remain open acceptance gates.
 
 The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
-chain is `#54/#56/#57 completed → #58 → #59 → #60 → #61 → #62`; #40 and #64 can proceed
+chain is `#54/#56/#57/#58 completed → #59 → #60 → #61 → #62`; #40 and #64 can proceed
 independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance
@@ -319,5 +326,6 @@ embedding/chat-model configuration.
 
 No personal hook configuration, startup service or real memory vault was changed by
 this review. Native host event delivery across every supported client, live quota
-interruption, linked checkpoint metadata and full cross-client restoration remain
-acceptance work. No automatic GitHub session content was published.
+interruption and full cross-client restoration remain acceptance work. Linked
+checkpoint metadata and local worker processing are complete; no automatic GitHub
+session content was published.

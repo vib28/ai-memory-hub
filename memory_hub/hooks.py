@@ -109,7 +109,7 @@ def install_claude_hook(settings: Path | str, *, event: str, command: str,
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
-def uninstall_hook(settings: Path | str) -> dict[str, Any]:
+def uninstall_hook(settings: Path | str, *, command: str | None = None) -> dict[str, Any]:
     path = Path(settings).expanduser().resolve()
     if not path.exists():
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
@@ -121,7 +121,10 @@ def uninstall_hook(settings: Path | str) -> dict[str, Any]:
     for event, values in list(hooks.items()):
         if not isinstance(values, list):
             continue
-        kept = [item for item in values if not (isinstance(item, dict) and item.get(MANAGED_KEY))]
+        kept = [item for item in values if not (
+            isinstance(item, dict) and item.get(MANAGED_KEY)
+            and (command is None or item.get("command") == command)
+        )]
         removed += len(values) - len(kept)
         if kept:
             hooks[event] = kept
@@ -209,7 +212,7 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
 
 
 def install_codex_hook(settings: Path | str, *, event: str, command: str,
-                       matcher: str = "*") -> dict[str, Any]:
+                       matcher: str = "*", additional_context_limit: int | None = None) -> dict[str, Any]:
     """Install a Codex hook using only documented handler fields."""
     path = Path(settings).expanduser().resolve()
     config = _load(path)
@@ -220,6 +223,8 @@ def install_codex_hook(settings: Path | str, *, event: str, command: str,
     if not isinstance(groups, list):
         raise HookConfigError(f"settings hook event '{event}' must be an array")
     entry = {"type": "command", "command": command, "statusMessage": CODEX_STATUS_MESSAGE}
+    if additional_context_limit is not None:
+        entry["additionalContextLimit"] = max(0, int(additional_context_limit))
     managed_group = {"matcher": matcher, "hooks": [entry]}
 
     def is_managed(item: Any) -> bool:

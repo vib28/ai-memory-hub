@@ -56,10 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     hi.add_argument("--arg", action="append", default=[])
     hi.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
     hi.add_argument("--matcher", default="*")
+    hi.add_argument("--additional-context-limit", type=int)
     hu = sub.add_parser("hooks-uninstall")
     hu.add_argument("--settings", required=True)
     hu.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
-    hu.add_argument("--command", dest="hook_command", default="ai-memory-hook")
+    hu.add_argument("--command", dest="hook_command")
 
     s = sub.add_parser("search")
     s.add_argument("query")
@@ -107,7 +108,8 @@ def main():
                 jprint(install_toml_hook(args.settings, event=args.event, command=args.hook_command))
             elif args.format == "codex":
                 jprint(install_codex_hook(args.settings, event=args.event,
-                                          command=args.hook_command, matcher=args.matcher))
+                                          command=args.hook_command, matcher=args.matcher,
+                                          additional_context_limit=args.additional_context_limit))
             elif args.format == "claude":
                 jprint(install_claude_hook(args.settings, event=args.event,
                                            command=args.hook_command, matcher=args.matcher,
@@ -123,7 +125,7 @@ def main():
             elif hook_format == "codex":
                 jprint(uninstall_codex_hook(args.settings, command=args.hook_command))
             else:
-                jprint(uninstall_hook(args.settings))
+                jprint(uninstall_hook(args.settings, command=args.hook_command))
         return
     if not args.vault:
         raise SystemExit("--vault is required for this command")

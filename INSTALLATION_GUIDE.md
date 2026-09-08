@@ -45,6 +45,6 @@ Review [backup guidance](docs/USAGE.md#undo-and-backup) before treating any data
 - [Architecture and boundaries](ARCHITECTURE.md).
 
 > [!NOTE]
-> Automatic token/time checkpoints, startup handoff and GitHub session publishing are
-> not available yet. Their [plan](docs/automatic-session-continuity.md) and
-> [required benchmark](docs/session-handoff-benchmark.md) are separate from setup.
+> Automatic token/time checkpoints require explicit `-EnableSessionAuto`; Claude/Codex
+> startup handoff requires separate `-InstallHandoff`. GitHub session publishing and
+> the [required benchmark](docs/session-handoff-benchmark.md) remain separate roadmap work.

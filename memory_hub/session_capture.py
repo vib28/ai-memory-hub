@@ -18,6 +18,12 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
     observation_ids = [str(row["observation_id"]) for row in rows]
     digest = hashlib.sha256("\0".join(observation_ids).encode("utf-8")).hexdigest()[:24]
     group = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+    changed_files: list[str] = []
+    for row in rows:
+        for path in row.get("files", []) or []:
+            value = str(path).strip()
+            if value and value not in changed_files:
+                changed_files.append(value)
     return {
         "session_group_id": f"capture-{group}",
         "host_session_id": session_id,
@@ -28,6 +34,7 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
         "host_session_finalized": host_session_finalized,
         "source_client": writer,
         "worktree": rows[0].get("cwd") or None,
+        "changed_files": changed_files[:100],
         "evidence_start": rows[0].get("created_at"),
         "evidence_end": rows[-1].get("created_at"),
         "session_tags": ["capture", "automatic"],

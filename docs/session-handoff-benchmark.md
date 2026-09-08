@@ -56,7 +56,7 @@ Prescribed test procedure:
 
 ## Implementation details
 
-Planned, not implemented. Depends on linked checkpoints #57, worker #58, scoped context #56 and automatic handoff #59. Parent #61. Extend the evaluation tooling; keep existing context-size benchmark as a quick component check, not a substitute for this experiment.
+Planned, not implemented. Depends on linked checkpoints #57, worker #58, scoped context #56 and the supported automatic handoff in #59. Parent #61. Extend the evaluation tooling; keep existing context-size benchmark as a quick component check, not a substitute for this experiment.
 
 Implement deterministic fixture/replay harness alongside the handoff code, then perform actual-client paired runs when the adapters work. Set the live-run budget once at setup; no per-session manual triggers are required. The cost of the common source prefix cancels in the paired difference but must still be included when reporting whole-session percentage savings.
 

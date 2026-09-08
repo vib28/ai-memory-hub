@@ -37,6 +37,14 @@
     settings.json, leaving every unrelated hook and setting untouched. Safe to run
     even if no hook was ever installed. Mutually exclusive with -InstallHooks.
 
+.PARAMETER InstallHandoff
+    Install the model-free SessionStart handoff reader for Claude Code and Codex CLI.
+    It reads only the local checkpoint manifest and emits a bounded additionalContext
+    packet. It is independent from capture hooks and Windows session-auto startup.
+
+.PARAMETER RemoveHandoff
+    Remove only the SessionStart handoff entry owned by this project.
+
 .PARAMETER EnableSessionAuto
     Register the local checkpoint worker in the current user's Windows startup
     entries. The owned value is hidden, reversible and uses the selected write mode.
@@ -69,12 +77,17 @@ param(
 
     [switch]$RemoveHooks,
 
+    [switch]$InstallHandoff,
+
+    [switch]$RemoveHandoff,
+
     [switch]$EnableSessionAuto,
 
     [switch]$DisableSessionAuto
 )
 
-if (($InstallHooks -and $RemoveHooks) -or ($EnableSessionAuto -and $DisableSessionAuto)) {
+if (($InstallHooks -and $RemoveHooks) -or ($InstallHandoff -and $RemoveHandoff) -or
+    ($EnableSessionAuto -and $DisableSessionAuto)) {
     throw "Install/remove switches are mutually exclusive; pass at most one of each pair."
 }
 
@@ -169,25 +182,34 @@ function Get-HookCommandPath {
     return $hookExe
 }
 
+function Get-HandoffCommandPath {
+    $handoffExe = Join-Path $Root ".venv\Scripts\ai-memory-handoff.exe"
+    if (-not (Test-Path $handoffExe)) {
+        throw "ai-memory-handoff not found at $handoffExe. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
+    }
+    return $handoffExe
+}
+
 function Install-ClaudeHook {
     $settingsPath = Get-ClaudeSettingsPath
     $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --event PostToolUse --command $hookCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Claude Code hook install: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    switch ($status) {
-        "installed"         { $results.Add("[hooks]     Claude Code hook installed ($settingsPath)") }
-        "already_installed" { $results.Add("[hooks]     Claude Code hook already installed ($settingsPath)") }
-        default             { $results.Add("[hooks]     Claude Code hook install: $status ($settingsPath)") }
+    $events = @("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
+    foreach ($event in $events) {
+        $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format claude --event $event --command $hookCommand 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            $results.Add("[failed]    Claude Code $event hook install: $($output.Trim())")
+            continue
+        }
+        $status = ($output | ConvertFrom-Json).status
+        $results.Add("[hooks]     Claude Code $event $status ($settingsPath)")
     }
 }
 
 function Remove-ClaudeHook {
     $settingsPath = Get-ClaudeSettingsPath
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath 2>&1 | Out-String
+    $hookCommand = Get-HookCommandPath
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --command $hookCommand 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         $results.Add("[failed]    Claude Code hook removal: $($output.Trim())")
         return
@@ -198,6 +220,30 @@ function Remove-ClaudeHook {
         "not_found" { $results.Add("[hooks]     Claude Code hook already absent ($settingsPath)") }
         default     { $results.Add("[hooks]     Claude Code hook removal: $status ($settingsPath)") }
     }
+}
+
+function Install-ClaudeHandoff {
+    $settingsPath = Get-ClaudeSettingsPath
+    $handoffCommand = Get-HandoffCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format claude --event SessionStart --command $handoffCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Claude Code handoff install: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[handoff]   Claude Code SessionStart $status ($settingsPath)")
+}
+
+function Remove-ClaudeHandoff {
+    $settingsPath = Get-ClaudeSettingsPath
+    $handoffCommand = Get-HandoffCommandPath
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format claude --command $handoffCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Claude Code handoff removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[handoff]   Claude Code SessionStart $status ($settingsPath)")
 }
 
 function Install-NestedClientHook {
@@ -249,13 +295,41 @@ function Remove-TomlClientHook {
 function Install-CodexHook {
     $settingsPath = Get-CodexSettingsPath
     $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event PostToolUse --command $hookCommand 2>&1 | Out-String
+    $events = @("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PreCompact", "PostCompact", "Stop", "SessionEnd")
+    foreach ($event in $events) {
+        $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event $event --command $hookCommand 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            $results.Add("[failed]    Codex CLI $event hook install: $($output.Trim())")
+            continue
+        }
+        $status = ($output | ConvertFrom-Json).status
+        $results.Add("[hooks]     Codex CLI $event $status ($settingsPath)")
+    }
+}
+
+function Install-CodexHandoff {
+    $settingsPath = Get-CodexSettingsPath
+    $handoffCommand = Get-HandoffCommandPath
+    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event SessionStart --command $handoffCommand --additional-context-limit 3000 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Codex CLI hook install: $($output.Trim())")
+        $results.Add("[failed]    Codex CLI handoff install: $($output.Trim())")
         return
     }
     $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     Codex CLI hook $status ($settingsPath)")
+    $results.Add("[handoff]   Codex CLI SessionStart $status ($settingsPath)")
+}
+
+function Remove-CodexHandoff {
+    $settingsPath = Get-CodexSettingsPath
+    $handoffCommand = Get-HandoffCommandPath
+    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format codex --command $handoffCommand 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        $results.Add("[failed]    Codex CLI handoff removal: $($output.Trim())")
+        return
+    }
+    $status = ($output | ConvertFrom-Json).status
+    $results.Add("[handoff]   Codex CLI SessionStart $status ($settingsPath)")
 }
 
 function Remove-CodexHook {
@@ -320,6 +394,8 @@ if ($claudeLauncher) {
             $results.Add("[connected] Claude Code")
             if ($InstallHooks) { Install-ClaudeHook }
             if ($RemoveHooks) { Remove-ClaudeHook }
+            if ($InstallHandoff) { Install-ClaudeHandoff }
+            if ($RemoveHandoff) { Remove-ClaudeHandoff }
         }
         else {
             $results.Add("[failed]    Claude Code (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -331,6 +407,8 @@ if ($claudeLauncher) {
             $results.Add("[connected] Claude Code")
             if ($InstallHooks) { Install-ClaudeHook }
             if ($RemoveHooks) { Remove-ClaudeHook }
+            if ($InstallHandoff) { Install-ClaudeHandoff }
+            if ($RemoveHandoff) { Remove-ClaudeHandoff }
         }
         else {
             $results.Add("[failed]    Claude Code ($($_.Exception.Message))")
@@ -341,6 +419,9 @@ else {
     $results.Add("[skipped]   Claude Code (not found on PATH)")
     if ($InstallHooks -or $RemoveHooks) {
         $results.Add("[skipped]   Claude Code hooks (Claude Code CLI not found on PATH)")
+    }
+    if ($InstallHandoff -or $RemoveHandoff) {
+        $results.Add("[skipped]   Claude Code handoff (Claude Code CLI not found on PATH)")
     }
 }
 
@@ -430,6 +511,8 @@ if ($codexExe) {
             $results.Add("[connected] Codex CLI")
             if ($InstallHooks) { Install-CodexHook }
             if ($RemoveHooks) { Remove-CodexHook }
+            if ($InstallHandoff) { Install-CodexHandoff }
+            if ($RemoveHandoff) { Remove-CodexHandoff }
         }
         else {
             $results.Add("[failed]    Codex CLI (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -441,6 +524,8 @@ if ($codexExe) {
             $results.Add("[connected] Codex CLI")
             if ($InstallHooks) { Install-CodexHook }
             if ($RemoveHooks) { Remove-CodexHook }
+            if ($InstallHandoff) { Install-CodexHandoff }
+            if ($RemoveHandoff) { Remove-CodexHandoff }
         }
         else {
             $results.Add("[failed]    Codex CLI ($($_.Exception.Message))")
@@ -450,6 +535,7 @@ if ($codexExe) {
 else {
     $results.Add("[skipped]   Codex CLI (not found)")
     if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Codex CLI hooks (Codex CLI not found)") }
+    if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Codex CLI handoff (Codex CLI not found)") }
 }
 
 # --- Kimi Code -------------------------------------------------------------

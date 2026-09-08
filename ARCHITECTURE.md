@@ -77,8 +77,9 @@ Client hook -> generic receiver -> observation SQLite
 ~~~
 
 > [!IMPORTANT]
-> The generic receiver recognizes normalized event names, but native adapters,
-> scheduling and automatic startup injection are incomplete. See
+> The generic receiver recognizes normalized event names. Claude Code and Codex CLI
+> now have separate managed lifecycle capture and SessionStart handoff installers;
+> other hosts remain provider/version dependent. See
 > [the continuity design](docs/automatic-session-continuity.md). A successful
 > hook-config write is not an end-to-end capture test.
 
@@ -200,8 +201,9 @@ Transcript extraction separately requires a configured model.
 and session paths, plus separately labeled global preference/profile paths, are
 filtered before lexical or vector ranking; superseded records are excluded. The
 complete serialized `{"memories": [...]}` payload is bounded by `max_chars`, and the
-newest canonical project session is deterministically prepended. It is not automatic
-session restoration; startup injection remains roadmap work.
+newest canonical project session is deterministically prepended. The separate local
+handoff reader restores the latest checkpoint at supported SessionStart hooks without
+requiring this retrieval path or an embedding service.
 
 The optional `memory_hub.worker` process is a supervised local consumer of the durable
 capture queue. It uses deterministic evidence-only fallback when no local chat model is
@@ -227,8 +229,9 @@ runtime or model service.
   create a transaction covering Markdown, SQLite, Git and an external service.
 - The dashboard binds locally by default and checks requests. Do not expose it as an
   internet service or assume local storage is encrypted.
-- The capture queue bounds native evidence, preserves host event identity and uses
-  owner/lease claims; it is not yet a complete privacy-filtered supervised worker.
+- The capture queue bounds native evidence, preserves host event identity, filters
+  sensitive paths/text and uses owner/lease claims; the supervised worker consumes it
+  only after explicit setup.
 - Review, rejected and failed states must remain distinguishable from accepted data.
 
 ## Opt-in history
@@ -245,10 +248,10 @@ Ordinary proposals are not all automatically committed.
 
 ## Planned extension
 
-[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is first priority;
-follow the canonical [issue priority order](docs/issue-priority-order.md): queue and
-context correctness, linked checkpoint metadata, a supervised worker, automatic
-cross-client startup context, then sanitized GitHub publication and benchmark closeout.
+[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is the continuity
+closeout parent; follow the canonical [issue priority order](docs/issue-priority-order.md):
+local queue/context/metadata/worker and Claude/Codex startup context are complete, then
+sanitized GitHub publication and benchmark closeout remain.
 Graph retrieval and embedding upgrades are not prerequisites.
 
 ```mermaid

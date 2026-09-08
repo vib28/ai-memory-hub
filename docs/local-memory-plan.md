@@ -36,10 +36,10 @@ flowchart LR
 - **Why:** continue in Codex after Claude stops without manually saving or re-explaining;
   measure reduced context/repetition rather than promise a token-saving percentage.
 - **How:** fix native capture and queue correctness, add linked checkpoints and a local
-  worker, then install automatic startup handoff. GitHub publishing follows local continuity.
+  worker, then install the supported Claude/Codex startup handoff. GitHub publishing follows local continuity.
 - **Reproduction:** hooks now preserve native evidence and queue claims are lease-protected,
-  The local worker now handles scheduled/threshold checkpointing, but there is no
-  guaranteed client startup injection. Remaining gates are tracked in #59–#62; #54,
+  The local worker now handles scheduled/threshold checkpointing, and supported
+  Claude/Codex clients have a model-free startup injection. Remaining gates are tracked in #60–#62; #54,
   #56, #57 and #58's queue/context/metadata/worker gates are complete.
 - **Acceptance:** unattended checkpoints and final rollup, valid links/tags, bidirectional
   Claude/Codex handoff, crash/retry safety, strict scope/budget and measured token/quality results.
@@ -51,12 +51,12 @@ flowchart LR
   without a lower completion/essential-fact retention rate is required to claim benefit
   in the measured suite; otherwise the gate remains open.
 - **Implementation order:** follow the canonical [open issue priority order](issue-priority-order.md).
-  The continuity chain is #54/#56/#57 completed → #58 → #59 → #60 → #61 → #62. #57's
-  opt-in metadata/manifest foundation and supervised worker are implemented; handoff and
-  benchmark gates remain open.
-- **Verification:** prerequisite capture, hook, context, metadata and worker fixes are covered by 200 tests;
-  no real-client handoff or paired token-saving benchmark has been
-  certified yet.
+  The continuity chain is #54/#56/#57/#58 completed → #59 → #60 → #61 → #62. #57's
+  opt-in metadata/manifest foundation, supervised worker and supported-client handoff
+  are implemented; publication and benchmark gates remain open.
+- **Verification:** prerequisite capture, hook, context, metadata, worker and process-level
+  Claude/Codex handoff fixtures are covered by 204 tests; installed-client launch and
+  paired token-saving benchmark certification remain open.
 
 Full design, evidence and acceptance tests:
 [`automatic-session-continuity.md`](automatic-session-continuity.md).
@@ -134,8 +134,8 @@ path and human-readable Obsidian vault.
   [#14](https://github.com/vib28/ai-memory-hub/issues/14)).
 - Documentation and tests for the above paths.
 - On-demand context priming through `memory_context`; selected records are now bounded,
-  project-filtered, superseded-free and newest-session-first. This is not an installed
-  startup-injection hook (#59).
+  project-filtered, superseded-free and newest-session-first. Supported Claude/Codex
+  startup injection is a separate local checkpoint reader (#59).
 - Historical session import through the public `session_write` boundary, with dry-run,
   duplicate-safe reruns, and post-import `memory_audit()` verification.
 - Read-only semantic candidate reporting through `subject_audit()` when local embeddings

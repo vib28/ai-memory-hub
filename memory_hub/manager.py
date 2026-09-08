@@ -216,6 +216,11 @@ class MemoryManager:
             if isinstance(raw_tags, str):
                 raw_tags = [raw_tags]
             clean["session_tags"] = [slugify(str(tag)) for tag in raw_tags if str(tag).strip()][:20]
+            raw_files = data.get("changed_files") or []
+            if isinstance(raw_files, str):
+                raw_files = [raw_files]
+            clean["changed_files"] = [str(path).strip()[:500] for path in raw_files
+                                       if str(path).strip()][:100]
         return clean
 
     def _session_block(self, data: dict, memory_id: str,
@@ -244,6 +249,8 @@ class MemoryManager:
                 lines.append(f"**Next:** {metadata['next_url']}")
             if metadata.get("final_url"):
                 lines.append(f"**Final:** {metadata['final_url']}")
+            if metadata.get("changed_files"):
+                lines.append("**Changed files:** " + ", ".join(metadata["changed_files"]))
             lines.append(f"<!-- session-meta:{json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))} -->")
         lines.append(f"<!-- session:{memory_id} -->")
         return slug, "\n".join(lines).rstrip()
@@ -310,6 +317,7 @@ class MemoryManager:
             "worktree": data.get("worktree"), "evidence_start": data.get("evidence_start"),
             "evidence_end": data.get("evidence_end"), "token_count": data.get("token_count"),
             "token_basis": data.get("token_basis"), "session_tags": data.get("session_tags", []),
+            "changed_files": data.get("changed_files", []),
         }
         base["previous_url"] = (f"[[{previous['path'].lstrip('/')}#{previous['heading']}]"
                                  f"]" if previous else None)

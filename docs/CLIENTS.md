@@ -119,21 +119,33 @@ off the connected AI provider.
 Install [the ChatGPT prompt](../client-prompts/chatgpt.md) through the client's supported
 instruction mechanism. Do not place credentials in prompts, the vault or GitHub.
 
-## Hooks are not yet unattended handoff
+## Capture hooks and startup handoff
 
-The helper exposes InstallHooks and RemoveHooks. Current installation targets one
-post-tool event per client: PostToolUse, or Gemini's AfterTool. It does not install the
-full periodic-save and startup-handoff service.
+The helper keeps three permissions separate: `-InstallHooks`/`-RemoveHooks` capture
+provider lifecycle evidence, `-EnableSessionAuto`/`-DisableSessionAuto` controls the
+local worker, and `-InstallHandoff`/`-RemoveHandoff` controls startup context injection.
+For Claude Code and Codex CLI, capture installation covers prompt/tool/turn,
+compaction, failure and end events, while handoff installation adds `SessionStart`.
+
+| Client surface | Version observed on 2026-09-09 | Startup fixture | Limitation |
+| --- | --- | --- | --- |
+| Claude Code CLI | 2.1.263 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| Codex CLI | 0.153.4 | `tests/test_handoff.py` validates the same documented `SessionStart` output shape | Interactive authenticated launch is not part of CI |
+| Gemini, Qwen, Kimi, Hermes, ChatGPT | Not tested for startup injection | None | Capture/MCP support does not imply a startup hook |
 
 > [!WARNING]
-> Native payload mapping and mixed-handler preservation are implemented and covered by
-> isolated tests. Hook delivery is still client-version dependent, so retain backups
-> and verify the actual host event payload before relying on unattended capture.
+> Native payload mapping, mixed-handler preservation and process-level startup fixtures
+> are covered by isolated tests. The tested client versions are Claude Code 2.1.263
+> and Codex CLI 0.153.4 on this checkout. Hook delivery is still client-version
+> dependent, so retain backups and verify the actual host event payload before relying
+> on unattended capture.
 
-Current hook targets include Claude/Gemini/Qwen JSON settings, Kimi's marked TOML block
-and Codex's hooks.json. This lists intended configuration locations, not certified
-event delivery. See [automatic continuity](automatic-session-continuity.md) for the
-first-priority implementation plan.
+Current capture-hook targets include Claude/Gemini/Qwen JSON settings, Kimi's marked
+TOML block and Codex's hooks.json. Startup handoff is certified only for the Claude
+Code and Codex CLI fixture schemas above; Gemini, Qwen, Kimi, Hermes and ChatGPT
+report a limitation rather than claiming startup automation. See [automatic
+continuity](automatic-session-continuity.md) for the remaining publication and
+benchmark work.
 
 ## Refresh or remove a connection
 

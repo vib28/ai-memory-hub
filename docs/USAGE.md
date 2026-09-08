@@ -54,8 +54,8 @@ complete serialized `{"memories": [...]}` payload, and the result reports
 budgets. Project requests filter canonical project/session paths before ranking,
 exclude superseded records, label project facts as `project` or `project-session`,
 label separately admitted preferences/profile facts as `global`, and select the
-newest project session deterministically. Automatic startup injection is still
-planned.
+newest project session deterministically. Supported Claude/Codex clients can also
+load the latest local checkpoint with the separate `-InstallHandoff` setup.
 
 Administrative read-only examples from the repository directory:
 
@@ -92,9 +92,10 @@ a cross-client work group. Replaying an existing checkpoint ID is idempotent. Or
 session writes remain backward-compatible and do not create a manifest.
 
 > [!IMPORTANT]
-> There is not yet a periodic checkpoint chain, guaranteed final rollup or automatic
-> cross-client startup restoration. Same-project retry detection is preserved while
-> identical summaries in distinct projects are kept separate.
+> The local worker and Claude/Codex startup handoff are available only after explicit
+> setup. A checkpoint is not a guaranteed final rollup, and unsupported clients do not
+> receive startup automation. Same-project retry detection is preserved while identical
+> summaries in distinct projects are kept separate.
 
 ## Automatic session worker
 
@@ -115,6 +116,18 @@ only an explicit session-end creates a final entry. Model or GitHub downtime lea
 the retryable capture buffer with visible health at `/api/worker-health`. Credential-like
 evidence is redacted, built-in sensitive paths are excluded, and terminal rows follow
 `MEMORY_CAPTURE_RETENTION_DAYS`; pending unsummarized evidence is retained by default.
+
+Install the model-free startup reader separately when the client supports SessionStart:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
+~~~
+
+It reads the latest committed local checkpoint without waiting for MCP, embeddings,
+the chat model or GitHub. Retrieved text is wrapped as quoted evidence, bounded by
+`MEMORY_HANDOFF_MAX_CHARS` (default 6000), and marked with checkpoint age and pending
+evidence when the state is provisional or not final.
 
 ## Audit identities without merging
 
