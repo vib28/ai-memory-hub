@@ -144,8 +144,8 @@ Current capture-hook targets include Claude/Gemini/Qwen JSON settings, Kimi's ma
 TOML block and Codex's hooks.json. Startup handoff is certified only for the Claude
 Code and Codex CLI fixture schemas above; Gemini, Qwen, Kimi, Hermes and ChatGPT
 report a limitation rather than claiming startup automation. See [automatic
-continuity](automatic-session-continuity.md) for the remaining publication and
-benchmark work.
+continuity](automatic-session-continuity.md) for the continuity boundaries, replay
+benchmark and remaining live certification work.
 
 GitHub export is not part of MCP registration. Approve it separately with
 `-EnableGitHubExport -GitHubRepo owner/name -GitHubVisibility private`; this creates

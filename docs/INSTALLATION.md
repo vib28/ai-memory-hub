@@ -66,6 +66,25 @@ for manual configuration and optional ChatGPT setup.
 Start a fresh client session after configuration changes. Verify that the client can
 see AI Memory Hub's tools and that memory_policy reports review mode.
 
+At this point, stop if shared durable memory is all you need. The following capabilities
+are optional and deliberately separate:
+
+~~~powershell
+# Capture lifecycle evidence and run the local worker in review mode.
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHooks -EnableSessionAuto -WriteMode review
+
+# Install model-free startup context for the currently supported fixtures.
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+
+# Approve GitHub delivery only after local continuity is understood.
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport `
+  -GitHubRepo "owner/repository" -GitHubVisibility private
+~~~
+
+These commands are independent. You can remove one permission without uninstalling the
+others, and GitHub is never required for local handoff. Read [configuration](CONFIGURATION.md)
+before using `auto` or a remote model endpoint.
+
 ## Open the dashboard
 
 ~~~powershell
@@ -80,7 +99,9 @@ To run without a tray:
 .\start-memory-hub.ps1 -VaultPath $memoryVault -NoTray
 ~~~
 
-The tray is a launcher, not the planned background checkpoint service.
+The tray is a launcher, not the background checkpoint worker. Enable the worker
+separately with `connect-ai-tools.ps1 -EnableSessionAuto` after reviewing its write
+mode and health behavior in [configuration](CONFIGURATION.md).
 Both older launcher names are compatibility aliases; do not run two scripts.
 See the [dashboard guide](DASHBOARD.md) for color modes and editing links/tags.
 
@@ -125,5 +146,6 @@ branch, run setup again, then refresh the [client connections](CLIENTS.md#refres
 
 To disconnect, remove the named MCP registration through the host's supported settings
 and remove only AI Memory Hub's managed instruction block or Hermes skill.
-Hook removal is separate and has [known limitations](CLIENTS.md#hooks-are-not-yet-unattended-handoff).
+Hook removal is separate and has the version-specific limitations described in
+[client connections](CLIENTS.md#capture-hooks-and-startup-handoff).
 Do not delete the vault to uninstall the client integration.

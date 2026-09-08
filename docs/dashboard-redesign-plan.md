@@ -78,7 +78,9 @@ reopening the unified app recognizes the same vault and port.
 
 Plan reviewed against dashboard.py, tray.py, vault.py, manager.py and existing dashboard tests before implementation.
 
-- Full automated suite: **200 passed** on Windows, using a fresh disposable test directory.
+- Dashboard implementation verification: **200 passed** on Windows at the time of this
+  plan's implementation, using a fresh disposable test directory. The current full
+  repository baseline is maintained in the continuity closeout.
 - Ruff: passed. JavaScript syntax check and dependency-free interaction tests: passed.
 - Interaction tests cover immediate lookup choices, filtering, selection, tag creation,
   invalid tag names, non-submitting lookup buttons, escaping and all four theme combinations.

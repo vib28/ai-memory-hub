@@ -31,9 +31,29 @@ schedule a save or inject context into a new client.
 
 ## How much does this save in tokens?
 
-No cross-tool saving percentage has been demonstrated. The required
+No provider-backed cross-tool saving percentage has been demonstrated. The required
 [paired benchmark](session-handoff-benchmark.md) compares matched Claude/Codex tasks
-with context passing enabled and disabled, including overhead and task quality.
+with context passing enabled and disabled, including overhead and task quality. A
+no-paid-call deterministic replay is available in the [versioned report](benchmark-results/handoff-replay-v1.md);
+its estimates are regression evidence, not a billing or universal-savings claim.
+
+## Why are the embedding and chat models separate?
+
+They solve different problems. The embedding model turns text into vectors for search
+and related-memory ranking; it does not write human-readable memory. The local chat
+model consolidates captured evidence into the four session sections and extracts
+durable candidates. Either role can be unavailable: keyword search and deterministic
+evidence-only checkpointing continue, while transcript extraction reports that it needs
+a configured chat model. See [configuration](CONFIGURATION.md#optional-local-models).
+
+## What is checkpoint metadata?
+
+Checkpoint metadata is the machine-readable identity and navigation around a session
+block: work-group ID, checkpoint ID, sequence, entry type, source/host session IDs,
+project, worktree, changed files, evidence bounds, token basis, state and previous/next/
+final links. It lets retries be idempotent and lets a later client select the right
+project-scoped evidence without treating a checkpoint as a full transcript. The
+human-readable four sections remain in Markdown beside that metadata.
 
 ## Is review mode always the default?
 

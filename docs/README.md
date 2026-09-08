@@ -5,6 +5,55 @@ four color modes and editable tag/link lookups.
 
 Start with [AI Memory Hub](../README.md) for what the project does and what is still planned.
 
+## Choose your path
+
+```mermaid
+flowchart TD
+    Start[New to the project?] --> Install[Install and verify review mode]
+    Install --> Memory{Need shared durable memory?}
+    Memory -->|yes| Operate[Use search, propose, review and approve]
+    Memory -->|not yet| Read[Read architecture and boundaries]
+    Operate --> Continuity{Need automatic session continuity?}
+    Continuity -->|no| Dashboard[Use dashboard and backups]
+    Continuity -->|yes| Capture[Enable capture, worker and handoff separately]
+    Capture --> Publish{Need a remote session record?}
+    Publish -->|no| Dashboard
+    Publish -->|yes| Export[Approve sanitized GitHub export]
+```
+
+The recommended learning order is deliberately conservative: prove one harmless review
+proposal first, then enable only the capability you understand. A connected MCP client
+can use shared memory without capture; capture can run without startup handoff; local
+handoff can run without GitHub; and GitHub is never required for local continuity.
+
+## Capability status at a glance
+
+| Capability | Status on this branch | Read next |
+| --- | --- | --- |
+| Shared MCP memory and Markdown vault | Available | [Installation](INSTALLATION.md), [Usage](USAGE.md) |
+| Review queue and dashboard | Available | [Dashboard](DASHBOARD.md) |
+| Optional embeddings and local chat model | Available when configured | [Configuration](CONFIGURATION.md) |
+| Lifecycle capture and supervised worker | Available behind explicit setup | [Clients](CLIENTS.md), [Usage](USAGE.md) |
+| Claude/Codex model-free startup handoff | Available behind explicit setup; supported fixtures only | [Clients](CLIENTS.md), [Continuity](automatic-session-continuity.md) |
+| Sanitized GitHub session outbox | Available behind explicit destination approval | [Configuration](CONFIGURATION.md) |
+| Live cross-tool token/cost certification | Not complete | [Benchmark protocol](session-handoff-benchmark.md), [#62](https://github.com/vib28/ai-memory-hub/issues/62) |
+
+## Concepts used throughout the guides
+
+- **Vault:** the ordinary Markdown directory containing accepted memory.
+- **Writer:** provenance such as `claude` or `codex`; it is not an access-control list.
+- **Review mode:** proposals wait for dashboard approval. It does not govern every
+  administrative CLI write.
+- **Auto mode:** validated proposals can be accepted without dashboard approval.
+- **Capture:** bounded lifecycle evidence stored in a local queue before summarization.
+- **Checkpoint:** an accepted or pending periodic session state; it may be provisional.
+- **Final:** an explicit host-session end result, not merely an idle timeout.
+- **Handoff:** bounded local checkpoint context injected at supported startup events.
+- **Outbox:** retryable GitHub delivery state; it is separate from accepted Markdown.
+
+If a guide uses one of these terms differently, treat that as a documentation bug and
+check the configuration reference before changing a live vault.
+
 ```mermaid
 flowchart TD
     Guide[User guides] --> Install[Install and connect]
@@ -40,6 +89,8 @@ These retain their existing structured tracking format:
 - [Open issue priority order](issue-priority-order.md): the canonical execution sequence
   for the current open issues.
 - [Two-tool handoff benchmark](session-handoff-benchmark.md).
+- [Latest no-paid-call replay report](benchmark-results/handoff-replay-v1.md): synthetic
+  protocol evidence, not live provider billing or task certification.
 - [Vault documentation standards](vault-documentation-standards.md).
 
 [FIXLOG](../FIXLOG.md) and [release notes](../RELEASE_NOTES_v0.2.md) record historical work.

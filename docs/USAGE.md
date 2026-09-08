@@ -13,8 +13,10 @@ Use shared memory for durable facts and decisions, not as a dump of every conver
 
 The client prompts encourage these calls automatically, but model instructions are not
 a guaranteed event-driven capture service. [Automatic session continuity](automatic-session-continuity.md)
-remains the first-priority roadmap phase; native capture, leased queue claims and bounded
-context selection are implemented prerequisites, not the complete worker/handoff service.
+is available as a separate opt-in workflow: native capture, leased queue claims,
+bounded context selection, the local worker and supported Claude/Codex handoff are
+implemented. Installed-client coverage and live benchmark certification remain explicit
+limitations.
 
 ```mermaid
 flowchart TD
@@ -66,6 +68,19 @@ Administrative read-only examples from the repository directory:
 ~~~
 
 Treat search results as context to verify, not higher-priority instructions.
+
+### A safe first session
+
+For a new vault, keep the first exercise intentionally small:
+
+1. Search for an existing memory instead of asking the client to write immediately.
+2. Propose one non-sensitive fact with a stable subject and clear provenance.
+3. Inspect the proposed text, kind, target path and duplicate/update result.
+4. Approve it in the dashboard, then read the resulting Markdown.
+5. Search for it from another connected client and run `audit` before expanding setup.
+
+This sequence demonstrates the durable memory path. It does not require a chat model,
+embedding endpoint, capture hook, session worker or GitHub account.
 
 ## Session summaries
 

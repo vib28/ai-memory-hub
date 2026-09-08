@@ -89,13 +89,52 @@ initialization itself fails. There is no automatic corrupt-database recovery com
 
 ## Hooks appear installed but no useful session is saved
 
-Current hooks map native event/tool fields, preserve managed-hook siblings and buffer
-through a bounded leased queue. There is still no supervised periodic consolidation
-worker. If a session is not summarized, inspect the capture database and lease state;
-do not repeatedly reinstall hooks into personal settings.
+Capture hooks map native event/tool fields, preserve managed-hook siblings and buffer
+through a bounded leased queue. Capture alone does not summarize anything: the worker
+must also be enabled, and review mode intentionally leaves its checkpoint proposal in
+the dashboard until approved.
 
-Use the [continuity plan](automatic-session-continuity.md) for worker and startup-handoff
-gaps. CLI help or valid JSON alone does not certify event delivery.
+Check these in order:
+
+1. Confirm the client is writing to the expected `MEMORY_CAPTURE_DB`.
+2. Inspect worker health and pending rows; a lease in progress is not an accepted
+   Markdown session.
+3. Run one bounded pass with `memory_hub.worker --once`.
+4. Check `MEMORY_WRITE_MODE`: `review` queues a proposal, while `auto` can accept it.
+5. Read the resulting `/sessions/...` Markdown and its manifest before installing
+   startup handoff.
+
+Do not repeatedly reinstall hooks into personal settings. CLI help or valid JSON alone
+does not certify event delivery; the tested client/version matrix is in
+[client connections](CLIENTS.md).
+
+## Startup handoff is empty or ambiguous
+
+The handoff reader uses only the local `/sessions/session-manifest.json` and referenced
+Markdown. It does not call MCP, embeddings, a chat model or GitHub. An empty result
+usually means there is no accepted checkpoint, the manifest is missing/invalid, or the
+startup payload does not identify the correct project/worktree. An ambiguous result is
+intentional: active groups are listed separately instead of being merged.
+
+Confirm that the handoff permission is installed separately:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+~~~
+
+Claude Code and Codex CLI are the only client surfaces with current process-level
+startup fixtures. A successful hook command does not certify that an installed client
+version actually delivered the event; retain the managed backup and inspect the host's
+event logs/settings.
+
+## GitHub export is queued or unhealthy
+
+Export is intentionally opt-in and independent from local handoff. Check the approved
+repository/visibility, `gh auth status`, the exporter health JSON and the SQLite outbox.
+Offline or timeout failures remain retryable; disabling export stops the startup entry
+but does not delete queued work. Pending review proposals are never exported. Do not
+delete the outbox while diagnosing a delivery failure; it contains stable markers used
+to reconcile retries without duplicate issues/comments.
 
 ## Tests cannot create a temporary directory
 

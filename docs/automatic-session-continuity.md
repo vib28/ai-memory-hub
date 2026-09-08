@@ -323,13 +323,14 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Full repository verification: **200 passed** with a workspace-local pytest base directory;
-Ruff and `git diff --check` passed. Tests cover native payload mapping, managed hook
-preservation, concurrent queue claims, live leases, project-scoped context and separate
-embedding/chat-model configuration.
+Current repository verification: **211 passed** with a workspace-local pytest base
+directory; Ruff and `git diff --check` passed. Tests cover native payload mapping,
+managed hook preservation, concurrent queue claims, live leases, project-scoped context,
+separate embedding/chat-model configuration, process-level handoff and sanitized export.
 
 No personal hook configuration, startup service or real memory vault was changed by
-this review. Native host event delivery across every supported client, live quota
-interruption and full cross-client restoration remain acceptance work. Linked
-checkpoint metadata and local worker processing are complete; no automatic GitHub
-session content was published.
+automated verification. Native host event delivery across every supported client, live
+quota interruption and provider-backed cross-client benchmark certification remain
+acceptance work. Linked checkpoint metadata, local worker processing, supported handoff
+fixtures and the optional GitHub outbox are implemented; no live GitHub session content
+was published during verification.

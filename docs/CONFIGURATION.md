@@ -14,6 +14,12 @@ flowchart LR
     Server --> Embed[Optional embedding model]
 ```
 
+There are two configuration layers. The MCP server reads its environment when the
+client launches it. The worker, handoff reader and GitHub exporter are separate
+processes and read their own environment when they start. Changing a terminal variable
+does not change an already-running client, worker or exporter; restart the relevant
+process after configuration changes.
+
 ## Server settings
 
 | Variable | Purpose | Current default |
@@ -29,7 +35,13 @@ flowchart LR
 | MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
 | MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |
 | MEMORY_WORKER_INTERVAL_SECONDS | Worker polling interval | 15 |
+| MEMORY_WORKER_BATCH_LIMIT | Maximum observations claimed per worker pass | 500 |
+| MEMORY_WORKER_HEALTH | Optional explicit worker-health JSON path | Per-vault default |
 | MEMORY_HANDOFF_MAX_CHARS | Maximum serialized startup evidence packet | 6000 |
+| MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS | Exporter polling interval | 30 |
+| MEMORY_GITHUB_EXPORT_CONFIG | Optional GitHub export configuration path | Per-vault user-home default |
+| MEMORY_GITHUB_OUTBOX | Optional GitHub export SQLite outbox path | Per-vault user-home default |
+| MEMORY_GITHUB_HEALTH | Optional GitHub exporter health JSON path | Per-vault user-home default |
 | MEMORY_LLM_BASE_URL | Chat-completions endpoint base | Unset |
 | MEMORY_LLM_MODEL | Consolidation/extraction model name | Unset |
 | MEMORY_LLM_API_KEY | Optional transcript-extractor authorization | Unset; not used by the consolidator |
@@ -78,6 +90,11 @@ $env:MEMORY_EMBED_MODEL = "<loaded-embedding-model>"
 The bracketed model names are placeholders, not commands to run unchanged. The code
 adds /chat/completions or /embeddings to the base URL; do not include those suffixes twice.
 
+The endpoint is expected to be OpenAI-compatible. The base URL is not a security
+boundary: a remote URL sends the text selected for that operation to that service. Keep
+API keys in the process environment or the host's secret store, never in Markdown,
+`.env` files committed to source control, client prompts or GitHub comments.
+
 These settings intentionally define two different model roles:
 
 | Role | Settings | Responsibility | Safe failure behavior |
@@ -106,6 +123,28 @@ health to a per-vault file shown by the dashboard's `/api/worker-health` endpoin
 local chat model is optional: failures leave capture rows retryable and the fallback
 summary records evidence-only content. The worker never turns a session checkpoint into
 a durable preference automatically.
+
+The worker's effective safety choices are easiest to understand as a matrix:
+
+| Worker setting | Result |
+| --- | --- |
+| `review` | Checkpoint/final proposals enter the dashboard queue; a person approves them |
+| `auto` | Validated checkpoint/final proposals can be accepted unattended |
+| Chat model unavailable | Evidence-only fallback remains retryable; no invented success is written |
+| Capture database unavailable | The worker reports health/failure; it cannot reconstruct missing observations |
+| Idle or stop trigger | Provisional checkpoint; later evidence may reopen the group |
+| Explicit session-end trigger | Final entry with host finalization metadata |
+
+Check health without changing data:
+
+~~~powershell
+.\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once
+~~~
+
+The one-shot result is printed to the terminal. The persistent health file defaults to
+the user-home `.ai-memory-hub/worker-health-<vault-hash>.json`; configure an explicit
+path with `MEMORY_WORKER_HEALTH` if you need a predictable location. The dashboard's
+worker-health endpoint is the better view when the launcher is already running.
 
 ## Optional vault history
 
@@ -156,3 +195,26 @@ Only accepted checkpoint/final Markdown sections are exported. Raw transcripts,
 secrets, absolute/private paths and pending review proposals are excluded. The local
 SQLite outbox and health JSON retain queued work during outages. Disabling export stops
 the owned startup entry but retains the outbox for a later explicit re-enable.
+
+Export configuration is intentionally narrower than ordinary GitHub automation:
+
+| Export rule | Meaning |
+| --- | --- |
+| Destination | Must be an explicit `owner/name` repository |
+| Visibility | Must be explicitly approved as `public`, `private` or `internal` |
+| Source | Accepted checkpoint/final sections only |
+| Excluded | Raw transcripts, pending proposals, secrets and absolute/private paths |
+| Delivery | SQLite outbox with stable markers, retries and timeout reconciliation |
+| Credentials | The `gh` CLI credential store; tokens are not copied to the vault/config |
+| Disable behavior | Startup registration stops; queued outbox data is retained |
+
+Inspect configuration and run one explicit delivery pass with the CLI:
+
+~~~powershell
+.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault github-export-config
+.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault github-export --once
+~~~
+
+The hidden startup publisher uses the same configuration but does not publish anything
+if export is disabled or destination approval is missing. GitHub is a delivery surface,
+not the canonical memory store.

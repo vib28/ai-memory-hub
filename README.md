@@ -19,6 +19,23 @@ Context Protocol—is the interface a connected AI uses to search or propose mem
 A preference written by Claude is available to Codex and other connected clients.
 The writer records where it came from; it is not an access restriction.
 
+In practical terms, AI Memory Hub is a local memory boundary between AI clients:
+
+1. A client searches before it repeats a known question or proposes a durable fact.
+2. The server validates the proposal, checks identity and duplicates, and applies the
+   selected `review` or `auto` write policy.
+3. Accepted information is written as ordinary Markdown that a person can inspect,
+   back up and edit carefully.
+4. A rebuildable SQLite index makes that Markdown searchable; optional local models add
+   semantic retrieval or structured session consolidation.
+
+The project has two related workflows. The ordinary memory workflow stores durable
+preferences, decisions, project facts and summaries. The continuity workflow captures
+bounded session evidence, creates local checkpoints, and can inject the latest accepted
+checkpoint into a supported Claude or Codex startup. Continuity is deliberately split
+into permissions so installing a hook does not silently enable unattended writes or
+external publication.
+
 ```mermaid
 flowchart LR
     Client[AI client] --> MCP[MCP server]
@@ -37,6 +54,86 @@ flowchart LR
 - Use separate local models for embeddings and chat-based consolidation/extraction.
 - Inspect identity conflicts and possible duplicates without automatic merging.
 - Keep optional Git history for accepted vault changes.
+
+## The important boundaries
+
+The vault is the source of truth for accepted memories. Supporting databases make the
+application useful, but they have different recovery properties:
+
+| Data | Where it lives | What it contains | Can Markdown rebuild it? |
+| --- | --- | --- | --- |
+| Accepted memory | Vault `.md` files | Preferences, facts, decisions, people, topics and sessions | This is the canonical data |
+| Search index | Vault `.memory_index.sqlite3` | FTS rows, embeddings and manager state | Accepted-memory rows only |
+| Capture buffer | User-home capture SQLite | Raw bounded lifecycle evidence waiting for processing | No |
+| Review history | Index pending/history tables | Proposals and approval outcomes | No |
+| Worker health | Per-vault health JSON | Last run, failures, retries and queue status | No |
+| GitHub outbox | External/user-home SQLite path | Sanitized publication jobs and retry markers | No; it is a delivery queue |
+
+Back up accepted Markdown together with pending-review data and the capture database if
+you need to preserve work that has not yet become an accepted memory. Deleting the
+search index is normally recoverable with `reindex`; deleting the capture or pending
+databases is not equivalent to reindexing.
+
+## Four separate opt-in permissions
+
+The Windows connection helper manages these permissions independently:
+
+| Permission | Setup switch | Effect | Default |
+| --- | --- | --- | --- |
+| Client MCP connection | `connect-ai-tools.ps1` | Lets a client call the memory server | Not connected until configured |
+| Lifecycle capture | `-InstallHooks` | Buffers bounded provider events locally | Off |
+| Automatic session worker | `-EnableSessionAuto` | Turns accepted capture evidence into checkpoint/final proposals | Off; worker defaults to review |
+| Startup handoff | `-InstallHandoff` | Injects a bounded local checkpoint at supported `SessionStart` events | Off |
+| GitHub publication | `-EnableGitHubExport` plus destination/visibility | Publishes accepted sanitized summaries through an outbox | Off |
+
+Removal is equally scoped: `-RemoveHooks`, `-DisableSessionAuto`, `-RemoveHandoff` and
+`-DisableGitHubExport` do not delete the vault. Disabling GitHub export retains queued
+outbox jobs so an operator can decide whether to re-enable delivery later.
+
+```mermaid
+flowchart LR
+    Event[Client lifecycle event] --> Capture{Capture installed?}
+    Capture -->|no| MCP[MCP memory workflow only]
+    Capture -->|yes| Buffer[Local bounded capture buffer]
+    Buffer --> Worker{Session auto enabled?}
+    Worker -->|no| Review[Inspect or process later]
+    Worker -->|yes| Checkpoint[Checkpoint/final proposal]
+    Checkpoint --> Policy{Review or auto?}
+    Policy --> Accepted[Accepted local Markdown]
+    Accepted --> Handoff{Startup handoff installed?}
+    Handoff -->|yes, Claude/Codex| Context[Bounded quoted context]
+    Accepted --> Export{GitHub export approved?}
+    Export -->|yes| Outbox[Sanitized retryable outbox]
+```
+
+## What the project does not promise
+
+- It does not replay an entire conversation or guarantee that a model remembers every
+  transient thought.
+- It does not make local storage encrypted. A connected client or configured remote
+  model endpoint can receive the content it is asked to retrieve or process.
+- It does not silently merge similar people, projects or memories. Exact duplicates are
+  handled deterministically; semantic candidates remain reviewable.
+- It does not claim startup hooks for every client. Claude Code and Codex CLI have
+  process-level handoff fixtures; other clients may have MCP/capture support without a
+  certified startup event.
+- It does not claim live token savings from the replay report. The report is a no-paid-
+  call regression harness; provider usage and live task outcomes remain the #62 gate.
+
+## Choosing a setup
+
+| Your goal | Minimum route |
+| --- | --- |
+| Shared durable memory | `setup.ps1`, `connect-ai-tools.ps1 -WriteMode review`, dashboard |
+| Automatic local checkpoints | Shared memory plus `-InstallHooks -EnableSessionAuto` |
+| Cross-client startup context | Checkpoints plus `-InstallHandoff` |
+| Semantic search | Configure an OpenAI-compatible embedding endpoint; keep keyword fallback available |
+| Human-readable session summaries | Configure a local chat model, or use the deterministic evidence-only fallback |
+| GitHub session record | Validate local continuity first, then explicitly approve `-EnableGitHubExport` |
+
+Start with review mode and a disposable/test vault. Move to unattended session-auto
+only after reading [configuration](docs/CONFIGURATION.md), checking worker health and
+confirming that the resulting Markdown is appropriate for the vault.
 
 > [!IMPORTANT]
 > The supervised local checkpoint worker, model-free Claude/Codex startup handoff and
@@ -82,6 +179,19 @@ The setup creates the environment and initializes missing vault files. The conne
 script attempts supported installed clients. The dashboard runs locally, normally at
 [localhost:8765](http://127.0.0.1:8765). Start a new client session after connecting.
 
+Verify the first run in this order:
+
+1. Confirm the client is registered with the intended vault and
+   `MEMORY_WRITE_MODE=review`.
+2. Open the dashboard and check that the vault audit is healthy.
+3. Ask the client to propose a harmless, non-sensitive preference.
+4. Confirm it appears as a pending proposal; approve it only after reading its text,
+   provenance and target path.
+5. Search for the accepted memory from a second connected client.
+
+This small test proves the shared-memory path without enabling capture, background
+workers, startup injection or GitHub publication.
+
 > [!WARNING]
 > The connection script defaults to review, but a directly started MCP server defaults
 > to auto if its mode is missing or invalid. Always configure
@@ -113,6 +223,27 @@ Accepted Markdown memories are the durable record. Search data can be rebuilt.
 Unprocessed capture observations and pending proposals cannot be recreated from
 accepted Markdown alone; include them in your backup plan.
 
+For a session-enabled setup, the flow adds a second path:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant B as Capture buffer
+    participant W as Local worker
+    participant V as Vault
+    participant N as Next Claude/Codex session
+    C->>B: bounded lifecycle evidence
+    B->>W: leased observations
+    W->>V: checkpoint or final proposal
+    V-->>N: accepted local checkpoint packet
+    N->>V: ordinary search/proposal calls as needed
+```
+
+The packet is a compact, quoted-evidence orientation. It contains the latest goal,
+decisions, changed files, verified results and next action, plus checkpoint age and a
+warning when the evidence is provisional. It is not an instruction to execute, not a
+full transcript and not a replacement for verifying current files.
+
 ## Requirements
 
 - Python 3.10 or newer; the CI matrix covers 3.10, 3.11 and 3.12.
@@ -139,6 +270,12 @@ usage charges. Local language and embedding models are optional and use your har
 | [FAQ](docs/FAQ.md) | Short answers and limits |
 | [Architecture](ARCHITECTURE.md) | Modules, data flow and boundaries |
 | [Contributing](CONTRIBUTING.md) | Development checks and issue workflow |
+
+For a guided explanation rather than a reference table, read [the documentation
+index](docs/README.md). It groups the material by first setup, daily operation,
+continuity, dashboard use, recovery and development. The documents use the same names
+for the same concepts: **review** is a proposal policy, **session-auto** is worker
+permission, **handoff** is startup context permission, and **export** is GitHub delivery.
 
 ## Roadmap and planning
 
