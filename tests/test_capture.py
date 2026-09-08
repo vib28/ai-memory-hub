@@ -4,6 +4,7 @@ import io
 import json
 import sqlite3
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -90,6 +91,32 @@ class ObservationBufferTests(unittest.TestCase):
         self.assertEqual(row["files"], ["a.py"])
         self.assertEqual(row["source"], "claude")
         self.assertIn("success", row["output_summary"])
+
+    def test_two_workers_cannot_claim_the_same_live_batch(self):
+        for index in range(8):
+            self.buffer.append({"observation_id": f"claim-{index}", "session_id": "shared"})
+        database = self.db
+
+        def claim(owner):
+            worker = ObservationBuffer(database)
+            try:
+                return [row["observation_id"] for row in worker.claim_for_session(
+                    "shared", owner=owner, limit=8
+                )]
+            finally:
+                worker.close()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first, second = executor.map(claim, ("worker-a", "worker-b"))
+        self.assertEqual(sorted(first + second), [f"claim-{index}" for index in range(8)])
+        self.assertEqual(set(first).intersection(second), set())
+
+    def test_live_lease_is_not_recovered_before_expiry(self):
+        self.buffer.append({"observation_id": "leased", "session_id": "shared"})
+        claimed = self.buffer.claim_for_session("shared", owner="worker-a", lease_seconds=300)
+        self.assertEqual(len(claimed), 1)
+        self.assertEqual(self.buffer.recover_processing("shared"), 0)
+        self.assertEqual(self.buffer.for_session("shared")[0]["status"], "processing")
 
     def test_existing_database_gets_event_column(self):
         legacy_db = Path(self.tmp.name) / "legacy.sqlite3"
