@@ -194,10 +194,12 @@ on choosing a local endpoint; code does not make an arbitrary URL local or priva
 Consolidation can use a local language model or an evidence-only fallback.
 Transcript extraction separately requires a configured model.
 
-`memory_context` currently selects bounded search results on demand. It filters project
-scope, excludes superseded records and deterministically prepends the newest canonical
-project session. It is not automatic session restoration; startup injection remains
-roadmap work.
+`memory_context` currently selects bounded search results on demand. Canonical project
+and session paths, plus separately labeled global preference/profile paths, are
+filtered before lexical or vector ranking; superseded records are excluded. The
+complete serialized `{"memories": [...]}` payload is bounded by `max_chars`, and the
+newest canonical project session is deterministically prepended. It is not automatic
+session restoration; startup injection remains roadmap work.
 
 ## Security and consistency boundaries
 

@@ -48,9 +48,14 @@ a tool suggested a possible replacement.
 ## Search and read
 
 In a connected AI client, use memory_search before reading a relevant memory file.
-memory_context is an on-demand orientation tool. It enforces the serialized character
-budget, filters project scope, excludes superseded records and selects the newest
-project session deterministically; automatic startup injection is still planned.
+memory_context is an on-demand orientation tool. Its `max_chars` limit covers the
+complete serialized `{"memories": [...]}` payload, and the result reports
+`budget_type="serialized-json-characters"` so this is not confused with model-token
+budgets. Project requests filter canonical project/session paths before ranking,
+exclude superseded records, label project facts as `project` or `project-session`,
+label separately admitted preferences/profile facts as `global`, and select the
+newest project session deterministically. Automatic startup injection is still
+planned.
 
 Administrative read-only examples from the repository directory:
 

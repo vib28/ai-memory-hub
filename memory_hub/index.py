@@ -172,21 +172,40 @@ class MemoryIndex:
         )
         return [dict(row) for row in rows]
 
-    def search(self, query: str, limit: int = 10) -> list[dict]:
+    def search(self, query: str, limit: int = 10, *, allowed_paths: set[str] | None = None,
+               exclude_superseded: bool = False) -> list[dict]:
+        """Search memories, optionally restricting the ranking candidate set.
+
+        ``allowed_paths`` is applied in SQLite before FTS, fallback, and vector
+        ranking.  This matters for callers such as context priming: filtering
+        after ranking can let unrelated records consume the result window.
+        """
         limit = max(1, min(int(limit), 50))
+        if allowed_paths is not None and not allowed_paths:
+            return []
+        paths = sorted(allowed_paths) if allowed_paths is not None else []
         fts_rows: list[dict] = []
         if self.has_fts:
             tokens = [t for t in query.replace('"', ' ').split() if t]
             if tokens:
                 safe = " OR ".join(f'"{t}"' for t in tokens[:12])
                 try:
+                    filters = ["memory_fts MATCH ?"]
+                    params: list[object] = [safe]
+                    if allowed_paths is not None:
+                        placeholders = ",".join("?" for _ in paths)
+                        filters.append(f"m.path IN ({placeholders})")
+                        params.extend(paths)
+                    if exclude_superseded:
+                        filters.append("m.tag != 'superseded'")
+                    params.append(limit)
                     rows = self.conn.execute(
-                        """SELECT m.* FROM memory_fts f
-                           JOIN memories m USING(memory_id)
-                           WHERE memory_fts MATCH ?
-                           ORDER BY bm25(memory_fts)
-                           LIMIT ?""",
-                        (safe, limit),
+                        f"""SELECT m.* FROM memory_fts f
+                            JOIN memories m USING(memory_id)
+                            WHERE {' AND '.join(filters)}
+                            ORDER BY bm25(memory_fts)
+                            LIMIT ?""",
+                        params,
                     ).fetchall()
                     if rows:
                         fts_rows = [dict(r) for r in rows]
@@ -194,11 +213,20 @@ class MemoryIndex:
                     pass
         if not fts_rows:
             like = f"%{query}%"
+            filters = ["(text LIKE ? OR path LIKE ? OR subject LIKE ?)"]
+            params = [like, like, like]
+            if allowed_paths is not None:
+                placeholders = ",".join("?" for _ in paths)
+                filters.append(f"path IN ({placeholders})")
+                params.extend(paths)
+            if exclude_superseded:
+                filters.append("tag != 'superseded'")
+            params.append(limit)
             rows = self.conn.execute(
-                """SELECT * FROM memories
-                   WHERE text LIKE ? OR path LIKE ? OR subject LIKE ?
-                   ORDER BY date DESC LIMIT ?""",
-                (like, like, like, limit),
+                f"""SELECT * FROM memories
+                    WHERE {' AND '.join(filters)}
+                    ORDER BY date DESC LIMIT ?""",
+                params,
             ).fetchall()
             fts_rows = [dict(r) for r in rows]
         if not self.embedding_provider:
@@ -207,17 +235,23 @@ class MemoryIndex:
             query_vector = self.embedding_provider.embed([query])[0]
         except Exception:
             return fts_rows[:limit]
+        rows_by_id = {row["memory_id"]: row for row in self.all_rows()
+                      if (allowed_paths is None or row["path"] in allowed_paths)
+                      and (not exclude_superseded or row["tag"] != "superseded")}
+        if not rows_by_id:
+            return []
         vector_rows = self.conn.execute(
             "SELECT memory_id, vector_json FROM memory_embeddings"
         ).fetchall()
         scores = {}
         for row in vector_rows:
+            if row["memory_id"] not in rows_by_id:
+                continue
             try:
                 scores[row["memory_id"]] = cosine_similarity(query_vector, json.loads(row["vector_json"]))
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
         vector_ids = [memory_id for memory_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:limit * 3]]
-        rows_by_id = {row["memory_id"]: row for row in self.all_rows()}
         ranked: dict[str, float] = {}
         for rank, row in enumerate(fts_rows):
             ranked[row["memory_id"]] = ranked.get(row["memory_id"], 0.0) + 1.0 / (rank + 1)

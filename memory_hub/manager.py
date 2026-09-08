@@ -667,12 +667,16 @@ class MemoryManager:
 
     def context_prime(self, *, project: str | None = None, query: str | None = None,
                       limit: int = 5, max_chars: int = 4000) -> dict:
-        """Return a bounded session-start context packet from durable memory."""
+        """Return a bounded, project-scoped session-start context packet.
+
+        ``max_chars`` applies to the complete serialized ``{"memories": [...]}``
+        payload, not to model tokens or the response metadata around it.
+        """
         project = (project or "").strip()
         query = (query or "").strip()
         search_query = " ".join(part for part in (project, query) if part).strip() or "general"
-        rows = self.search(search_query, max(1, min(int(limit), 20)))
         project_slug = slugify(project) if project else None
+
         def in_scope(row: dict) -> bool:
             if row.get("tag") == "superseded":
                 return False
@@ -682,6 +686,16 @@ class MemoryManager:
             return (f"/sessions/{project_slug}/" in path
                     or path == f"/projects/{project_slug}.md"
                     or path in {"/preferences.md", "/profile.md"})
+
+        allowed_paths = None
+        if project_slug:
+            allowed_paths = {row["path"] for row in self.index.all_rows() if in_scope(row)}
+        rows = self.index.search(
+            search_query,
+            max(1, min(int(limit), 20)),
+            allowed_paths=allowed_paths,
+            exclude_superseded=True,
+        )
         rows = [row for row in rows if in_scope(row)]
         if project_slug:
             # Session-start context must not depend on vector ranking to find the
@@ -694,9 +708,24 @@ class MemoryManager:
                                                               str(row.get("memory_id", ""))))
                 rows = [latest] + [row for row in rows if row.get("memory_id") != latest.get("memory_id")]
         selected = []
-        used = 0
         budget = max(0, min(int(max_chars), 12000))
         truncated_reason = None
+
+        def scope_label(row: dict) -> str:
+            path = str(row.get("path", "")).lower()
+            if path in {"/preferences.md", "/profile.md"}:
+                return "global"
+            if project_slug and path == f"/projects/{project_slug}.md":
+                return "project"
+            if project_slug and f"/sessions/{project_slug}/" in path:
+                return "project-session"
+            return "unscoped"
+
+        def packet_size(items: list[dict]) -> int:
+            if not items:
+                return 0
+            return len(json.dumps({"memories": items}, ensure_ascii=False, separators=(",", ":")))
+
         for row in rows:
             item = {
                 "memory_id": row["memory_id"],
@@ -704,19 +733,22 @@ class MemoryManager:
                 "kind": row["kind"],
                 "subject": row["subject"],
                 "text": row["text"],
+                "scope": scope_label(row),
             }
-            cost = len(json.dumps(item, ensure_ascii=False))
-            if used + cost > budget:
+            if packet_size(selected + [item]) > budget:
                 truncated_reason = "context budget reached"
                 break
             selected.append(item)
-            used += cost
+        used = packet_size(selected)
         return {
             "status": "ok",
             "project": project or None,
             "query": query or None,
             "memories": selected,
             "characters": used,
+            "budget": budget,
+            "budget_type": "serialized-json-characters",
+            "candidate_count": len(rows),
             "truncated": len(selected) < len(rows),
             "truncation_reason": truncated_reason,
         }

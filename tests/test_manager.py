@@ -1,7 +1,9 @@
+import json
 import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate, MemoryRecord
@@ -53,6 +55,9 @@ class ManagerTests(unittest.TestCase):
         result = self.manager.context_prime(project="demo", query="local vault", limit=5, max_chars=500)
         self.assertEqual(result["status"], "ok")
         self.assertLessEqual(result["characters"], 500)
+        self.assertEqual(result["budget_type"], "serialized-json-characters")
+        packet = json.dumps({"memories": result["memories"]}, ensure_ascii=False, separators=(",", ":"))
+        self.assertLessEqual(len(packet), 500)
         self.assertLessEqual(len(result["memories"]), 5)
         self.assertTrue(all("text" in item and "path" in item for item in result["memories"]))
 
@@ -63,15 +68,48 @@ class ManagerTests(unittest.TestCase):
             {"memory_id": "alpha", "path": "/projects/alpha.md", "kind": "project",
              "subject": "alpha", "text": "alpha", "tag": "stated"},
         ]
-        original = self.manager.search
-        try:
-            self.manager.search = lambda query, limit: rows
+        with patch.object(self.manager.index, "search", return_value=rows):
             result = self.manager.context_prime(project="alpha", max_chars=500)
-        finally:
-            self.manager.search = original
         self.assertLessEqual(result["characters"], 500)
         self.assertEqual(result["memories"], [])
         self.assertEqual(result["truncation_reason"], "context budget reached")
+
+    def test_context_prime_scope_filters_before_ranking_and_labels_global(self):
+        self.manager.propose(MemoryCandidate(
+            text="Shared continuity signal for the alpha handoff.",
+            kind="project", tag="stated", subject="alpha", writer="codex",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Shared continuity signal for the beta handoff.",
+            kind="project", tag="stated", subject="beta", writer="codex",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Shared continuity preference for handoff packets.",
+            kind="preference", tag="preference", subject="handoff-style", writer="codex",
+        ))
+        result = self.manager.context_prime(project="alpha", query="shared continuity signal", limit=10)
+        paths = {item["path"] for item in result["memories"]}
+        self.assertIn("/projects/alpha.md", paths)
+        self.assertNotIn("/projects/beta.md", paths)
+        self.assertIn("global", {item["scope"] for item in result["memories"]})
+        self.assertTrue(all(item["scope"] != "unscoped" for item in result["memories"]))
+
+    def test_context_prime_excludes_superseded_and_reports_empty_honestly(self):
+        old = self.manager.propose(MemoryCandidate(
+            text="Retired alpha continuity instruction.",
+            kind="project", tag="stated", subject="alpha", writer="codex",
+        ))
+        self.assertEqual(old["status"], "stored")
+        replacement = self.manager.supersede(old["memory"]["memory_id"], MemoryCandidate(
+            text="Current alpha continuity instruction.",
+            kind="project", tag="stated", subject="alpha", writer="codex",
+        ))
+        self.assertEqual(replacement["status"], "stored")
+        result = self.manager.context_prime(project="missing-project", query="no such continuity")
+        self.assertEqual(result["memories"], [])
+        self.assertEqual(result["candidate_count"], 0)
+        self.assertFalse(result["truncated"])
+        self.assertIsNone(result["truncation_reason"])
 
     def test_context_prime_puts_latest_project_session_first(self):
         older = self.manager.propose_session({
