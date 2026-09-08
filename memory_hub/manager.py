@@ -284,7 +284,14 @@ class MemoryManager:
         checkpoint_id = data["checkpoint_id"]
         existing = next((item for item in entries if item.get("checkpoint_id") == checkpoint_id), None)
         if existing:
-            return existing
+            if self.vault.has_session_block(existing["path"], existing["memory_id"]):
+                self._complete_checkpoint_links(existing)
+                return existing
+            # A crash can leave the manifest ahead of the Markdown append. The
+            # orphaned entry is safe to replace with the retry's new memory ID.
+            entries.remove(existing)
+            group["revision"] = int(group.get("revision", 0)) + 1
+            self._write_session_manifest(manifest)
         sequence = data["sequence"] or (int(previous.get("sequence", 0)) + 1 if previous else 0)
         base = {
             "version": 1, "memory_id": memory_id, "checkpoint_id": checkpoint_id,
@@ -388,6 +395,11 @@ class MemoryManager:
         if duplicate:
             return {"status": "duplicate", "memory": duplicate}
         if write_mode == "review":
+            if data.get("checkpoint_id"):
+                pending = self.index.pending_session_checkpoint(data["checkpoint_id"])
+                if pending:
+                    return {"status": "already_pending", "proposal": pending,
+                            "checkpoint_id": data["checkpoint_id"]}
             row = self.index.enqueue(candidate.to_dict(), payload={"type": "session", "data": data})
             return {"status": "queued", "proposal": row, "label": "session summary"}
         relative = self.vault.canonical_path("session", data["model"], project=data.get("project"))
@@ -395,7 +407,10 @@ class MemoryManager:
         slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
         metadata = self._checkpoint_metadata(data, memory_id, slug, relative)
         if metadata and metadata.get("memory_id") != memory_id:
-            existing = self.index.by_id(metadata["memory_id"]) or metadata
+            existing = self.index.by_id(metadata["memory_id"])
+            if existing is None:
+                self.reindex()
+                existing = self.index.by_id(metadata["memory_id"]) or metadata
             return {"status": "duplicate", "memory": existing,
                     "checkpoint_id": metadata.get("checkpoint_id")}
         if metadata:

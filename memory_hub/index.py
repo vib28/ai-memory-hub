@@ -314,3 +314,20 @@ class MemoryIndex:
             (text, subject, kind),
         ).fetchone()
         return dict(row) if row else None
+
+    def pending_session_checkpoint(self, checkpoint_id: str):
+        """Find an existing review proposal carrying a stable checkpoint ID."""
+        rows = self.conn.execute(
+            """SELECT * FROM pending
+               WHERE status='pending' AND kind='session' AND payload IS NOT NULL
+               ORDER BY created_at"""
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if (payload.get("type") == "session"
+                    and payload.get("data", {}).get("checkpoint_id") == checkpoint_id):
+                return dict(row)
+        return None

@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from memory_hub.manager import MemoryManager
 
@@ -88,6 +89,37 @@ class SessionTests(unittest.TestCase):
                                               "entry_type": "checkpoint"})
         self.assertEqual(retry["status"], "duplicate")
         self.assertEqual(retry["checkpoint_id"], "batch-2")
+
+    def test_orphaned_checkpoint_manifest_is_repaired_after_append_crash(self):
+        data = {
+            "model": "codex", "title": "Crash boundary", "date": "2026-09-09T10:00:00",
+            "project": "alpha", "investigated": ["Checked the write boundary"],
+            "learned": [], "completed": [], "next_steps": [],
+            "session_group_id": "crash-group", "checkpoint_id": "crash-batch-1",
+            "sequence": 1, "entry_type": "checkpoint",
+        }
+        with patch.object(self.manager.vault, "append_session_block", side_effect=RuntimeError("crash")):
+            with self.assertRaises(RuntimeError):
+                self.manager.propose_session(data)
+        retry = self.manager.propose_session(data)
+        self.assertEqual(retry["status"], "stored")
+        manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
+        entry = manifest["groups"]["crash-group"]["entries"][0]
+        self.assertTrue(self.manager.vault.has_session_block(entry["path"], entry["memory_id"]))
+
+    def test_review_checkpoint_retry_reuses_existing_pending_proposal(self):
+        data = {
+            "model": "codex", "title": "Review boundary", "date": "2026-09-09T10:01:00",
+            "project": "alpha", "investigated": ["Prepared the review batch"],
+            "learned": [], "completed": [], "next_steps": [],
+            "session_group_id": "review-group", "checkpoint_id": "review-batch-1",
+            "sequence": 1, "entry_type": "checkpoint",
+        }
+        first = self.manager.propose_session(data, write_mode="review")
+        second = self.manager.propose_session(data, write_mode="review")
+        self.assertEqual(first["status"], "queued")
+        self.assertEqual(second["status"], "already_pending")
+        self.assertEqual(first["proposal"]["proposal_id"], second["proposal"]["proposal_id"])
 
     def test_review_approval_preserves_session_sections(self):
         result = self.manager.propose_session({

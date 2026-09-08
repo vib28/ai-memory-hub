@@ -118,6 +118,23 @@ class ObservationBufferTests(unittest.TestCase):
         self.assertEqual(self.buffer.recover_processing("shared"), 0)
         self.assertEqual(self.buffer.for_session("shared")[0]["status"], "processing")
 
+    def test_more_than_five_thousand_rows_drain_in_ordered_batches(self):
+        for index in range(5001):
+            self.buffer.append({
+                "observation_id": f"large-{index:04}",
+                "session_id": "large-session",
+                "created_at": f"2026-01-01T00:00:{index:04}Z",
+            })
+        first = self.buffer.claim_for_session("large-session", owner="worker-a", limit=5000)
+        self.assertEqual(len(first), 5000)
+        self.assertEqual(self.buffer.batch_sequence(first, limit=5000), 1)
+        self.assertEqual(self.buffer.mark_status(
+            [row["observation_id"] for row in first], "completed", owner="worker-a"), 5000)
+        second = self.buffer.claim_for_session("large-session", owner="worker-b", limit=5000)
+        self.assertEqual(len(second), 1)
+        self.assertEqual(second[0]["observation_id"], "large-5000")
+        self.assertEqual(self.buffer.batch_sequence(second, limit=5000), 2)
+
     def test_existing_database_gets_event_column(self):
         legacy_db = Path(self.tmp.name) / "legacy.sqlite3"
         connection = sqlite3.connect(legacy_db)

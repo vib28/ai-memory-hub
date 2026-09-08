@@ -377,6 +377,18 @@ class Vault:
                 atomic_write(p, rebuilt)
             return changed
 
+    def has_session_block(self, relative: str, memory_id: str) -> bool:
+        """Return whether a canonical session file contains the given memory ID."""
+        p = self.resolve(relative)
+        if not p.exists():
+            return False
+        body = parse_frontmatter(p.read_text(encoding="utf-8"))[1]
+        return any(
+            match.group("id") == memory_id
+            for block in SESSION_RE.finditer(body)
+            for match in SESSION_ID_RE.finditer(block.group(0))
+        )
+
     def orphan_session_blocks(self, relative: str) -> list[dict]:
         """Session heading blocks with no parseable `<!-- session:<id> -->` marker.
 

@@ -254,6 +254,19 @@ class ObservationBuffer:
         ).fetchall()
         return [str(row[0]) for row in rows]
 
+    def batch_sequence(self, rows: list[dict[str, Any]], *, limit: int = 500) -> int:
+        """Return the stable one-based page number for an ordered claimed batch."""
+        if not rows:
+            return 0
+        first = rows[0]
+        before = self.conn.execute(
+            """SELECT COUNT(*) FROM observations
+               WHERE session_id=? AND
+                 (created_at < ? OR (created_at=? AND observation_id <= ?))""",
+            (first["session_id"], first["created_at"], first["created_at"], first["observation_id"]),
+        ).fetchone()[0]
+        return ((int(before) - 1) // max(1, min(int(limit), 5000))) + 1
+
     def recover_processing(self, session_id: str) -> int:
         """Return rows left processing by a crashed consolidation to retryable state."""
         with self.conn:
