@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from threading import Barrier
 from unittest.mock import patch
 
 from memory_hub.capture import ObservationBuffer, hook_main, normalize_event
@@ -121,6 +122,40 @@ class ObservationBufferTests(unittest.TestCase):
             first, second = executor.map(claim, ("worker-a", "worker-b"))
         self.assertEqual(sorted(first + second), [f"claim-{index}" for index in range(8)])
         self.assertEqual(set(first).intersection(second), set())
+
+    def test_eight_real_connections_drain_repeated_batches_without_overlap(self):
+        total = 512
+        for index in range(total):
+            self.buffer.append({
+                "observation_id": f"stress-{index:04}",
+                "session_id": "stress-session",
+                "created_at": f"2026-01-01T00:00:{index:04}Z",
+            })
+        database = self.db
+        barrier = Barrier(8)
+
+        def drain(owner):
+            worker = ObservationBuffer(database)
+            claimed = []
+            try:
+                barrier.wait()
+                while True:
+                    rows = worker.claim_for_session("stress-session", owner=owner, limit=7)
+                    if not rows:
+                        break
+                    ids = [row["observation_id"] for row in rows]
+                    claimed.extend(ids)
+                    self.assertEqual(worker.mark_status(ids, "completed", owner=owner), len(ids))
+                return claimed
+            finally:
+                worker.close()
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(drain, [f"stress-worker-{i}" for i in range(8)]))
+        flattened = [item for result in results for item in result]
+        self.assertEqual(len(flattened), total)
+        self.assertEqual(len(set(flattened)), total)
+        self.assertEqual(self.buffer.pending_sessions(), [])
 
     def test_live_lease_is_not_recovered_before_expiry(self):
         self.buffer.append({"observation_id": "leased", "session_id": "shared"})
