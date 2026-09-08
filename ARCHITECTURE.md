@@ -250,8 +250,9 @@ Ordinary proposals are not all automatically committed.
 
 [Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is the continuity
 closeout parent; follow the canonical [issue priority order](docs/issue-priority-order.md):
-local queue/context/metadata/worker and Claude/Codex startup context are complete, then
-sanitized GitHub publication and benchmark closeout remain.
+local queue/context/metadata/worker, Claude/Codex startup context, sanitized GitHub
+publication and the no-paid-call replay harness are complete; live benchmark
+certification remains.
 Graph retrieval and embedding upgrades are not prerequisites.
 
 ```mermaid
@@ -267,5 +268,6 @@ flowchart TD
 ```
 
 The required [paired benchmark](docs/session-handoff-benchmark.md) measures both token
-overhead and task quality. No implementation or savings percentage is implied by this
-architecture document.
+overhead and task quality. The versioned [replay report](docs/benchmark-results/handoff-replay-v1.md)
+is regression evidence only; no live implementation or universal savings percentage is
+implied by this architecture document.

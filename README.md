@@ -41,7 +41,7 @@ flowchart LR
 > [!IMPORTANT]
 > The supervised local checkpoint worker, model-free Claude/Codex startup handoff and
 > sanitized GitHub session outbox are available behind explicit setup. Unsupported
-> client coverage and the paired benchmark remain in the [continuity plan](docs/automatic-session-continuity.md);
+> client coverage and live paired benchmark certification remain in the [continuity plan](docs/automatic-session-continuity.md);
 > hook buffering, worker summaries and publication are still opt-in.
 
 ## Current state
@@ -54,14 +54,16 @@ flowchart LR
 | Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Unsupported clients have no claimed startup automation |
 | Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | Paired measurement remains open |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
-| Token savings | Component context-size benchmark | No measured cross-tool savings claim |
+| Token savings | CI-safe paired replay benchmark | Live provider usage/cost and cross-tool certification remain open |
 
 The core capture, hook, queue, session-identity, context-boundary, local-worker and
 supported startup-handoff defects have regression coverage. Remaining continuity work
 is tracked in [the continuity plan](docs/automatic-session-continuity.md), especially
 continuity closeout (#61), and the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
-sessions with context passing enabled and disabled.
+sessions with context passing enabled and disabled. The no-paid-call replay result is
+versioned in [handoff-replay-v1](docs/benchmark-results/handoff-replay-v1.md); it does
+not claim live provider-token savings.
 
 ## Quick start
 

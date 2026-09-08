@@ -36,6 +36,7 @@ ai-memory-hook = "memory_hub.capture:hook_main"
 ai-memory-worker = "memory_hub.worker:main"
 ai-memory-handoff = "memory_hub.handoff:main"
 ai-memory-github-export = "memory_hub.github_export:main"
+ai-memory-handoff-benchmark = "memory_hub.benchmark_handoff:main"
 
 [tool.setuptools]
 packages = ["memory_hub"]

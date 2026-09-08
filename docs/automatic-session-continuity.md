@@ -279,9 +279,10 @@ coverage verifies pre-ranking project filtering, complete serialized packet boun
 global scope labels, superseded exclusion, deterministic newest-session selection,
 live lease protection, concurrent claim isolation, bounded retry backoff,
 crash-boundary batch identity and process-level Claude/Codex SessionStart fixtures.
-Installed-client launch certification, all-client support and the paired benchmark
-remain open acceptance gates. Export fixture coverage does not claim a live session
-was published to the repository.
+Installed-client launch certification, all-client support and live paired benchmark
+certification remain open acceptance gates. The no-paid-call replay is documented in
+[`handoff-replay-v1`](benchmark-results/handoff-replay-v1.md). Export fixture coverage
+does not claim a live session was published to the repository.
 
 ## Acceptance criteria
 
@@ -289,7 +290,8 @@ was published to the repository.
   Claude→Codex and Codex→Claude sessions with context passing ON/OFF using the
   [prescribed seven-section benchmark protocol](session-handoff-benchmark.md).
   Include both tools, local summarization overhead and re-explanation, and report task
-  correctness alongside token savings. No measured result is available yet.
+  correctness alongside token savings. Replay evidence exists, but no live provider
+  usage result is available yet.
 - No routine user-triggered save, consolidation, finalization, restore or posting.
 - Three or more token/time checkpoints and a final rollup retain valid links, tags
   and metadata across approval, restart and reindex.
@@ -311,7 +313,7 @@ was published to the repository.
 
 The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
-chain is `#54/#56/#57/#58/#59 completed → #60 → #61 → #62`; #40 and #64 can proceed
+chain is `#54/#56/#57/#58/#59/#60 completed → #61 → #62`; #40 and #64 can proceed
 independently, and #41/#50/#51/#46/#47/#48/#49 are later vault-quality work.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance

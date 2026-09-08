@@ -1,6 +1,7 @@
 # Two-tool handoff benchmark protocol
 
-Required acceptance gate for #61; tracked in #62. This is a test design, not a measured result.
+Required acceptance gate for #61; tracked in #62. The deterministic replay is
+implemented; live two-tool certification remains a separate opt-in gate.
 
 ```mermaid
 flowchart LR
@@ -44,22 +45,35 @@ Prescribed test procedure:
 
 ## Acceptance criteria
 
-- [ ] An automated command runs both cross-tool directions and both ON/OFF arms without manual session saving, restoring or re-explanation.
-- [ ] At least 30 matched pairs as prescribed, or an explicit incomplete/blocked result naming missing access; replay-only tests are not called live two-tool verification.
-- [ ] Report absolute and percentage savings for destination-stage tokens and for the whole workflow, including checkpoint/summary generation overhead. Keep local-model tokens separate from cloud billed usage.
-- [ ] Formula: savings = OFF - ON; savings percent = 100 * (OFF - ON) / OFF. Report negative savings; use N/A when OFF is zero or comparable usage is unavailable.
-- [ ] Do not blindly add counts from different tokenizers and call them equivalent: give per-tool usage plus a common named-tokenizer text-volume comparison. Report cost only with separately verified prices, if desired.
-- [ ] Both arms receive identical task state and success criteria. Publish completion/fact-retention rates and failures alongside savings; lower token use with worse task correctness is not a pass.
+- [x] The replay command runs both cross-tool directions and both ON/OFF arms without manual session saving, restoring or re-explanation; live adapters remain unverified.
+- [x] The replay produces 30 matched pairs / 60 destination sessions and explicitly records live access as incomplete; replay is not called live two-tool verification.
+- [x] The report includes absolute and percentage savings for destination-stage tokens and the whole workflow, including checkpoint/summary generation estimates, with local-model tokens separate from provider usage.
+- [x] Formula: savings = OFF - ON; savings percent = 100 * (OFF - ON) / OFF. Negative values are retained and N/A is used when comparable usage is unavailable.
+- [x] Provider counters remain unavailable rather than zero; the report names a common tokenizer and does not combine unlike provider tokenizers.
+- [x] Both replay arms use identical task state and checks and publish completion, fact retention, repeated work and failures; live task correctness remains unverified.
 - [ ] Evidence supports positive median end-to-end savings without a lower completion or essential-fact retention rate in the measured suite before claiming demonstrated token savings. Otherwise report no demonstrated benefit and keep this gate open.
-- [ ] CI runs no-paid-call replay/regression tests; live runs are opt-in using already authorized clients/accounts and a predeclared run/token ceiling. No unapproved account charges or live private-vault data.
-- [ ] Versioned report includes configurations, actual/estimated/unavailable counter flags, repeated work, checkpoint age, latency and uncertainty. No universal saving percentage is advertised.
+- [x] CI runs no-paid-call replay/regression tests; live runs remain opt-in and require already authorized clients/accounts plus a predeclared run/token ceiling. No live private-vault data is used.
+- [x] The versioned report includes configuration, estimated/unavailable counter flags, repeated work, checkpoint age, latency spread and uncertainty. It advertises no universal saving percentage.
 
 ## Implementation details
 
-Planned, not implemented. Depends on linked checkpoints #57, worker #58, scoped context #56 and the supported automatic handoff in #59. Parent #61. Extend the evaluation tooling; keep existing context-size benchmark as a quick component check, not a substitute for this experiment.
+Implemented in `memory_hub/benchmark_handoff.py`, exposed as
+`ai-memory-handoff-benchmark` and wrapped by `scripts/benchmark_handoff.py`.
+It depends on linked checkpoints #57, worker #58, scoped context #56 and the
+supported automatic handoff in #59. The existing context-size benchmark remains
+a quick component check, not a substitute for this experiment.
 
-Implement deterministic fixture/replay harness alongside the handoff code, then perform actual-client paired runs when the adapters work. Set the live-run budget once at setup; no per-session manual triggers are required. The cost of the common source prefix cancels in the paired difference but must still be included when reporting whole-session percentage savings.
+The replay uses a synthetic fixture, identical snapshot hash per pair, a
+deterministic clarification answer bank and alternating ON/OFF order. It writes
+the machine-readable [JSON report](benchmark-results/handoff-replay-v1.json) and
+[human report](benchmark-results/handoff-replay-v1.md). Actual-client paired runs
+still require adapters, authorized accounts and a predeclared ceiling; no
+per-session manual triggers are required. The common source prefix is included
+in whole-workflow measurements.
 
 ## Verification results
 
-Acceptance design added at the user's explicit request on 2026-09-07. No matched two-tool benchmark has been run and no token-saving number is available. Existing unit-test and packet-size results do not satisfy this gate.
+Replay implementation and report generated on 2026-09-09. The report contains
+estimated common-tokenizer results and provider counters marked unavailable; it
+does not claim live token savings. Existing unit-test and packet-size results do
+not satisfy the remaining live gate.

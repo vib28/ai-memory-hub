@@ -26,7 +26,7 @@ flowchart LR
     B --> C["Checkpoint metadata<br/>#57"]
     C --> D["Local worker<br/>#58"]
     D --> E["Automatic handoff<br/>#59"]
-    E --> F["GitHub publication<br/>#60"]
+    E --> F["GitHub publication complete<br/>#60"]
     F --> G["Roadmap closeout<br/>#61"]
     G --> H["Token and quality benchmark<br/>#62"]
     R["Section embeddings<br/>#40"] -. separate track .-> G
@@ -39,7 +39,7 @@ flowchart LR
   worker, then install the supported Claude/Codex startup handoff. GitHub publishing follows local continuity.
 - **Reproduction:** hooks now preserve native evidence and queue claims are lease-protected,
   The local worker now handles scheduled/threshold checkpointing, and supported
-  Claude/Codex clients have a model-free startup injection. Remaining gates are tracked in #60–#62; #54,
+  Claude/Codex clients have a model-free startup injection. Remaining gates are tracked in #61–#62; #54,
   #56, #57 and #58's queue/context/metadata/worker gates are complete.
 - **Acceptance:** unattended checkpoints and final rollup, valid links/tags, bidirectional
   Claude/Codex handoff, crash/retry safety, strict scope/budget and measured token/quality results.
@@ -51,12 +51,13 @@ flowchart LR
   without a lower completion/essential-fact retention rate is required to claim benefit
   in the measured suite; otherwise the gate remains open.
 - **Implementation order:** follow the canonical [open issue priority order](issue-priority-order.md).
-  The continuity chain is #54/#56/#57/#58/#59 completed → #60 → #61 → #62. The
+  The continuity chain is #54/#56/#57/#58/#59/#60 completed → #61 → #62. The
   metadata/manifest foundation, supervised worker and supported-client handoff are
-  implemented; publication and benchmark gates remain open.
+  implemented; continuity closeout and benchmark gates remain open.
 - **Verification:** prerequisite capture, hook, context, metadata, worker and process-level
-  Claude/Codex handoff fixtures are covered by 204 tests; installed-client launch and
-  paired token-saving benchmark certification remain open.
+  Claude/Codex handoff, export and replay fixtures are covered by 211 tests; installed-client launch and
+  no-paid-call replay is versioned in [`handoff-replay-v1`](benchmark-results/handoff-replay-v1.md),
+  while paired live token-saving benchmark certification remains open.
 
 Full design, evidence and acceptance tests:
 [`automatic-session-continuity.md`](automatic-session-continuity.md).
