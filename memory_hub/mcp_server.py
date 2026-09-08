@@ -135,6 +135,7 @@ def session_write(
     title: str, investigated: list[str], learned: list[str], completed: list[str],
     next_steps: list[str], project: str | None = None, session_date: str | None = None,
     session_group_id: str | None = None, host_session_id: str | None = None,
+    host_session_finalized: bool = False,
     checkpoint_id: str | None = None, sequence: int | None = None,
     entry_type: str | None = None, previous_id: str | None = None,
     final_id: str | None = None, source_client: str | None = None,
@@ -150,6 +151,7 @@ def session_write(
     }
     metadata = {
         "session_group_id": session_group_id, "host_session_id": host_session_id,
+        "host_session_finalized": host_session_finalized,
         "checkpoint_id": checkpoint_id, "sequence": sequence, "entry_type": entry_type,
         "previous_id": previous_id, "final_id": final_id, "source_client": source_client,
         "worktree": worktree, "evidence_start": evidence_start, "evidence_end": evidence_end,

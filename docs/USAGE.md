@@ -86,9 +86,10 @@ route to /sessions/writer.md. Different clients can read these shared files.
 Checkpoint-aware callers may provide a `session_group_id`, `checkpoint_id`, `sequence`
 and `entry_type` (`checkpoint` or `final`), plus optional host, worktree, evidence and
 token-basis metadata. These writes add machine-readable metadata to the session block
-and persist a versioned manifest at `/sessions/session-manifest.json`. Replaying an
-existing checkpoint ID is idempotent. Ordinary session writes remain backward-compatible
-and do not create a manifest.
+and persist a versioned manifest at `/sessions/session-manifest.json`. Set
+`host_session_finalized=true` when the current host session ends; this does not finalize
+a cross-client work group. Replaying an existing checkpoint ID is idempotent. Ordinary
+session writes remain backward-compatible and do not create a manifest.
 
 > [!IMPORTANT]
 > There is not yet a periodic checkpoint chain, guaranteed final rollup or automatic

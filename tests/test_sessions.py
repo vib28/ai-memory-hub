@@ -54,6 +54,7 @@ class SessionTests(unittest.TestCase):
             "next_steps": ["Continue the worker"], "session_group_id": "group-alpha",
             "host_session_id": "host-1", "source_client": "codex", "session_tags": ["handoff"],
             "token_count": 120, "token_basis": "estimated-evidence",
+            "host_session_finalized": True,
         }
         first = self.manager.propose_session({**base, "title": "Checkpoint one",
                                               "checkpoint_id": "batch-1", "sequence": 1,
@@ -81,6 +82,7 @@ class SessionTests(unittest.TestCase):
         block = self.manager.read(second["memory"]["path"])
         self.assertIn("session-meta:", block)
         self.assertIn("#group-group-alpha", block)
+        self.assertIn('"host_session_finalized":true', block)
         self.manager.reindex()
         self.assertIsNotNone(self.manager.index.by_id(final["memory"]["memory_id"]))
         self.assertEqual(json.loads(self.manager.read("/sessions/session-manifest.json"))["version"], 1)
@@ -89,6 +91,28 @@ class SessionTests(unittest.TestCase):
                                               "entry_type": "checkpoint"})
         self.assertEqual(retry["status"], "duplicate")
         self.assertEqual(retry["checkpoint_id"], "batch-2")
+
+    def test_checkpoint_links_repair_after_post_append_crash(self):
+        base = {
+            "model": "codex", "title": "Crash links", "date": "2026-09-09T11:00:00",
+            "project": "alpha", "investigated": ["Checked links"], "learned": [],
+            "completed": [], "next_steps": ["Continue"], "session_group_id": "link-crash",
+            "host_session_id": "host-2", "entry_type": "checkpoint",
+        }
+        first = self.manager.propose_session({**base, "checkpoint_id": "link-1", "sequence": 1})
+        self.assertEqual(first["status"], "stored")
+        second_data = {**base, "title": "Crash links two", "checkpoint_id": "link-2", "sequence": 2}
+        with patch.object(self.manager.vault, "update_session_metadata",
+                          side_effect=RuntimeError("link update crash")):
+            with self.assertRaises(RuntimeError):
+                self.manager.propose_session(second_data)
+        retry = self.manager.propose_session(second_data)
+        self.assertEqual(retry["status"], "duplicate")
+        manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
+        entries = manifest["groups"]["link-crash"]["entries"]
+        self.assertEqual([entry["checkpoint_id"] for entry in entries], ["link-1", "link-2"])
+        self.assertEqual(entries[0]["next_id"], "link-2")
+        self.assertTrue(self.manager.vault.has_session_block(entries[1]["path"], entries[1]["memory_id"]))
 
     def test_orphaned_checkpoint_manifest_is_repaired_after_append_crash(self):
         data = {

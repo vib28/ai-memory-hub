@@ -184,6 +184,10 @@ class MemoryManager:
         if group or checkpoint or data.get("entry_type"):
             clean["session_group_id"] = slugify(str(group or uuid.uuid4().hex[:12]))
             clean["host_session_id"] = str(data.get("host_session_id") or "").strip()[:200] or None
+            host_finalized = data.get("host_session_finalized", False)
+            if isinstance(host_finalized, str):
+                host_finalized = host_finalized.strip().lower() in {"1", "true", "yes", "on"}
+            clean["host_session_finalized"] = bool(host_finalized)
             clean["checkpoint_id"] = slugify(str(checkpoint or uuid.uuid4().hex[:12]))
             entry_type = str(data.get("entry_type") or "checkpoint").strip().lower()
             if entry_type not in {"checkpoint", "final"}:
@@ -233,6 +237,7 @@ class MemoryManager:
             lines.append(f"**Checkpoint:** {metadata['checkpoint_id']}")
             lines.append(f"**Sequence:** {metadata['sequence']}")
             lines.append(f"**Entry type:** {metadata['entry_type']}")
+            lines.append(f"**Host session finalized:** {str(metadata.get('host_session_finalized', False)).lower()}")
             if metadata.get("previous_url"):
                 lines.append(f"**Previous:** {metadata['previous_url']}")
             if metadata.get("next_url"):
@@ -301,6 +306,7 @@ class MemoryManager:
             "next_id": data.get("next_id"), "final_id": data.get("final_id"),
             "state": data.get("state", "accepted"), "source_client": data.get("source_client"),
             "host_session_id": data.get("host_session_id"), "project": data.get("project"),
+            "host_session_finalized": data.get("host_session_finalized", False),
             "worktree": data.get("worktree"), "evidence_start": data.get("evidence_start"),
             "evidence_end": data.get("evidence_end"), "token_count": data.get("token_count"),
             "token_basis": data.get("token_basis"), "session_tags": data.get("session_tags", []),

@@ -168,7 +168,7 @@ Proposed versioned metadata:
 | Field | Meaning |
 |---|---|
 | schema_version, project_id, workspace_id | Stable scope and migration version |
-| session_group_id, host_session_id, source_client | Work group and original provenance |
+| session_group_id, host_session_id, host_session_finalized, source_client | Work group and host-session provenance; a host can end while the group continues |
 | checkpoint_id, sequence, entry_type | Unique batch and checkpoint/final role |
 | previous_id, next_id, final_id | Machine-readable chain, explicit null at endpoints |
 | evidence_start, evidence_end, idempotency_key | Exactly which evidence this batch owns |
