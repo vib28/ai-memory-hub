@@ -147,6 +147,12 @@ report a limitation rather than claiming startup automation. See [automatic
 continuity](automatic-session-continuity.md) for the remaining publication and
 benchmark work.
 
+GitHub export is not part of MCP registration. Approve it separately with
+`-EnableGitHubExport -GitHubRepo owner/name -GitHubVisibility private`; this creates
+an owned hidden startup publisher and uses the `gh` credential store. Disable it with
+`-DisableGitHubExport`; the durable outbox is retained for retry. No raw transcript,
+pending review proposal or private path is eligible for export.
+
 ## Refresh or remove a connection
 
 After a project update, the helper can refresh managed client instruction blocks and

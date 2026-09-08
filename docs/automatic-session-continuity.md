@@ -6,9 +6,9 @@ leased capture claims, project-scoped context and separate local-model roles are
 implemented. The #54 queue-correctness gate now includes bounded pagination, live leases,
 crash-idempotent batch identity and bounded retry backoff. Opt-in checkpoint metadata and
 manifest persistence and the supervised worker are implemented behind explicit
-session-auto setup. A model-free SessionStart handoff is now available for the
-tested Claude Code and Codex CLI surfaces; full final-rollup publication remains
-roadmap work. Parent:
+session-auto setup. A model-free SessionStart handoff is available for the tested
+Claude Code and Codex CLI surfaces, and sanitized GitHub publication is available
+behind explicit destination/visibility approval. Parent:
 [#61](https://github.com/vib28/ai-memory-hub/issues/61).
 
 ```mermaid
@@ -26,9 +26,9 @@ flowchart LR
 
 The capture-to-handoff path spans client installation, observation buffering,
 consolidation, session persistence, retrieval and dashboard presentation. Current
-components now form an optional unattended local checkpoint plus tested
-Claude/Codex startup handoff service, but do not yet form the complete all-client
-startup and publication service.
+components now form an optional unattended local checkpoint, tested Claude/Codex
+startup handoff and sanitized GitHub publication service, but do not yet form the
+complete all-client startup or measured benchmark service.
 
 Review coverage: capture.py, hooks.py, session_capture.py, consolidator.py,
 manager.py session/context paths, vault.py routing/parsing/deletion, models.py,
@@ -58,7 +58,7 @@ the source client never emitted. Local continuity comes before optional GitHub p
 | Local SLM / deterministic fallback | Summarize without remaining cloud quota | Supervised scheduling, bounded batches and useful fallback state |
 | Four-section session blocks | Human-readable checkpoint and final template | Group/batch metadata, navigation, rollup and parser roundtrip |
 | Public MCP write policy / review queue | Govern accepted durable memory | Idempotent batch submission and explicit session-auto scope |
-| Git history | Reversible accepted changes | Recoverable batch/manifest publication and history error tracking |
+| Git history | Reversible accepted changes | Publication has a separate SQLite outbox and health record |
 | FTS / optional vectors | Related-memory retrieval | Deterministic active-session selection and strict context scope |
 | Hook installers | Backups, managed installation and tested SessionStart output | Version-specific support outside Claude Code/Codex and GitHub publication |
 
@@ -96,7 +96,7 @@ client event -> sanitize and persist local evidence
                |                           |
  next client's start hook          Markdown / review queue
                                            |
-                               permitted GitHub export outbox
+                               approved GitHub export outbox
 ```
 
 Heavy summarization and network publication never run inside the synchronous capture
@@ -245,16 +245,17 @@ automatically in the dashboard.
 
 ### GitHub session entries
 
-Proposed layout: one session issue per work group, ordered checkpoint comments, and a
-final-summary comment. Every batch/final uses the same four headings; metadata includes
-group/batch IDs, previous/next/final URLs, source, evidence range and token basis.
-The issue body carries an automatically maintained index. Comments have no native
-GitHub labels, so batch tags are stored in body metadata; parent labels group the log.
+Implemented layout: one session issue per work group, ordered checkpoint comments,
+and a final-summary comment. Every batch/final uses the same four headings; metadata
+includes group/checkpoint IDs, previous/next/final URLs, source and state. The issue
+body carries an automatically maintained index with owned markers and tags. User issue
+body text and comments outside those markers are preserved.
 
 An explicitly configured export policy publishes only sanitized permitted summaries.
-The outbox reconciles a stable marker after an uncertain timeout, retries offline/rate
-limit failures and updates only owned blocks. Never close bug issues merely because a
-session final exists. GitHub is a publication mirror, not required for local handoff.
+The SQLite outbox reconciles stable markers after uncertain timeouts, retries offline/
+rate-limit failures with health reporting and updates only owned blocks. Never close
+bug issues merely because a session final exists. GitHub is a publication mirror, not
+required for local handoff.
 
 The existing seven-section issue/roadmap format remains unchanged. Session artifacts
 use the four-section session template; engineering work tracking uses where/why/how,
@@ -278,8 +279,9 @@ coverage verifies pre-ranking project filtering, complete serialized packet boun
 global scope labels, superseded exclusion, deterministic newest-session selection,
 live lease protection, concurrent claim isolation, bounded retry backoff,
 crash-boundary batch identity and process-level Claude/Codex SessionStart fixtures.
-Installed-client launch certification, final rollup/publication and full cross-client
-restoration remain open acceptance gates.
+Installed-client launch certification, all-client support and the paired benchmark
+remain open acceptance gates. Export fixture coverage does not claim a live session
+was published to the repository.
 
 ## Acceptance criteria
 

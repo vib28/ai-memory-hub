@@ -46,5 +46,6 @@ Review [backup guidance](docs/USAGE.md#undo-and-backup) before treating any data
 
 > [!NOTE]
 > Automatic token/time checkpoints require explicit `-EnableSessionAuto`; Claude/Codex
-> startup handoff requires separate `-InstallHandoff`. GitHub session publishing and
-> the [required benchmark](docs/session-handoff-benchmark.md) remain separate roadmap work.
+> startup handoff requires separate `-InstallHandoff`; GitHub session publishing requires
+> `-EnableGitHubExport` with an approved destination/visibility. The [required benchmark]
+> (docs/session-handoff-benchmark.md) remains separate roadmap work.

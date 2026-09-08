@@ -39,11 +39,10 @@ flowchart LR
 - Keep optional Git history for accepted vault changes.
 
 > [!IMPORTANT]
-> The supervised local checkpoint worker and model-free Claude/Codex startup handoff
-> are available behind explicit setup. Full final-rollup publication and unsupported
-> client coverage remain in the [continuity plan](docs/automatic-session-continuity.md);
-> hook buffering, worker summaries and startup packets still do not form a complete
-> all-client publication service.
+> The supervised local checkpoint worker, model-free Claude/Codex startup handoff and
+> sanitized GitHub session outbox are available behind explicit setup. Unsupported
+> client coverage and the paired benchmark remain in the [continuity plan](docs/automatic-session-continuity.md);
+> hook buffering, worker summaries and publication are still opt-in.
 
 ## Current state
 
@@ -51,16 +50,16 @@ flowchart LR
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links, checkpoint manifests and provisional/final worker entries | Final rollup/publication remains #60 |
+| Sessions | Four-section summaries, structured project links, checkpoint manifests, provisional/final worker entries and sanitized export | Publication requires explicit destination approval |
 | Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Unsupported clients have no claimed startup automation |
-| Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | GitHub publication and paired measurement remain open |
+| Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | Paired measurement remains open |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | Component context-size benchmark | No measured cross-tool savings claim |
 
 The core capture, hook, queue, session-identity, context-boundary, local-worker and
 supported startup-handoff defects have regression coverage. Remaining continuity work
 is tracked in [the continuity plan](docs/automatic-session-continuity.md), especially
-GitHub export (#60), continuity closeout (#61), and the paired benchmark (#62).
+continuity closeout (#61), and the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
 sessions with context passing enabled and disabled.
 

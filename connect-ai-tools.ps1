@@ -45,6 +45,20 @@
 .PARAMETER RemoveHandoff
     Remove only the SessionStart handoff entry owned by this project.
 
+.PARAMETER EnableGitHubExport
+    Approve one sanitized GitHub destination/visibility and register the local
+    outbox publisher in Windows startup. This is separate from memory write mode,
+    capture hooks and session-auto.
+
+.PARAMETER DisableGitHubExport
+    Disable the owned GitHub export configuration and startup entry.
+
+.PARAMETER GitHubRepo
+    GitHub owner/name approved by -EnableGitHubExport.
+
+.PARAMETER GitHubVisibility
+    Approved GitHub repository visibility: public, private or internal.
+
 .PARAMETER EnableSessionAuto
     Register the local checkpoint worker in the current user's Windows startup
     entries. The owned value is hidden, reversible and uses the selected write mode.
@@ -81,14 +95,26 @@ param(
 
     [switch]$RemoveHandoff,
 
+    [switch]$EnableGitHubExport,
+
+    [switch]$DisableGitHubExport,
+
+    [string]$GitHubRepo,
+
+    [ValidateSet("public", "private", "internal")]
+    [string]$GitHubVisibility = "private",
+
     [switch]$EnableSessionAuto,
 
     [switch]$DisableSessionAuto
 )
 
 if (($InstallHooks -and $RemoveHooks) -or ($InstallHandoff -and $RemoveHandoff) -or
-    ($EnableSessionAuto -and $DisableSessionAuto)) {
+    ($EnableSessionAuto -and $DisableSessionAuto) -or ($EnableGitHubExport -and $DisableGitHubExport)) {
     throw "Install/remove switches are mutually exclusive; pass at most one of each pair."
+}
+if ($EnableGitHubExport -and [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+    throw "-GitHubRepo owner/name is required with -EnableGitHubExport."
 }
 
 $ErrorActionPreference = "Stop"
@@ -98,6 +124,7 @@ $Root = $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $ServerName = "ai-memory-hub"
 $WorkerValueName = "AI Memory Hub Session Worker"
+$GitHubExportValueName = "AI Memory Hub GitHub Exporter"
 
 if (-not (Test-Path $Python)) {
     throw "Virtual environment not found at $Python. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
@@ -124,8 +151,29 @@ function Set-SessionAuto {
     }
 }
 
+function Set-GitHubExport {
+    param([bool]$Enable)
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    if ($Enable) {
+        $output = & $Python -m memory_hub.cli --vault $VaultPath github-export-config --enable --repo $GitHubRepo --visibility $GitHubVisibility 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "GitHub export configuration failed: $($output.Trim())" }
+        $exportScript = Join-Path $Root "start-github-export.ps1"
+        $command = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$exportScript`" -VaultPath `"$VaultPath`""
+        New-ItemProperty -Path $runKey -Name $GitHubExportValueName -Value $command -PropertyType String -Force | Out-Null
+        $results.Add("[export]    GitHub exporter enabled ($GitHubRepo / $GitHubVisibility)")
+    }
+    else {
+        $output = & $Python -m memory_hub.cli --vault $VaultPath github-export-config --disable 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "GitHub export configuration disable failed: $($output.Trim())" }
+        Remove-ItemProperty -Path $runKey -Name $GitHubExportValueName -ErrorAction SilentlyContinue
+        $results.Add("[export]    GitHub exporter disabled; queued outbox retained")
+    }
+}
+
 if ($EnableSessionAuto) { Set-SessionAuto $true }
 if ($DisableSessionAuto) { Set-SessionAuto $false }
+if ($EnableGitHubExport) { Set-GitHubExport $true }
+if ($DisableGitHubExport) { Set-GitHubExport $false }
 
 function Install-Instructions {
     param([string]$TargetPath, [string]$PromptFile)

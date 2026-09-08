@@ -129,6 +129,22 @@ the chat model or GitHub. Retrieved text is wrapped as quoted evidence, bounded 
 `MEMORY_HANDOFF_MAX_CHARS` (default 6000), and marked with checkpoint age and pending
 evidence when the state is provisional or not final.
 
+## Optional GitHub session export
+
+After local checkpointing and startup handoff are working, approve publication separately:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport `
+  -GitHubRepo "owner/repository" -GitHubVisibility private
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableGitHubExport
+~~~
+
+The exporter publishes accepted checkpoint/final sections through an outbox. It
+reconciles stable markers after timeouts, retries rate limits/offline failures, and
+preserves user-owned issue content. Review mode and GitHub export approval are
+independent: pending proposals are never exported. GitHub is not required for local
+handoff, and no bug issue is closed because a session was published.
+
 ## Audit identities without merging
 
 ~~~powershell

@@ -138,4 +138,21 @@ The helper currently installs `SessionStart` for Claude Code 2.1.263 and Codex C
 0.153.4, with managed backups and a bounded `additionalContext` packet. The packet
 shows checkpoint age and a pending-evidence warning, and lists ambiguous work groups
 separately. Other clients report unsupported startup automation rather than claiming
-coverage. GitHub publication remains a separate permission and roadmap item.
+coverage. GitHub publication is a separate explicit permission.
+
+## GitHub session export
+
+GitHub publication records the approved repository and visibility, starts a hidden
+local outbox publisher, and never stores a GitHub token in the vault or configuration.
+The `gh` CLI supplies credentials when the publisher runs:
+
+~~~powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport `
+  -GitHubRepo "owner/repository" -GitHubVisibility private
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableGitHubExport
+~~~
+
+Only accepted checkpoint/final Markdown sections are exported. Raw transcripts,
+secrets, absolute/private paths and pending review proposals are excluded. The local
+SQLite outbox and health JSON retain queued work during outages. Disabling export stops
+the owned startup entry but retains the outbox for a later explicit re-enable.

@@ -62,9 +62,10 @@ and clients deliberately; secret checks cannot recognize every sensitive string.
 
 ## Are session summaries automatically posted to GitHub?
 
-No. Sanitized automatic publication is planned after local continuity. It will require
-a configured destination and explicit export permission. Raw transcripts are not the
-default export.
+Yes, after explicit `-EnableGitHubExport` destination/visibility approval. The local
+outbox publishes accepted sanitized checkpoint/final summaries, not raw transcripts,
+pending review proposals or private paths. GitHub is optional and is not required for
+local handoff.
 
 ## Why are issues formatted differently from these guides?
 

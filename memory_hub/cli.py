@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .extractor import extract_candidates
+from .github_export import configure, run_once
 from .history import commit_vault_change, history_status, initialize_history
 from .hooks import (
     install_hook,
@@ -49,6 +50,15 @@ def build_parser() -> argparse.ArgumentParser:
     hc = sub.add_parser("history-commit")
     hc.add_argument("session_id")
     hc.add_argument("paths", nargs="+")
+    ge = sub.add_parser("github-export-config")
+    ge.add_argument("--repo")
+    ge.add_argument("--visibility", choices=("public", "private", "internal"))
+    ge_mode = ge.add_mutually_exclusive_group(required=True)
+    ge_mode.add_argument("--enable", action="store_true")
+    ge_mode.add_argument("--disable", action="store_true")
+    gx = sub.add_parser("github-export")
+    gx.add_argument("--group")
+    gx.add_argument("--once", action="store_true")
     hi = sub.add_parser("hooks-install")
     hi.add_argument("--settings", required=True)
     hi.add_argument("--event", default="PostToolUse")
@@ -137,6 +147,12 @@ def main():
         return
     if args.command == "history-commit":
         jprint(commit_vault_change(args.vault, args.session_id, args.paths))
+        return
+    if args.command == "github-export-config":
+        jprint(configure(args.vault, repo=args.repo, visibility=args.visibility, enabled=args.enable))
+        return
+    if args.command == "github-export":
+        jprint(run_once(args.vault, args.group))
         return
     manager = MemoryManager(args.vault)
     try:
