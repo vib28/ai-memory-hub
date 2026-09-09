@@ -148,30 +148,33 @@ plan and explicit answers for deduplication, FTS, and embedding text before impl
 
 ## Historical findings and priority order
 
-| # | Issue | Category | Why this position |
+The table below preserves the original design-review sequence for context. It is
+not the active queue; [`docs/issue-priority-order.md`](issue-priority-order.md) is
+the single current ordering and records the remaining open work.
+
+| # | Issue | Category / status | Why this position |
 |---|---|---|---|
-| 1 | #41 — Document per-kind entry templates | Foundation | Nothing else is worth doing consistently until writers know the target shape |
-| 2 | #42 — Session-to-project cross-links lose structure | Code, active harm | Every new session naming a project makes this worse right now |
-| 3 | #40 — Section embedding vectors for improved retrieval | Code, retrieval improvement | Section embedding vectors can improve later retrieval but do not capture missing events or establish session identity |
-| 4 | #50 — Make the companion block safe on forget | Code, small | Unlocks safe use of #41's companion-block option; small and fully scoped |
-| 5 | #43 — Migrate legacy writer-major session files | Vault hygiene | Zero risk, tooling already exists, purely deferred maintenance |
-| 6 | #44 — Remove empty test/throwaway vault files | Vault hygiene | Zero risk, immediate declutter |
-| 7 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene | Zero risk, one line, actively misleading as-is |
-| 8 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision | Needs the Priority-1 template landed first to do it in the new shape |
-| 9 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
-| 10 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
-| 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
+| 1 | #41 — Document per-kind entry templates | Foundation — complete | Nothing else was worth doing consistently until writers knew the target shape |
+| 2 | #42 — Session-to-project cross-links lose structure | Code — closed | Every new session naming a project made this worse at the time |
+| 3 | #40 — Section embedding vectors for improved retrieval | Code — complete | Section vectors improve later retrieval but do not capture missing events or establish session identity |
+| 4 | #50 — Make the companion block safe on forget | Code — complete | Unlocked safe use of #41's companion-block option |
+| 5 | #43 — Migrate legacy writer-major session files | Vault hygiene — closed | Tooling handled the deferred migration |
+| 6 | #44 — Remove empty test/throwaway vault files | Vault hygiene — closed | Removed the historical clutter |
+| 7 | #45 — Refresh stale "not yet implemented" plan status | Vault hygiene — closed | Removed the misleading status line |
+| 8 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision — complete | The approved surviving rule now names both applicable entities |
+| 9 | #47 — Resolve flagged project/plan file-split | Content decision — complete | `project_link` merged the completed plan entity with a reversible backup; the targeted audit finding is gone |
+| 10 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability — complete | Active content now supplies deterministic, readable descriptions |
+| 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth — open | Most involved: it needs investigation of why semantic candidates missed a case a human sees immediately |
 | 12 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision — complete: keep session-only blocks | The current inline templates plus safe companion deletion are sufficient; any future block format needs a separate migration proposal |
 
-The table above records the original design-review sequence. #40 and #41 are now
-complete; current execution order, including the remaining dashboard verification #64,
-the completed date-filter follow-up #65, and transcript enhancement #66, is maintained
-in [`docs/issue-priority-order.md`](issue-priority-order.md).
+The table above records the original design-review sequence. #40, #41, and #46–#48
+are now complete; current execution order, including the remaining dashboard
+verification #64, the completed date-filter follow-up #65, and transcript enhancement
+#66, is maintained in [`docs/issue-priority-order.md`](issue-priority-order.md).
 
-All twelve were filed and on the project board (`Todo`, priority matching the original table above:
-#41/#42 High, #40,#43–#47 and #50 Medium, #48/#49/#51 Low). See each issue for the full
-where/why/how/repro/acceptance-criteria/verification detail — this document is the index
-and the rationale for the order, not a duplicate of each issue's content.
+See each issue for the full where/why/how/repro/acceptance-criteria/verification detail —
+this document is the historical index and rationale, not a duplicate of each issue's
+current content or status.
 
 ## Non-goals
 
@@ -179,7 +182,7 @@ and the rationale for the order, not a duplicate of each issue's content.
   is its own decision with its own migration story, not a side effect of this work.
 - No automatic rewriting of historical entries into the new templates. Existing entries stay
   readable as-is (`ENTRY_RE` doesn't care about content shape); only new entries and the
-  specific items in #46/#47 get touched.
+  explicitly reviewed vault decisions in #46/#47 were touched.
 - No enforcement mechanism (e.g. rejecting a proposal that doesn't match the template) is in
   scope here. This is an authoring convention communicated through the instruction files, not
   a new validation rule in `memory_hub/security.py` or `_validate()`.

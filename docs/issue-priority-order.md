@@ -19,6 +19,7 @@ flowchart LR
     J["#64 dashboard verification"] -. opportunistic .-> F
     J --> K["#65 dashboard date filter complete"]
     L["#66 full session transcript"] -. later enhancement .-> J
+    M["#46/#47/#48 vault quality complete"] -. history .-> J
 ```
 
 ## Completed prerequisite
@@ -60,6 +61,11 @@ embeddings with section-aware retrieval, bounded chunking, and backward-compatib
 fallback for legacy session records - is complete. Its focused tests, full suite,
 lint, and wheel build passed; the implementation was pushed in commit `fe5ec37`.
 
+[#41](https://github.com/vib28/ai-memory-hub/issues/41) — per-kind entry templates
+are complete. The eight client instruction files now explain the target shape for
+each kind and include a plain-language interpretation without changing the
+canonical one-line entry format.
+
 [#50](https://github.com/vib28/ai-memory-hub/issues/50) — companion-block deletion is
 complete. `Vault.delete_entry()` removes only contiguous blockquote lines after the
 forgotten entry and preserves later content; supersede behavior remains unchanged.
@@ -73,6 +79,21 @@ format requires a separate migration proposal.
 filter is complete, including inclusive single-day/range filtering, composition with
 existing filters, clear behavior, validation, tests, and documentation.
 
+[#48](https://github.com/vib28/ai-memory-hub/issues/48) — `MEMORY.md` now receives
+deterministic content-derived `Covers` descriptions for active project/topic/
+decision/person/session files, while profile and preference scopes retain fixed
+descriptions. The implementation and its refresh behavior are covered by tests.
+
+[#46](https://github.com/vib28/ai-memory-hub/issues/46) — the duplicated preference
+rule was consolidated in the canonical vault after approval. The surviving rule
+explicitly applies to both `[[automaton]]` and `[[ai-memory-hub]]`; the duplicate was
+forgotten and the superseded history remains auditable.
+
+[#47](https://github.com/vib28/ai-memory-hub/issues/47) — the recurring project/plan
+split was resolved with the reviewed, reversible `project_link` operation. The plan
+entity is now an alias of the canonical project, with a timestamped merge backup;
+the targeted `subject_audit()` `possible_file_splits` finding is gone.
+
 ## Continuity and handoff first
 
 | Order | Issue | Work | Reason for position |
@@ -85,11 +106,8 @@ existing filters, clear behavior, validation, tests, and documentation.
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
 | 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
-| 4 | [#48](https://github.com/vib28/ai-memory-hub/issues/48) | Improve `MEMORY.md` index descriptions | Readability improvement, but not an operational blocker. |
-| 5 | [#46](https://github.com/vib28/ai-memory-hub/issues/46) | Consolidate duplicated preference rules | Vault-content cleanup now benefits from the completed #41 template shape. |
-| 6 | [#47](https://github.com/vib28/ai-memory-hub/issues/47) | Resolve the recurring project/plan split finding | Depends on the related project-link/status decision. |
-| 7 | [#49](https://github.com/vib28/ai-memory-hub/issues/49) | Broaden conceptual duplicate detection | Most invasive matching change and therefore last among the current vault-quality issues. |
-| 8 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
+| 4 | [#49](https://github.com/vib28/ai-memory-hub/issues/49) | Broaden conceptual duplicate detection | Most invasive matching change and therefore last among the current vault-quality issues. |
+| 5 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
 
 ## Dependency chain
 
@@ -98,9 +116,9 @@ The critical implementation path is:
 `#54/#56/#57/#58/#59/#60 completed → #61 → #62`
 
 The remaining items do not block the first-priority continuity phase. #40 is
-complete and remains an independent retrieval-quality change. #41, #50, #51, and #65
-are complete. #64's manual verification can be performed opportunistically; #48/#46/#47/#49
-are the remaining vault-quality queue. #66 is intentionally later because it spans
+complete and remains an independent retrieval-quality change. #41, #46, #47, #48, #50,
+#51, and #65 are complete. #64's manual verification can be performed opportunistically;
+#49 is the remaining vault-quality queue. #66 is intentionally later because it spans
 provider hooks, durable capture, Obsidian objects, configuration, and retention.
 
 This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,
