@@ -8,6 +8,7 @@ from typing import Any
 
 from .capture import ObservationBuffer
 from .consolidator import consolidate_session
+from .transcript import transcript_enabled, transcript_path_for
 
 
 def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: ObservationBuffer,
@@ -24,7 +25,7 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
             value = str(path).strip()
             if value and value not in changed_files:
                 changed_files.append(value)
-    return {
+    metadata = {
         "session_group_id": f"capture-{group}",
         "host_session_id": session_id,
         "checkpoint_id": f"batch-{digest}",
@@ -39,6 +40,11 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
         "evidence_end": rows[-1].get("created_at"),
         "session_tags": ["capture", "automatic"],
     }
+    if transcript_enabled():
+        metadata["transcript_path"] = transcript_path_for(
+            metadata["session_group_id"], rows[0].get("project") or None
+        )
+    return metadata
 
 
 def consolidate_buffered_session(

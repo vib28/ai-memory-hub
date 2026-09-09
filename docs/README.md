@@ -15,7 +15,9 @@ flowchart TD
     Memory -->|not yet| Read[Read architecture and boundaries]
     Operate --> Continuity{Need automatic session continuity?}
     Continuity -->|no| Dashboard[Use dashboard and backups]
-    Continuity -->|yes| Capture[Enable capture, worker and handoff separately]
+Continuity -->|yes| Capture[Enable capture, worker and handoff separately]
+    Capture --> Transcript{Need exact local transcript?}
+    Transcript -->|yes| Raw[Enable default-off transcript companion]
     Capture --> Publish{Need a remote session record?}
     Publish -->|no| Dashboard
     Publish -->|yes| Export[Approve sanitized GitHub export]
@@ -34,6 +36,7 @@ handoff can run without GitHub; and GitHub is never required for local continuit
 | Review queue and dashboard | Available | [Dashboard](DASHBOARD.md) |
 | Optional embeddings and local chat model | Available when configured | [Configuration](CONFIGURATION.md) |
 | Lifecycle capture and supervised worker | Available behind explicit setup | [Clients](CLIENTS.md), [Usage](USAGE.md) |
+| Full verbatim session transcript | Available behind `MEMORY_TRANSCRIPT_ENABLED=true`; local-only and sensitive | [Full transcripts](full-session-transcripts.md), [Configuration](CONFIGURATION.md) |
 | Claude/Codex model-free startup handoff | Available behind explicit setup; supported fixtures only | [Clients](CLIENTS.md), [Continuity](automatic-session-continuity.md) |
 | Sanitized GitHub session outbox | Available behind explicit destination approval | [Configuration](CONFIGURATION.md) |
 | Live cross-tool token/cost certification | Not complete | [Benchmark protocol](session-handoff-benchmark.md), [#62](https://github.com/vib28/ai-memory-hub/issues/62) |
@@ -50,6 +53,8 @@ handoff can run without GitHub; and GitHub is never required for local continuit
 - **Final:** an explicit host-session end result, not merely an idle timeout.
 - **Handoff:** bounded local checkpoint context injected at supported startup events.
 - **Outbox:** retryable GitHub delivery state; it is separate from accepted Markdown.
+- **Transcript:** an opt-in chronological Obsidian object containing supported raw
+  provider events; it is separate from bounded capture, search and remote export.
 
 If a guide uses one of these terms differently, treat that as a documentation bug and
 check the configuration reference before changing a live vault.
@@ -70,6 +75,7 @@ flowchart TD
 | [Client connections](CLIENTS.md) | Connect an AI tool and verify its configuration |
 | [Configuration](CONFIGURATION.md) | Environment variables, write modes and optional models |
 | [Usage](USAGE.md) | Review, search, sessions, imports, identity and undo |
+| [Full session transcripts](full-session-transcripts.md) | Exact event envelope, links, retention and privacy boundary |
 | [Troubleshooting](TROUBLESHOOTING.md) | Diagnose common failures without losing data |
 | [FAQ](FAQ.md) | Short answers to common questions |
 

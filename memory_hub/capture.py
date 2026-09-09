@@ -435,15 +435,37 @@ def _payloads_from_stdin(value: Any) -> list[dict[str, Any]]:
 def hook_main(argv: list[str] | None = None) -> int:
     """Receive one generic hook payload and never block the host tool."""
     del argv
+    transcript = None
+    transcript_error = None
     try:
         raw = sys.stdin.read()
         payloads = _payloads_from_stdin(json.loads(raw))
         buffer = ObservationBuffer()
         try:
-            results = [buffer.append(payload) for payload in payloads]
+            if os.environ.get("MEMORY_TRANSCRIPT_ENABLED", "").strip().lower() in {
+                    "1", "true", "yes", "on"}:
+                from .transcript import TranscriptStore
+                try:
+                    transcript = TranscriptStore()
+                except Exception as exc:  # Raw capture remains non-blocking.
+                    transcript_error = str(exc)
+            results = []
+            for payload in payloads:
+                result = buffer.append(payload)
+                if transcript is not None:
+                    try:
+                        result["transcript"] = transcript.append(payload)
+                    except Exception as exc:  # A hook must never block its host.
+                        result["transcript_error"] = str(exc)
+                results.append(result)
         finally:
             buffer.close()
-        print(json.dumps({"status": "accepted", "count": len(results), "observations": results}))
+            if transcript is not None:
+                transcript.close()
+        response = {"status": "accepted", "count": len(results), "observations": results}
+        if transcript_error:
+            response["transcript_error"] = transcript_error
+        print(json.dumps(response))
     except Exception as exc:  # Hook failures must not block the calling AI tool.
         print(json.dumps({"status": "rejected", "count": 0, "reason": str(exc)}))
     return 0

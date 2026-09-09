@@ -108,6 +108,23 @@ Do not repeatedly reinstall hooks into personal settings. CLI help or valid JSON
 does not certify event delivery; the tested client/version matrix is in
 [client connections](CLIENTS.md).
 
+## Full transcript is missing or incomplete
+
+The full transcript is a separate default-off feature. Confirm that
+`MEMORY_TRANSCRIPT_ENABLED=true`, `AI_MEMORY_VAULT` and (if overridden)
+`MEMORY_TRANSCRIPT_DB` were present before the hook receiver and worker started;
+restart both processes after changing them. Inspect the worker health record for
+`transcript_rendered`, `transcript_deleted` and any transcript error. The SQLite
+event store is under the vault's `.ai-memory-hub` directory by default, while the
+readable object is under `/transcripts/`.
+
+The hook intentionally keeps the host tool non-blocking. A transcript write error
+therefore appears in the hook result while bounded observation capture may still be
+accepted. Check the configured path permissions and SQLite file before retrying.
+Raw transcript values are not subject to bounded observation redaction; if the
+feature was enabled accidentally, stop/restart the hook process and use the session
+forget path after reviewing local backups.
+
 ## Startup handoff is empty or ambiguous
 
 The handoff reader uses only the local `/sessions/session-manifest.json` and referenced

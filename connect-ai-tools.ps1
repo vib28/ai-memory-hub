@@ -211,8 +211,8 @@ function Install-Instructions {
     }
 }
 
-# Claude Code's PostToolUse hooks are the only lifecycle-hook schema this script
-# wires up (#29). $CLAUDE_CONFIG_DIR overrides the settings.json location; Claude
+# Claude Code's documented lifecycle-hook schema is configured by this script
+# (#29/#66). $CLAUDE_CONFIG_DIR overrides the settings.json location; Claude
 # Code itself falls back to ~/.claude when it is unset, so this mirrors that.
 function Get-ClaudeSettingsPath {
     $configDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
@@ -241,7 +241,7 @@ function Get-HandoffCommandPath {
 function Install-ClaudeHook {
     $settingsPath = Get-ClaudeSettingsPath
     $hookCommand = Get-HookCommandPath
-    $events = @("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+    $events = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
         "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
     foreach ($event in $events) {
         $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format claude --event $event --command $hookCommand 2>&1 | Out-String
@@ -343,7 +343,7 @@ function Remove-TomlClientHook {
 function Install-CodexHook {
     $settingsPath = Get-CodexSettingsPath
     $hookCommand = Get-HookCommandPath
-    $events = @("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+    $events = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
         "PreCompact", "PostCompact", "Stop", "SessionEnd")
     foreach ($event in $events) {
         $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event $event --command $hookCommand 2>&1 | Out-String

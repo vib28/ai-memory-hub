@@ -15,9 +15,11 @@ from .embeddings import LocalEmbeddingProvider
 from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
 from .patterns import load_patterns
 from .security import check_text
+from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
 from .utils import atomic_write, file_lock, normalize_text, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
-                    parse_records, dump_frontmatter, ensure_metadata, now_stamp)
+                    parse_records, dump_frontmatter, ensure_metadata, now_stamp, SESSION_RE,
+                    SESSION_ID_RE, SESSION_META_RE)
 
 # Kinds that route every subject into one shared file, so there is no
 # per-subject file to carry id/aliases frontmatter -- identity for these is
@@ -222,6 +224,14 @@ class MemoryManager:
                 raw_files = [raw_files]
             clean["changed_files"] = [str(path).strip()[:500] for path in raw_files
                                        if str(path).strip()][:100]
+            transcript_path = data.get("transcript_path")
+            if transcript_enabled() and not transcript_path:
+                transcript_path = transcript_path_for(clean["session_group_id"], clean["project"])
+            if transcript_path:
+                transcript_path = "/" + str(transcript_path).replace("\\", "/").lstrip("/")
+                if not transcript_path.endswith(".md"):
+                    raise ValueError("session transcript_path must be a Markdown file")
+                clean["transcript_path"] = transcript_path[:500]
         return clean
 
     def _session_block(self, data: dict, memory_id: str,
@@ -252,6 +262,8 @@ class MemoryManager:
                 lines.append(f"**Final:** {metadata['final_url']}")
             if metadata.get("changed_files"):
                 lines.append("**Changed files:** " + ", ".join(metadata["changed_files"]))
+            if metadata.get("transcript_path"):
+                lines.append(f"**Transcript:** [[{metadata['transcript_path'].lstrip('/')}]]")
             lines.append(f"<!-- session-meta:{json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))} -->")
         lines.append(f"<!-- session:{memory_id} -->")
         return slug, "\n".join(lines).rstrip()
@@ -319,6 +331,14 @@ class MemoryManager:
             "evidence_end": data.get("evidence_end"), "token_count": data.get("token_count"),
             "token_basis": data.get("token_basis"), "session_tags": data.get("session_tags", []),
             "changed_files": data.get("changed_files", []),
+            "transcript_path": data.get("transcript_path"),
+            "transcript_url": (f"[[{str(data['transcript_path']).lstrip('/')}]]"
+                                if data.get("transcript_path") else None),
+            "transcript_event_count": data.get("transcript_event_count"),
+            "transcript_sequence_start": data.get("transcript_sequence_start"),
+            "transcript_sequence_end": data.get("transcript_sequence_end"),
+            "transcript_evidence_start": data.get("transcript_evidence_start"),
+            "transcript_evidence_end": data.get("transcript_evidence_end"),
         }
         base["previous_url"] = (f"[[{previous['path'].lstrip('/')}#{previous['heading']}]"
                                  f"]" if previous else None)
@@ -420,6 +440,12 @@ class MemoryManager:
         relative = self.vault.canonical_path("session", data["model"], project=data.get("project"))
         memory_id = uuid.uuid4().hex[:12]
         slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
+        if data.get("transcript_path"):
+            transcript_store = TranscriptStore(vault=self.vault)
+            try:
+                data.update(transcript_store.coverage(data["session_group_id"]))
+            finally:
+                transcript_store.close()
         metadata = self._checkpoint_metadata(data, memory_id, slug, relative)
         if metadata and metadata.get("memory_id") != memory_id:
             existing = self.index.by_id(metadata["memory_id"])
@@ -431,10 +457,35 @@ class MemoryManager:
         if metadata:
             metadata["final_url"] = (f"[[{relative.lstrip('/')}#{slug}]]"
                                       if data.get("entry_type") == "final" else metadata.get("final_url"))
+            transcript_store = TranscriptStore(vault=self.vault)
+            try:
+                transcript_store.render(
+                    data["session_group_id"], self.vault,
+                    project=data.get("project"), path=data.get("transcript_path"),
+                    summary_links=[f"[[{relative.lstrip('/')}#{slug}]]"],
+                )
+            finally:
+                transcript_store.close()
         slug, block = self._session_block(data, memory_id, metadata)
         self.vault.append_session_block(relative, block, writer=data["model"])
         if metadata:
             self._complete_checkpoint_links(metadata)
+            transcript_store = TranscriptStore(vault=self.vault)
+            try:
+                manifest = self._load_session_manifest()
+                group = manifest.get("groups", {}).get(data["session_group_id"], {})
+                links = [
+                    f"[[{entry['path'].lstrip('/')}#{entry['heading']}]]"
+                    for entry in group.get("entries", [])
+                    if entry.get("path") and entry.get("heading")
+                ]
+                transcript_store.render(
+                    data["session_group_id"], self.vault,
+                    project=data.get("project"), path=data.get("transcript_path"),
+                    summary_links=links,
+                )
+            finally:
+                transcript_store.close()
         covers = f"Session summaries for {data['model']}"
         if data.get("project"):
             covers += f" on {data['project']}"
@@ -692,6 +743,22 @@ class MemoryManager:
         old = self.index.by_id(memory_id)
         if not old:
             return {"status": "not_found", "memory_id": memory_id}
+        transcript_info = None
+        if old["kind"] == "session":
+            path = self.vault.resolve(old["path"])
+            if path.exists():
+                _frontmatter, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+                for block in SESSION_RE.finditer(body):
+                    marker = SESSION_ID_RE.search(block.group(0))
+                    if not marker or marker.group("id") != memory_id:
+                        continue
+                    meta = SESSION_META_RE.search(block.group(0))
+                    if meta:
+                        try:
+                            transcript_info = json.loads(meta.group("meta"))
+                        except json.JSONDecodeError:
+                            transcript_info = None
+                    break
         # Sessions are heading blocks, not entry lines, and need their own deletion
         # path — dispatching on kind is what makes them removable at all (#20).
         if old["kind"] == "session":
@@ -700,6 +767,42 @@ class MemoryManager:
             changed = self.vault.delete_entry(old["path"], memory_id)
         if changed:
             self.index.remove(memory_id)
+            if old["kind"] == "session" and transcript_info:
+                group_id = transcript_info.get("session_group_id")
+                if group_id:
+                    manifest = self._load_session_manifest()
+                    group = manifest.get("groups", {}).get(group_id)
+                    remaining = [
+                        entry for entry in (group or {}).get("entries", [])
+                        if entry.get("memory_id") != memory_id
+                    ]
+                    if group is not None:
+                        if remaining:
+                            group["entries"] = remaining
+                            group["revision"] = int(group.get("revision", 0)) + 1
+                        else:
+                            manifest["groups"].pop(group_id, None)
+                        self._write_session_manifest(manifest)
+                    transcript_store = TranscriptStore(vault=self.vault)
+                    try:
+                        if remaining:
+                            transcript_store.render(
+                                group_id, self.vault,
+                                project=transcript_info.get("project"),
+                                path=transcript_info.get("transcript_path"),
+                                summary_links=[
+                                    f"[[{entry['path'].lstrip('/')}#{entry['heading']}]]"
+                                    for entry in remaining
+                                    if entry.get("path") and entry.get("heading")
+                                ],
+                            )
+                        else:
+                            transcript_store.delete_group(
+                                group_id, vault=self.vault,
+                                path=transcript_info.get("transcript_path"),
+                            )
+                    finally:
+                        transcript_store.close()
             if old["kind"] != "session":
                 self.vault.ensure_index_entry(
                     old["path"], old["kind"],

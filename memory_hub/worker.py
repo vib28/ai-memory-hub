@@ -16,6 +16,7 @@ from typing import Any
 from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
+from .transcript import TranscriptStore, transcript_enabled
 from .utils import atomic_write
 
 
@@ -111,6 +112,8 @@ class SessionWorker:
         self.buffer = buffer or ObservationBuffer(config.buffer_path)
         self._owns_manager = manager is None
         self._owns_buffer = buffer is None
+        self.transcript_store = (TranscriptStore(vault=config.vault)
+                                 if transcript_enabled() else None)
         self._stop = threading.Event()
 
     def close(self) -> None:
@@ -118,6 +121,8 @@ class SessionWorker:
             self.buffer.close()
         if self._owns_manager:
             self.manager.close()
+        if self.transcript_store is not None:
+            self.transcript_store.close()
 
     def stop(self) -> None:
         self._stop.set()
@@ -131,6 +136,7 @@ class SessionWorker:
             "idle_seconds": self.config.idle_seconds,
             "interval_seconds": self.config.interval_seconds,
             "write_mode": self.config.write_mode,
+            "transcript_enabled": self.transcript_store is not None,
         }
         path = worker_health_path(self.config.vault)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +191,16 @@ class SessionWorker:
         retention_deleted = self.buffer.prune_expired(now=now)
         processed: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        transcript_deleted = 0
+        transcript_rendered = 0
+        if self.transcript_store is not None:
+            try:
+                transcript_deleted = self.transcript_store.prune(now=now)
+                for group_id in self.transcript_store.groups():
+                    self.transcript_store.render(group_id, self.config.vault)
+                    transcript_rendered += 1
+            except Exception as exc:
+                errors.append({"session_id": "transcript", "reason": str(exc)})
         for session_id in self.buffer.pending_sessions():
             rows = self._due_rows(session_id, now)
             trigger = self._trigger(rows, now)
@@ -213,9 +229,13 @@ class SessionWorker:
             last_error=errors[0]["reason"] if errors else None,
             backlog=backlog, processed=len(processed), errors=errors,
             retention_deleted=retention_deleted,
+            transcript_deleted=transcript_deleted,
+            transcript_rendered=transcript_rendered,
         )
         return {"status": status, "processed": processed, "errors": errors, "backlog": backlog,
-                "retention_deleted": retention_deleted}
+                "retention_deleted": retention_deleted,
+                "transcript_deleted": transcript_deleted,
+                "transcript_rendered": transcript_rendered}
 
     def run_forever(self) -> None:
         self._write_health(status="starting", started_at=datetime.now(timezone.utc).isoformat())

@@ -18,7 +18,7 @@ flowchart LR
     I["#40 retrieval quality complete"] -. independent .-> B
     J["#64 dashboard verification"] -. opportunistic .-> F
     J --> K["#65 dashboard date filter complete"]
-    L["#66 full session transcript"] -. later enhancement .-> J
+    L["#66 full session transcript"] -. follows manual gate .-> J
     M["#46/#47/#48/#49 vault quality complete"] -. history .-> J
 ```
 
@@ -100,6 +100,14 @@ subjects. Per-kind document frequency derives token salience automatically, whil
 the optional Nomic embedding path remains available as a semantic signal; no
 automatic linking or rewriting was added.
 
+## Current execution status
+
+[#66](https://github.com/vib28/ai-memory-hub/issues/66) is the active implementation
+item after the automated portions of #64 were verified. Its opt-in transcript store,
+provider-neutral envelope, worker rendering, summary/manifest links, retention and
+forget behavior are being implemented and tested here. The real browser/tray gate
+for #64 remains open; #61 and #62 retain their explicit live-client/provider gates.
+
 ## Continuity and handoff first
 
 | Order | Issue | Work | Reason for position |
@@ -112,7 +120,7 @@ automatic linking or rewriting was added.
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
 | 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
-| 4 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
+| 4 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Active implementation after automated verification; live delivery for every client surface remains a separately stated gate. |
 
 ## Dependency chain
 
@@ -123,8 +131,8 @@ The critical implementation path is:
 The remaining items do not block the first-priority continuity phase. #40 is
 complete and remains an independent retrieval-quality change. #41, #46, #47, #48, #50,
 #51, #49, and #65 are complete. #64's manual verification can be performed opportunistically;
-#66 is the remaining later enhancement because it spans
-provider hooks, durable capture, Obsidian objects, configuration, and retention.
+#66 is now the active broad enhancement because it spans provider hooks, durable
+capture, Obsidian objects, configuration, and retention.
 
 This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,
 their historical comments, stated dependencies, and the current branch state.

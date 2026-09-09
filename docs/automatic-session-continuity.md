@@ -164,6 +164,30 @@ backoff. A missing local SLM uses an honest evidence-only checkpoint; do not inf
 decisions or successful tests from a command merely having been issued.
 Benchmark fallback usefulness separately from SLM summaries.
 
+### Optional full transcript companion (#66)
+
+The bounded queue and four-section summary are still the default continuity path.
+When `MEMORY_TRANSCRIPT_ENABLED=true`, the same supported lifecycle hooks also append
+provider-neutral raw envelopes to the vault-local transcript store. SessionStart is
+installed with the Claude/Codex capture events so recording can begin before the
+first user turn. A transcript worker pass renders unattached events, and summary
+writes refresh bidirectional Obsidian links plus manifest coverage.
+
+```mermaid
+flowchart LR
+    Start[SessionStart] --> Raw[Raw event envelope]
+    Raw --> Id[Stable ID + monotonic sequence]
+    Id --> DB[Local SQLite transcript store]
+    DB --> MD[Human-readable Obsidian transcript]
+    Checkpoint[Checkpoint/final summary] --> MD
+    MD --> Manifest[Summary link + manifest coverage]
+```
+
+This feature is off by default, deliberately excluded from the ordinary search
+index and sanitized GitHub export, and governed by its own retention/deletion policy.
+It records received values rather than using a model summary as a substitute. The
+full contract and warning are in [full-session-transcripts.md](full-session-transcripts.md).
+
 ### Session identity, metadata and real navigation
 
 Use two identities: a host session belonging to one client and a work group that can
@@ -317,7 +341,8 @@ chain is `#54/#56/#57/#58/#59/#60 completed → #61 → #62`; #40 is complete, w
 #64/#65 can proceed independently. #41 is now complete documentation foundation;
 #50 is complete and #51 records the session-only multiline decision. #46/#47/#48 are
 complete vault-quality work, including adaptive audit detection in #49; #66 is the
-later optional full-transcript capture enhancement.
+active optional full-transcript capture implementation, with live client delivery
+remaining an explicit verification boundary.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance
 criteria and implementation status here, while the linked priority file owns ordering.
@@ -326,7 +351,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Current repository verification: **211 passed** with a workspace-local pytest base
+Current repository verification: **230 passed** with a workspace-local pytest base
 directory; Ruff and `git diff --check` passed. Tests cover native payload mapping,
 managed hook preservation, concurrent queue claims, live leases, project-scoped context,
 separate embedding/chat-model configuration, process-level handoff and sanitized export.

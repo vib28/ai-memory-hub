@@ -124,7 +124,7 @@ instruction mechanism. Do not place credentials in prompts, the vault or GitHub.
 The helper keeps three permissions separate: `-InstallHooks`/`-RemoveHooks` capture
 provider lifecycle evidence, `-EnableSessionAuto`/`-DisableSessionAuto` controls the
 local worker, and `-InstallHandoff`/`-RemoveHandoff` controls startup context injection.
-For Claude Code and Codex CLI, capture installation covers prompt/tool/turn,
+For Claude Code and Codex CLI, capture installation covers session-start, prompt/tool/turn,
 compaction, failure and end events, while handoff installation adds `SessionStart`.
 
 | Client surface | Version observed on 2026-09-09 | Startup fixture | Limitation |
@@ -152,6 +152,15 @@ GitHub export is not part of MCP registration. Approve it separately with
 an owned hidden startup publisher and uses the `gh` credential store. Disable it with
 `-DisableGitHubExport`; the durable outbox is retained for retry. No raw transcript,
 pending review proposal or private path is eligible for export.
+
+To retain a complete local transcript as well as bounded lifecycle evidence, set
+`MEMORY_TRANSCRIPT_ENABLED=true` in the environment inherited by the hook receiver
+and worker before starting the client. The hook adapters feed a provider-neutral
+event envelope; the feature remains default-off and must be restarted after config
+changes. See [full-session-transcripts](full-session-transcripts.md) for supported
+fields, Markdown paths, privacy and live-client limitations. Hook configuration
+tests verify schemas and managed-handler preservation; they do not certify delivery
+from every installed client surface.
 
 ## Refresh or remove a connection
 

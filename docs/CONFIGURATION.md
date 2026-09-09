@@ -31,6 +31,9 @@ process after configuration changes.
 | MEMORY_CAPTURE_DB | Local observation database | User-home .ai-memory-hub/observations.sqlite3 |
 | MEMORY_CAPTURE_RETENTION_DAYS | Days to retain terminal capture rows | 30; pending rows are preserved |
 | MEMORY_CAPTURE_EXCLUDE_PATHS | Comma-separated additional sensitive path globs | Built-in `.env`, key and credential paths |
+| MEMORY_TRANSCRIPT_ENABLED | Persist provider event payloads in a local transcript companion path | false |
+| MEMORY_TRANSCRIPT_DB | Operational SQLite path for opt-in transcript events | `<vault>/.ai-memory-hub/transcripts.sqlite3` |
+| MEMORY_TRANSCRIPT_RETENTION_DAYS | Days to retain transcript event rows; zero means retain until forget | 0 |
 | MEMORY_WORKER_TOKEN_BUDGET | Estimated captured-evidence tokens before a checkpoint | 4000 |
 | MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
 | MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |
@@ -51,6 +54,30 @@ process after configuration changes.
 See [mcp_server.py](../memory_hub/mcp_server.py),
 [capture.py](../memory_hub/capture.py), [extractor.py](../memory_hub/extractor.py),
 [consolidator.py](../memory_hub/consolidator.py) and [embeddings.py](../memory_hub/embeddings.py).
+
+## Optional full session transcripts
+
+`MEMORY_TRANSCRIPT_ENABLED=true` is a separate, default-off opt-in for retaining
+raw user/agent/tool/system and structured provider events. Set it before starting
+the client hook receiver and the worker; restart both after changing it. The exact
+envelope, Markdown path, Obsidian links, retention behavior and privacy boundary are
+documented in [full-session-transcripts.md](full-session-transcripts.md).
+
+```mermaid
+flowchart TD
+    Config[Transcript environment] --> Hook[Restarted client hook]
+    Hook --> Event[Raw provider envelope]
+    Event --> SQLite[Vault-local transcript SQLite]
+    SQLite --> MD[Chronological Obsidian transcript]
+    Summary[Checkpoint/final summary] --> Link[Bidirectional wikilinks]
+    Link --> MD
+    SQLite -. never implicit .-> Export[Sanitized GitHub export excludes raw payload]
+```
+
+This option does not use `nomic-embed-text` to generate or rewrite transcript text.
+Embeddings remain a separate retrieval/audit role; a configured local chat model may
+still produce the compact summary. Raw transcript content remains local unless a
+future separately approved export feature explicitly changes that boundary.
 
 ## Choose the write mode explicitly
 

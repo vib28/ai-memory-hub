@@ -20,6 +20,7 @@ memory_hub/
   entities.py        Shared-file subject aliases
   patterns.py        Pattern configuration
   capture.py         Generic observation receiver and local queue
+  transcript.py      Opt-in raw event store and Obsidian transcript renderer
   consolidator.py    Optional local-model summaries and fallback
   session_capture.py Queue-to-summary bridge
   worker.py          Optional supervised threshold/time/event checkpoint worker
@@ -220,6 +221,14 @@ backoff, and writes a per-vault health file consumed by the dashboard. Capture d
 wait for the worker, model, or GitHub. A stop/idle checkpoint is provisional; explicit
 session-end evidence is required for a final entry.
 
+Full transcripts are a separate opt-in companion path. `MEMORY_TRANSCRIPT_ENABLED`
+keeps raw provider envelopes out of the bounded observation schema, ordinary memory
+index, embeddings and GitHub outbox. The local transcript store assigns stable IDs,
+transactional monotonic sequences and deterministic Markdown paths. Session blocks
+and the manifest carry the transcript path; the transcript carries links back to all
+known checkpoint/final blocks. Forgetting the last summary in a group removes the
+local companion object.
+
 ## Security and consistency boundaries
 
 The [dashboard](docs/DASHBOARD.md) uses one shared server factory for every launch
@@ -273,7 +282,16 @@ flowchart TD
     Context --> Client
     Capture[Lifecycle capture] --> Queue[Leased local queue]
     Queue --> MCP
+    Capture --> Transcript{Raw transcript enabled?}
+    Transcript -->|yes| TranscriptDB[Local transcript store]
+    TranscriptDB --> TranscriptMD[Obsidian transcript object]
+    MCP --> TranscriptMD
 ```
+
+See [full-session-transcripts.md](docs/full-session-transcripts.md) for the event
+envelope and privacy boundary. The transcript object is evidence, not a retrieval
+memory; optional `nomic-embed-text` remains an embedding role and does not author the
+verbatim record.
 
 The required [paired benchmark](docs/session-handoff-benchmark.md) measures both token
 overhead and task quality. The versioned [replay report](docs/benchmark-results/handoff-replay-v1.md)

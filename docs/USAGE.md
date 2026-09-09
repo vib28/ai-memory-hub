@@ -116,6 +116,33 @@ and persist a versioned manifest at `/sessions/session-manifest.json`. Set
 a cross-client work group. Replaying an existing checkpoint ID is idempotent. Ordinary
 session writes remain backward-compatible and do not create a manifest.
 
+### Optional full transcript object
+
+When an exact audit trail is needed, enable `MEMORY_TRANSCRIPT_ENABLED=true` before
+starting the hook receiver and worker. This is intentionally separate from the
+bounded capture queue and is off by default. It writes a local Obsidian object under
+`/transcripts/`, records user/agent/tool/system/structured events with generated and
+capture timestamps, and links each checkpoint/final summary back to the transcript.
+The transcript links back to the summary blocks and the manifest records its path
+and event coverage. See [full-session-transcripts.md](full-session-transcripts.md)
+for the envelope, retention and privacy contract.
+
+```mermaid
+sequenceDiagram
+    participant H as SessionStart/lifecycle hook
+    participant T as Transcript store
+    participant W as Worker
+    participant S as Session summary
+    H->>T: append exact local event
+    T-->>H: stable event ID + monotonic sequence
+    W->>S: checkpoint/final summary
+    S->>T: render summary wikilink
+    T-->>S: transcript link and coverage
+```
+
+The transcript path is not searched, embedded, summarized in place, or sent to the
+GitHub exporter. Forgetting the last summary in a group removes its local transcript.
+
 > [!IMPORTANT]
 > The local worker and Claude/Codex startup handoff are available only after explicit
 > setup. A checkpoint is not a guaranteed final rollup, and unsupported clients do not
@@ -141,6 +168,10 @@ only an explicit session-end creates a final entry. Model or GitHub downtime lea
 the retryable capture buffer with visible health at `/api/worker-health`. Credential-like
 evidence is redacted, built-in sensitive paths are excluded, and terminal rows follow
 `MEMORY_CAPTURE_RETENTION_DAYS`; pending unsummarized evidence is retained by default.
+If full transcripts are enabled, the worker also renders unattached transcript
+events and reports transcript retention/rendering in its health record. Raw payloads
+are not covered by the bounded observation redaction contract, so review the privacy
+warning before enabling them.
 
 Install the model-free startup reader separately when the client supports SessionStart:
 

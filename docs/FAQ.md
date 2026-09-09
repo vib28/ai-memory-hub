@@ -43,8 +43,9 @@ They solve different problems. The embedding model turns text into vectors for s
 and related-memory ranking; it does not write human-readable memory. The local chat
 model consolidates captured evidence into the four session sections and extracts
 durable candidates. Either role can be unavailable: keyword search and deterministic
-evidence-only checkpointing continue, while transcript extraction reports that it needs
-a configured chat model. See [configuration](CONFIGURATION.md#optional-local-models).
+evidence-only checkpointing continue. A full verbatim transcript is a separate
+default-off local feature and does not require an embedding model; see
+[full-session-transcripts](full-session-transcripts.md).
 
 ## What is checkpoint metadata?
 
@@ -53,7 +54,18 @@ block: work-group ID, checkpoint ID, sequence, entry type, source/host session I
 project, worktree, changed files, evidence bounds, token basis, state and previous/next/
 final links. It lets retries be idempotent and lets a later client select the right
 project-scoped evidence without treating a checkpoint as a full transcript. The
-human-readable four sections remain in Markdown beside that metadata.
+human-readable four sections remain in Markdown beside that metadata. If exact
+supported provider events are required, enable the separate opt-in transcript
+companion; the transcript links to the summary and remains excluded from ordinary
+retrieval and GitHub export.
+
+## How do I enable a full session transcript?
+
+Set `MEMORY_TRANSCRIPT_ENABLED=true` plus the intended `AI_MEMORY_VAULT` before
+starting the hook receiver and worker, then restart those processes. Review the
+sensitivity warning and the local retention/deletion rules in
+[full-session-transcripts](full-session-transcripts.md) first. The default remains
+off, and a provider can only record events it actually emits.
 
 ## Is review mode always the default?
 

@@ -5,7 +5,7 @@ project notes as readable Markdown, then retrieve them through one MCP server.
 
 [Installation](docs/INSTALLATION.md) · [Connect a client](docs/CLIENTS.md) ·
 [Usage](docs/USAGE.md) · [Architecture](ARCHITECTURE.md) · [Roadmap](docs/local-memory-plan.md) ·
-[Issue priority order](docs/issue-priority-order.md)
+[Issue priority order](docs/issue-priority-order.md) · [Full transcripts](docs/full-session-transcripts.md)
 
 [![CI](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/vib28/ai-memory-hub/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -57,6 +57,8 @@ flowchart LR
 - Use separate local models for embeddings and chat-based consolidation/extraction.
 - Inspect identity conflicts and possible duplicates without automatic merging.
 - Keep optional Git history for accepted vault changes.
+- Optionally retain complete supported session events as a local, human-readable
+  Obsidian transcript linked to each checkpoint/final summary.
 
 ## The important boundaries
 
@@ -68,6 +70,7 @@ application useful, but they have different recovery properties:
 | Accepted memory | Vault `.md` files | Preferences, facts, decisions, people, topics and sessions | This is the canonical data |
 | Search index | Vault `.memory_index.sqlite3` | FTS rows, embeddings and manager state | Accepted-memory rows only |
 | Capture buffer | User-home capture SQLite | Raw bounded lifecycle evidence waiting for processing | No |
+| Full transcript store | Vault `.ai-memory-hub/transcripts.sqlite3` plus `/transcripts/` Markdown | Opt-in verbatim provider envelopes and chronological Obsidian object | Markdown transcript is canonical; SQLite is operational |
 | Review history | Index pending/history tables | Proposals and approval outcomes | No |
 | Worker health | Per-vault health JSON | Last run, failures, retries and queue status | No |
 | GitHub outbox | External/user-home SQLite path | Sanitized publication jobs and retry markers | No; it is a delivery queue |
@@ -85,6 +88,7 @@ The Windows connection helper manages these permissions independently:
 | --- | --- | --- | --- |
 | Client MCP connection | `connect-ai-tools.ps1` | Lets a client call the memory server | Not connected until configured |
 | Lifecycle capture | `-InstallHooks` | Buffers bounded provider events locally | Off |
+| Full transcript | `MEMORY_TRANSCRIPT_ENABLED=true` | Retains supported raw events in a local transcript object | Off; sensitive opt-in |
 | Automatic session worker | `-EnableSessionAuto` | Turns accepted capture evidence into checkpoint/final proposals | Off; worker defaults to review |
 | Startup handoff | `-InstallHandoff` | Injects a bounded local checkpoint at supported `SessionStart` events | Off |
 | GitHub publication | `-EnableGitHubExport` plus destination/visibility | Publishes accepted sanitized summaries through an outbox | Off |
@@ -98,6 +102,8 @@ flowchart LR
     Event[Client lifecycle event] --> Capture{Capture installed?}
     Capture -->|no| MCP[MCP memory workflow only]
     Capture -->|yes| Buffer[Local bounded capture buffer]
+    Capture --> Transcript{Full transcript enabled?}
+    Transcript -->|yes| TranscriptMD[Local Obsidian transcript]
     Buffer --> Worker{Session auto enabled?}
     Worker -->|no| Review[Inspect or process later]
     Worker -->|yes| Checkpoint[Checkpoint/final proposal]
@@ -111,8 +117,8 @@ flowchart LR
 
 ## What the project does not promise
 
-- It does not replay an entire conversation or guarantee that a model remembers every
-  transient thought.
+- It does not guarantee that every provider exposes every event or that the opt-in
+  transcript recovers transient content the source client never emitted.
 - It does not make local storage encrypted. A connected client or configured remote
   model endpoint can receive the content it is asked to retrieve or process.
 - It does not silently merge similar people, projects or memories. Exact duplicates are
@@ -132,6 +138,7 @@ flowchart LR
 | Cross-client startup context | Checkpoints plus `-InstallHandoff` |
 | Semantic search | Configure an OpenAI-compatible embedding endpoint; keep keyword fallback available |
 | Human-readable session summaries | Configure a local chat model, or use the deterministic evidence-only fallback |
+| Exact local session record | Set `MEMORY_TRANSCRIPT_ENABLED=true` before restarting hooks and worker; review the privacy warning |
 | GitHub session record | Validate local continuity first, then explicitly approve `-EnableGitHubExport` |
 
 Start with review mode and a disposable/test vault. Move to unattended session-auto
@@ -150,8 +157,8 @@ confirming that the resulting Markdown is appropriate for the vault.
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links, checkpoint manifests, provisional/final worker entries and sanitized export | Publication requires explicit destination approval |
-| Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Unsupported clients have no claimed startup automation |
+| Sessions | Four-section summaries, structured project links, checkpoint manifests, provisional/final worker entries, optional linked transcripts and sanitized export | Full transcripts are off by default and unsupported clients have no claimed startup automation |
+| Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Raw transcript capture is a separate sensitive opt-in |
 | Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | Paired measurement remains open |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | CI-safe paired replay benchmark | Live provider usage/cost and cross-tool certification remain open |
@@ -164,6 +171,13 @@ The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares ma
 sessions with context passing enabled and disabled. The no-paid-call replay result is
 versioned in [handoff-replay-v1](docs/benchmark-results/handoff-replay-v1.md); it does
 not claim live provider-token savings.
+
+The optional transcript path is intentionally easy to understand: bounded capture
+supports continuity, while `MEMORY_TRANSCRIPT_ENABLED=true` adds an exact local
+evidence object for auditing. It uses the same session group, checkpoint IDs and
+Obsidian links, but it is not indexed as a memory and the GitHub exporter never
+publishes its raw payloads. Read [full-session-transcripts](docs/full-session-transcripts.md)
+before enabling it in a shared or unencrypted vault.
 
 ## Quick start
 
