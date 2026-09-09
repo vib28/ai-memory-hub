@@ -78,11 +78,10 @@ vault parser and edit/supersede operations are line-based.
 Every substantial entry should end with an inline `**In plain terms:** ...` clause
 so a person can understand it months later without the original engineering context.
 Keep that clause on the same tracked line as the technical content. A companion
-blockquote under an unusually long entry is a named tradeoff, not an equivalent
-default: superseding keeps the block with historical content, but `delete_entry()`
-currently removes only the tracked line, so clean up a companion block by hand until
-the companion-block deletion fix in issue #50 is complete. Do not treat a companion
-block as provenance.
+blockquote under an unusually long entry is now safe to delete: `delete_entry()`
+removes the contiguous `>`-prefixed lines immediately below the entry, stopping at a
+blank or non-blockquote line. Superseding keeps the block with the historical entry;
+do not treat a companion block as provenance.
 
 ## Session summaries
 

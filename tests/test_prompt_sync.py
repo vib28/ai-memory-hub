@@ -39,7 +39,8 @@ class PromptSyncTests(unittest.TestCase):
             "`profile`",
             "`session`",
             "**In plain terms:**",
-            "companion-block deletion fix in issue #50",
+            "now safe to delete",
+            "contiguous `>`-prefixed lines",
         )
         for marker in markers:
             self.assertIn(marker, generic)

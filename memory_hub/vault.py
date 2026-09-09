@@ -347,12 +347,21 @@ class Vault:
             lines = content.splitlines()
             out = []
             changed = False
-            for line in lines:
+            i = 0
+            while i < len(lines):
+                line = lines[i]
                 m = ENTRY_RE.match(line)
                 if m and m.group("id") == memory_id:
                     changed = True
+                    i += 1
+                    # Companion explanations are positional Markdown blockquotes.
+                    # Stop at the first blank or non-blockquote line so unrelated
+                    # content is never swallowed.
+                    while i < len(lines) and lines[i].lstrip().startswith(">"):
+                        i += 1
                     continue
                 out.append(line)
+                i += 1
             if changed:
                 atomic_write(p, "\n".join(out) + "\n")
             return changed

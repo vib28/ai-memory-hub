@@ -100,22 +100,22 @@ attach a layman explanation, with a genuine tradeoff between them:
    targeted substitution — a companion block underneath is never touched, and staying
    attached to a now-`[superseded]` entry is *correct*, the same way the technical line
    itself is kept as history rather than deleted. **Supersede was never actually at risk.**
-   `delete_entry()` (forget) is the one real gap: it removes only the matched line, so a
-   companion block underneath is left behind with nothing above it.
+   `delete_entry()` (forget) now removes the matched line and the contiguous run of
+   immediately-following `>`-prefixed lines, so the companion block cannot outlive it.
 
-   That gap is fixable without new marker syntax, since every entry in the vault is already
-   blank-line-separated from the next one: `delete_entry()` can sweep the contiguous run of
-   `>`-prefixed lines immediately following a deleted entry, purely by position. Tracked as
-   #50. Once #50 lands, the companion block is safe on both mutation paths, not just one.
+   This fix uses no new marker syntax: a blank line or the first non-`>` line ends the
+   positional sweep, preserving unrelated content. Issue #50 implements the delete side;
+   `replace_entry_line()` remains unchanged because supersede correctly keeps the block
+   attached to historical content.
 
 **Recommendation:** use (1), the inline clause, as the default and the one the templates
 above assume — it is simplest and enough for the one- or two-sentence explanation most
 entries need, and it needs no dependency on #50. Use (2), the companion block with real
 sub-structure, for the entry that is genuinely too long or too multi-part to compress into
-one sentence (a substantial `decision` record is the most likely candidate) — **once #50
-lands**, this carries no more integrity risk than (1). Until then, `AI_INSTRUCTIONS.md` and
-`client-prompts/generic.md` should say plainly that a companion block used before #50 ships
-must be cleaned up by hand on forget.
+one sentence (a substantial `decision` record is the most likely candidate) — **now
+lands**, this carries no more integrity risk than (1) for deletion or supersede. The
+instructions describe the positional sweep and the fact that a companion block is
+presentation, not provenance.
 
 A larger, related question — should any kind beyond `session` get *real* multi-line
 structure (a heading block, like `session` already has) instead of a companion block under

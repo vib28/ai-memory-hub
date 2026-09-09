@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from memory_hub.manager import MemoryManager
+from memory_hub.models import MemoryCandidate
 
 
 class SessionTests(unittest.TestCase):
@@ -198,11 +199,51 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(self.manager.forget("nosuchid")["status"], "not_found")
 
     def test_entry_deletion_still_works(self):
-        from memory_hub.models import MemoryCandidate
         stored = self.manager.propose(MemoryCandidate("An ordinary fact.", "topic", "stated",
                                                       "demo", "claude"))
         result = self.manager.forget(stored["memory"]["memory_id"])
         self.assertEqual(result["status"], "forgotten")
+
+    def test_forget_removes_contiguous_companion_block_only(self):
+        stored = self.manager.propose(MemoryCandidate(
+            "A dense technical topic entry.", "topic", "stated", "companion", "codex"))
+        memory = stored["memory"]
+        path = self.manager.vault.resolve(memory["path"])
+        content = path.read_text(encoding="utf-8")
+        marker = f"<!-- mem:{memory['memory_id']}"
+        line = next(line for line in content.splitlines() if marker in line)
+        content = content.replace(
+            line,
+            line + "\n> In plain terms: this explains the finding for a future reader."
+            "\n> Second companion line.\nUnrelated content must remain.\n"
+            "> A later block is not contiguous.",
+        )
+        path.write_text(content, encoding="utf-8")
+
+        result = self.manager.forget(memory["memory_id"])
+        self.assertEqual(result["status"], "forgotten")
+        remaining = path.read_text(encoding="utf-8")
+        self.assertNotIn(memory["memory_id"], remaining)
+        self.assertNotIn("this explains the finding", remaining)
+        self.assertNotIn("Second companion line", remaining)
+        self.assertIn("Unrelated content must remain.", remaining)
+        self.assertIn("A later block is not contiguous.", remaining)
+
+    def test_supersede_keeps_companion_block_with_historical_entry(self):
+        stored = self.manager.propose(MemoryCandidate(
+            "The old technical finding.", "topic", "stated", "historical", "codex"))
+        old = stored["memory"]
+        path = self.manager.vault.resolve(old["path"])
+        content = path.read_text(encoding="utf-8")
+        line = next(line for line in content.splitlines() if f"<!-- mem:{old['memory_id']}" in line)
+        path.write_text(content.replace(line, line + "\n> Historical plain-language explanation."), encoding="utf-8")
+
+        replacement = self.manager.supersede(old["memory_id"], MemoryCandidate(
+            "The corrected technical finding.", "topic", "stated", "historical", "codex"))
+        self.assertEqual(replacement["status"], "stored")
+        remaining = path.read_text(encoding="utf-8")
+        self.assertIn("- [superseded]", remaining)
+        self.assertIn("Historical plain-language explanation.", remaining)
 
     # ---- #24 orphan blocks ----
 
