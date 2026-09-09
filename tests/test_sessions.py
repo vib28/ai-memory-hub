@@ -245,6 +245,23 @@ class SessionTests(unittest.TestCase):
         self.assertIn("- [superseded]", remaining)
         self.assertIn("Historical plain-language explanation.", remaining)
 
+    def test_forget_stops_companion_sweep_at_blank_line(self):
+        stored = self.manager.propose(MemoryCandidate(
+            "A topic with a separated block.", "topic", "stated", "blank-boundary", "codex"))
+        memory = stored["memory"]
+        path = self.manager.vault.resolve(memory["path"])
+        content = path.read_text(encoding="utf-8")
+        line = next(line for line in content.splitlines() if f"<!-- mem:{memory['memory_id']}" in line)
+        path.write_text(
+            content.replace(line, line + "\n> Remove this companion.\n\n> Keep this unrelated block."),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(self.manager.forget(memory["memory_id"])["status"], "forgotten")
+        remaining = path.read_text(encoding="utf-8")
+        self.assertNotIn("Remove this companion", remaining)
+        self.assertIn("Keep this unrelated block", remaining)
+
     # ---- #24 orphan blocks ----
 
     def test_audit_reports_session_block_without_id_marker(self):
