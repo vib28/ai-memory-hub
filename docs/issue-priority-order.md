@@ -110,8 +110,9 @@ operational boundary rather than an unverified repository claim.
 ## Current execution status
 
 #61 and #62 remain the first-priority continuity and live benchmark gates. #64 is
-the next open product-verification item; its automated dashboard work is complete but
-the real browser/tray gate remains open. #66 is closed and retained above as completed
+the next open product-verification item; its real-vault Chrome interaction pass and
+one-owner launcher checks are complete, while native tray-menu interaction remains open.
+#66 is closed and retained above as completed
 history rather than as an open priority.
 
 ## Continuity and handoff first
@@ -125,7 +126,7 @@ history rather than as an open priority.
 
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
-| 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
+| 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete native tray-menu verification | Real-vault Chrome interaction and one-owner launcher checks are complete; only the OS tray-menu surface remains. |
 
 ## Dependency chain
 
@@ -135,8 +136,8 @@ The critical implementation path is:
 
 The remaining items do not block the first-priority continuity phase. #40 is
 complete and remains an independent retrieval-quality change. #41, #46, #47, #48, #50,
-#51, #49, #65, and #66 are complete. #64's manual verification can be performed
-opportunistically; #61 and #62 retain their explicit live gates.
+#51, #49, #65, and #66 are complete. #64's native tray-menu verification can be
+performed opportunistically; #61 and #62 retain their explicit live gates.
 
 This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,
 their historical comments, stated dependencies, and the current branch state.

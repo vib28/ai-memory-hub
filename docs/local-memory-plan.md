@@ -6,13 +6,15 @@ truth for the public repository roadmap.
 
 ## First priority: automatic session continuity
 
-### User-requested dashboard implementation: awaiting user verification
+### User-requested dashboard implementation: native tray verification remains
 
 [Issue #64](https://github.com/vib28/ai-memory-hub/issues/64) and the
 [reviewed dashboard plan](dashboard-redesign-plan.md) track the readable workspace,
 single tray/dashboard launcher, four color modes and ID-based tag/link editing.
-Implementation passes 190 automated tests. The user's initial sanity test passed;
-the next-visit real-vault checklist in #64 is still open. The plan uses the required Where / Why / How / Reproduction / Acceptance /
+Implementation passes the current 231-test suite. Real-vault Chrome verification now
+covers all four themes, date filtering, record reading, relation lookup, review/history,
+conflicts and vault health; the remaining #64 gate is direct native tray-menu interaction.
+The plan uses the required Where / Why / How / Reproduction / Acceptance /
 Implementation / Verification format. This UI work does not mark automatic
 continuity or the token benchmark complete.
 
