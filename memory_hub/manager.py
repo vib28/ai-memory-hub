@@ -559,7 +559,7 @@ class MemoryManager:
             relative, line, kind=candidate.kind, writer=candidate.writer,
             entity_id=candidate.entity_id, alias=candidate.subject,
         )
-        self.vault.ensure_index_entry(relative, candidate.kind, self._covers(candidate))
+        self.vault.ensure_index_entry(relative, candidate.kind, self._covers(candidate, relative))
 
         record = MemoryRecord(memory_id, relative, candidate.text, candidate.kind, candidate.tag,
                               candidate.subject, candidate.writer, stamp)
@@ -605,12 +605,35 @@ class MemoryManager:
     def list_proposal_history(self) -> list[dict]:
         return self.index.list_pending(None)
 
-    def _covers(self, candidate: MemoryCandidate) -> str:
-        if candidate.kind == "profile":
+    def _covers(self, candidate: MemoryCandidate, relative: str | None = None) -> str:
+        if relative is None:
+            relative = self.vault.canonical_path(
+                candidate.kind, candidate.subject, entity_id=candidate.entity_id
+            )
+        return self._covers_for_path(candidate.kind, relative, candidate.text)
+
+    def _covers_for_path(self, kind: str, relative: str, fallback: str) -> str:
+        if kind == "profile":
             return "Stable identity, role, stack, timezone, and long-term context"
-        if candidate.kind == "preference":
+        if kind == "preference":
             return "Communication, workflow, research, and output preferences"
-        return f"{candidate.kind.title()} memory for {candidate.subject}"
+        records = parse_records(self.vault.resolve(relative), self.vault.root)
+        texts = [" ".join(record.text.split()) for record in records
+                 if record.tag != "superseded" and record.text.strip()]
+        if not texts and fallback.strip():
+            texts = [" ".join(fallback.split())]
+        summary = "; ".join(texts) or "No active entries remain"
+        if len(summary) > 220:
+            def clip(value: str, limit: int) -> str:
+                if len(value) <= limit:
+                    return value
+                return value[:limit].rsplit(" ", 1)[0].rstrip(" .,;:") + "..."
+
+            if len(texts) > 1:
+                summary = f"{clip(texts[0], 88)}; ...; {clip(texts[-1], 112)}"
+            else:
+                summary = clip(summary, 220)
+        return f"{kind.title()} notes: {summary}"
 
     def _mark_superseded(self, old: dict) -> bool:
         def transform(line: str) -> str:
@@ -659,6 +682,9 @@ class MemoryManager:
         rec = MemoryRecord(memory_id, old["path"], new_text, old["kind"], old["tag"],
                            subject, writer, stamp)
         self.index.upsert(rec)
+        self.vault.ensure_index_entry(
+            old["path"], old["kind"], self._covers_for_path(old["kind"], old["path"], new_text)
+        )
         return {"status": "updated", "memory": rec.to_dict()}
 
     def forget(self, memory_id: str) -> dict:
@@ -673,6 +699,11 @@ class MemoryManager:
             changed = self.vault.delete_entry(old["path"], memory_id)
         if changed:
             self.index.remove(memory_id)
+            if old["kind"] != "session":
+                self.vault.ensure_index_entry(
+                    old["path"], old["kind"],
+                    self._covers_for_path(old["kind"], old["path"], "No active entries remain"),
+                )
             return {"status": "forgotten", "memory_id": memory_id, "path": old["path"]}
         return {"status": "not_found_in_file", "memory_id": memory_id, "path": old["path"]}
 

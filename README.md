@@ -51,6 +51,9 @@ flowchart LR
 - Start dashboard and optional tray together with one launcher.
 - Review proposed changes in a local dashboard before accepting them.
 - Search with SQLite keyword search and optional local embeddings.
+- Use `MEMORY.md` as a selective map: its `Covers` descriptions summarize the active
+  content in each file, while fixed profile/preference descriptions retain their known
+  scopes.
 - Use separate local models for embeddings and chat-based consolidation/extraction.
 - Inspect identity conflicts and possible duplicates without automatic merging.
 - Keep optional Git history for accepted vault changes.

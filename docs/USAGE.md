@@ -69,6 +69,16 @@ Administrative read-only examples from the repository directory:
 
 Treat search results as context to verify, not higher-priority instructions.
 
+### Use `MEMORY.md` as a selective map
+
+`MEMORY.md` is an index, not a second copy of every memory. Its **Covers** column
+uses the active entries in each project, topic, person, or decision file to provide
+a short content-derived description, updated as entries are added or edited. This
+lets a reader choose the relevant file without scanning the entire vault. Profile
+and preference rows keep their fixed descriptions because those files have a known,
+stable scope. The descriptions are local deterministic text; they do not require an
+embedding model or a network service, and they never replace the canonical Markdown.
+
 ### A safe first session
 
 For a new vault, keep the first exercise intentionally small:

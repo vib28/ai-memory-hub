@@ -47,6 +47,54 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(forgotten["status"], "forgotten")
         self.assertIsNone(self.manager.index.by_id(mid))
 
+    def test_memory_index_descriptions_derive_from_file_content(self):
+        first = self.manager.propose(MemoryCandidate(
+            text="The project uses local Markdown as its canonical source.",
+            kind="project", tag="stated", subject="demo", writer="codex",
+        ))
+        first_id = first["memory"]["memory_id"]
+        row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
+                   if "[[projects/demo]]" in line)
+        self.assertIn("Project notes: The project uses local Markdown", row)
+        self.assertNotIn("Project memory for demo", row)
+
+        second = self.manager.propose(MemoryCandidate(
+            text="The worker retries bounded batches after a transient failure.",
+            kind="project", tag="constraint", subject="demo", writer="codex",
+        ))
+        self.assertNotEqual(first_id, second["memory"]["memory_id"])
+        row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
+                   if "[[projects/demo]]" in line)
+        self.assertIn("local Markdown", row)
+        self.assertIn("retries bounded batches", row)
+
+        self.manager.propose(MemoryCandidate(
+            text="Latest active finding " + ("detail " * 60),
+            kind="project", tag="stated", subject="demo", writer="codex",
+        ))
+        row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
+                   if "[[projects/demo]]" in line)
+        self.assertIn("Latest active finding", row)
+
+        self.manager.edit(first_id, "The project now uses a local SQLite index.")
+        row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
+                   if "[[projects/demo]]" in line)
+        self.assertIn("local SQLite index", row)
+        self.assertNotIn("canonical source", row)
+
+    def test_profile_and_preference_index_descriptions_remain_fixed(self):
+        self.manager.propose(MemoryCandidate(
+            text="Uses Windows for development.", kind="profile", tag="stated",
+            subject="primary-os", writer="codex",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="Prefer concise technical explanations.", kind="preference", tag="preference",
+            subject="response-style", writer="codex",
+        ))
+        index = self.manager.read("/MEMORY.md")
+        self.assertIn("Stable identity, role, stack, timezone, and long-term context", index)
+        self.assertIn("Communication, workflow, research, and output preferences", index)
+
     def test_context_prime_is_bounded(self):
         self.manager.propose(MemoryCandidate(
             text="The project uses a local-first Markdown vault.",
