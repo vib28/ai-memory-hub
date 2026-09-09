@@ -58,6 +58,32 @@ If the user asks to forget something, search narrowly for it and use `memory_for
 
 Do not announce every automatic memory write unless it is useful to the user.
 
+## Authoring templates by memory kind
+
+Use the template that matches the kind of fact being recorded. These are writing
+conventions, not validation rules: the server does not reject an entry that is
+missing a label. Keep every kind except `session` on one physical line because the
+vault parser and edit/supersede operations are line-based.
+
+| Kind | Pattern | Recommended inline shape |
+|---|---|---|
+| `decision` | Architecture Decision Record | `**Decision:** ... **Context:** ... **Alternatives considered:** ... **Consequences:** ...` |
+| `preference` | Style-guide rule and rationale | `**Rule:** ... **Reason:** ... **Applies to:** global or [[project-a]]` |
+| `topic` | Troubleshooting runbook | `**Finding:** ... **Cause:** ... **Fix:** ...` |
+| `person` | Contact note | `**Who:** ... **Fact:** ... **Context:** ...` |
+| `project` | Changelog/decision log shaped by tag | `[decided]` uses Decision/Why/Impact; `[constraint]` uses Constraint/Reason; `[stated]` uses Fact/Context; `[open]` uses Question/Why it matters/Next step |
+| `profile` | Atomic identity fact | A plain one-line statement is preferred; do not force labels onto a simple fact. |
+| `session` | Structured session record | Keep the existing `### Investigated`, `### Learned`, `### Completed`, and `### Next Steps` sections; this is the only genuine multi-line kind. |
+
+Every substantial entry should end with an inline `**In plain terms:** ...` clause
+so a person can understand it months later without the original engineering context.
+Keep that clause on the same tracked line as the technical content. A companion
+blockquote under an unusually long entry is a named tradeoff, not an equivalent
+default: superseding keeps the block with historical content, but `delete_entry()`
+currently removes only the tracked line, so clean up a companion block by hand until
+the companion-block deletion fix in issue #50 is complete. Do not treat a companion
+block as provenance.
+
 ## Session summaries
 
 At the natural end of every session, call `session_write` automatically. Include the session title, any known project, and all four sections: Investigated, Learned, Completed, and Next Steps. Use the current date and the connected client's model identity supplied by the server.

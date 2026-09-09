@@ -25,6 +25,31 @@ class PromptSyncTests(unittest.TestCase):
                 identity = "<tool-name>" if client == "generic" else client
                 self.assertIn(f"Writer identity for this client: `{identity}`.", first[client])
 
+    def test_repository_prompts_share_the_per_kind_templates(self):
+        root = Path(__file__).resolve().parents[1]
+        generic = (root / "client-prompts" / "generic.md").read_text(encoding="utf-8")
+        instructions = (root / "vault_template" / "AI_INSTRUCTIONS.md").read_text(encoding="utf-8")
+        markers = (
+            "## Authoring templates by memory kind",
+            "`decision`",
+            "`preference`",
+            "`topic`",
+            "`person`",
+            "`project`",
+            "`profile`",
+            "`session`",
+            "**In plain terms:**",
+            "companion-block deletion fix in issue #50",
+        )
+        for marker in markers:
+            self.assertIn(marker, generic)
+            self.assertIn(marker, instructions)
+        for client in CLIENTS:
+            prompt = (root / "client-prompts" / f"{client}.md").read_text(encoding="utf-8")
+            self.assertIn("## Authoring templates by memory kind", prompt)
+            identity = "<tool-name>" if client == "generic" else client
+            self.assertIn(f"Writer identity for this client: `{identity}`.", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

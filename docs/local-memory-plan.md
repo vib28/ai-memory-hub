@@ -72,10 +72,15 @@ not satisfy this cross-tool acceptance gate. No result is available yet.
 One-time setup is required; routine saves, finalization and restoration must need no
 manual trigger. Explicit session-auto and GitHub export permissions remain separate.
 
-Existing open work is retained: #40 (section embeddings), #41/#42 (readable templates
-and project cross-links), #43 (migrate legacy writer-major session files), #44 (remove empty test/throwaway vault files), #45 (refresh stale "not yet implemented" plan status), #46/#47 (consolidate duplicated preference rule via "Applies to" and resolve flagged project/plan file-split), #48/#49 (index/audit improvements and variant/duplicate detection), #50/#51 (companion-block safety and format decision). Coordinate #42 with checkpoint
-links; the rest does not block this first-priority phase. Closed #13 records the earlier
-v1 scope, not completion of the new unattended workflow.
+The earlier vault-quality work is now split between completed history and the canonical
+open queue: #40 (section embeddings) and #41 (per-kind authoring templates) are complete;
+#42-#45 are closed; #46/#47 cover preference and project-file decisions; #48/#49 cover
+index/audit improvements and variant detection; #50/#51 cover companion-block safety and
+the multiline-format decision. Dashboard verification and date filtering are #64/#65,
+and optional full transcript capture is #66. Follow
+[`docs/issue-priority-order.md`](issue-priority-order.md) for the current order; do not
+copy a second numbered priority list here. Closed #13 records the earlier v1 scope, not
+completion of the new unattended workflow.
 
 ## Goal
 
