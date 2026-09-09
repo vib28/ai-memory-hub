@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ._env import int_env
+from .app_config import bootstrap_environment
 from .utils import slugify
 
 
@@ -300,9 +301,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Emit a bounded local AI Memory Hub startup handoff.")
     parser.add_argument("--vault", default=os.environ.get("AI_MEMORY_VAULT"))
     parser.add_argument("--client", default=os.environ.get("MEMORY_WRITER", "unknown"))
-    parser.add_argument("--max-chars", type=int,
-                        default=int_env("MEMORY_HANDOFF_MAX_CHARS", DEFAULT_MAX_CHARS, minimum=1))
+    # No default here: MEMORY_HANDOFF_MAX_CHARS may come from the vault's
+    # config.json, not known until bootstrap_environment(args.vault) below --
+    # resolved after parsing instead, but still before anything that can raise.
+    parser.add_argument("--max-chars", type=int, default=None)
     args = parser.parse_args(argv)
+    if args.vault:
+        bootstrap_environment(args.vault)
+    max_chars = args.max_chars if args.max_chars is not None else int_env(
+        "MEMORY_HANDOFF_MAX_CHARS", DEFAULT_MAX_CHARS, minimum=1)
     try:
         raw = sys.stdin.read().strip()
         payload = json.loads(raw) if raw else {}
@@ -310,13 +317,13 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("hook input must be a JSON object")
         if not args.vault:
             raise ValueError("AI_MEMORY_VAULT or --vault is required")
-        result = build_handoff(args.vault, payload=payload, client=args.client, max_chars=args.max_chars)
+        result = build_handoff(args.vault, payload=payload, client=args.client, max_chars=max_chars)
     except Exception as exc:  # Startup context must never block the host client.
         context = ("<ai-memory-handoff source=local-checkpoint mode=quoted-evidence>\n"
                    f"Local handoff unavailable: {_one_line(exc)}\n</ai-memory-handoff>")
         result = {"status": "unavailable", "client": args.client, "groups": [],
                   "pending_evidence": True, "packet": context, "packet_chars": len(context),
-                  "packet_budget": max(1, min(args.max_chars, MAX_MAX_CHARS)),
+                  "packet_budget": max(1, min(max_chars, MAX_MAX_CHARS)),
                   "warning": _one_line(exc)}
     result["hookSpecificOutput"] = {
         "hookEventName": "SessionStart",

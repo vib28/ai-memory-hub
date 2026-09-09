@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from ._env import int_env
+from .app_config import bootstrap_environment, effective_config, save_settings, GROUPS
 from .entities import resolve_subject
 from .manager import MemoryManager
 from .utils import slugify
@@ -198,6 +199,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if u.path == "/api/worker-health":
                 from .worker import read_health
                 return self._json(read_health(self.manager.vault.root))
+            if u.path == "/api/config":
+                return self._json({"groups": GROUPS, "settings": effective_config(self.manager.vault.root)})
             self._json({"error": "not found"}, 404)
         except KeyError as exc:
             self._json({"error": str(exc)}, 404)
@@ -230,6 +233,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(self.manager.edit(parts[2], str(body.get("text", "")), writer="user"))
             if u.path == "/api/conflict/resolve":
                 return self._json(self.manager.resolve_conflict(str(body["keep_id"])))
+            if u.path == "/api/config":
+                settings = save_settings(self.manager.vault.root, body)
+                return self._json({"status": "saved", "settings": settings})
             self._json({"error": "not found"}, 404)
         except KeyError as exc:
             self._json({"error": str(exc)}, 404)
@@ -255,6 +261,7 @@ def create_server(manager: MemoryManager, host: str | None = None, port: int | N
 
 
 def serve(vault: str, host: str | None = None, port: int | None = None, open_browser: bool = True):
+    bootstrap_environment(vault)  # config.json fills gaps; an explicit env var still wins.
     host = host if host is not None else default_dashboard_host()
     port = port if port is not None else default_dashboard_port()
     manager = MemoryManager(vault)
@@ -277,8 +284,10 @@ def serve(vault: str, host: str | None = None, port: int | None = None, open_bro
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--vault", default=os.environ.get("AI_MEMORY_VAULT"))
-    p.add_argument("--host", default=default_dashboard_host())
-    p.add_argument("--port", type=int, default=default_dashboard_port())
+    # No default on host/port here: they may come from the vault's config.json,
+    # which isn't known until serve() bootstraps it from --vault.
+    p.add_argument("--host", default=None)
+    p.add_argument("--port", type=int, default=None)
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args()
     if not args.vault:

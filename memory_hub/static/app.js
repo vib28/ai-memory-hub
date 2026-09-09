@@ -87,7 +87,53 @@ function editRelations(r){
 }
 function forget(r){dialog('Forget this memory?','<p>This deletes the stored record. Other memories are not merged or removed. Existing links may become unavailable. Cancel if you have not backed up something important.</p>',async()=>{const result=await api('/api/memory/'+r.memory_id+'/forget',{});if(result.status!=='forgotten')throw Error(result.status);state.selected=null;$('reader').innerHTML='<div class="empty"><h2>Memory removed</h2><p>Select another memory to continue.</p></div>';});}
 function pendingBody(r){const p=r.payload;if(p?.type==='session'&&p.data)return ['investigated','learned','completed','next_steps'].map(k=>'<h3>'+esc(human(k.replace('_',' ')))+'</h3><ul>'+[].concat(p.data[k]||[]).map(x=>'<li>'+inline(x)+'</li>').join('')+'</ul>').join('');if(p?.type==='pattern')return '<h3>Project fact</h3><p>'+inline(p.project_fact_text)+'</p><h3>Preference rule</h3><p>'+inline(p.preference_rule_text)+'</p>';return markdown(r.text);}
-async function showView(view){state.view=view;state.request++;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('library').hidden=view!=='library';$('secondary').hidden=view==='library';$('heading').textContent=({library:'Memory library',review:'Review & history',conflicts:'Potential conflicts',audit:'Vault health'})[view];notice('');if(view==='library'){await refresh();return;}const host=$('secondary');host.innerHTML='<p class="muted">Loading…</p>';
+function settingControl(s){const id='set-'+s.key;
+  if(s.type==='bool')return '<div class="setting-checkbox"><input id="'+id+'" type="checkbox"'+(s.value?' checked':'')+'><label for="'+id+'" style="margin:0;text-transform:none;font-weight:500;color:var(--ink)">Enabled</label></div>';
+  if(s.type==='select')return '<select id="'+id+'">'+s.options.map(o=>'<option value="'+esc(o)+'"'+(o===s.value?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
+  if(s.type==='int')return '<input id="'+id+'" type="number" min="'+s.min+'" max="'+s.max+'" value="'+esc(s.value)+'">';
+  if(s.type==='password')return '<input id="'+id+'" type="password" value="'+esc(s.value)+'" placeholder="Leave blank to keep unset" autocomplete="off">';
+  return '<input id="'+id+'" type="text" value="'+esc(s.value)+'">';
+}
+function settingValue(s){const el=$('set-'+s.key);if(s.type==='bool')return el.checked;if(s.type==='int')return Number(el.value);return el.value;}
+async function renderSettings(){
+  const data=await api('/api/config');
+  if(state.view!=='settings')return;
+  const host=$('secondary');
+  host.innerHTML='<div class="settings"><p class="muted">Changes apply to processes started after saving — restart the worker, dashboard or exporter to pick them up.</p><div class="settings-toolbar"><p class="meta" id="settings-status">Loaded current configuration.</p><button class="primary" id="settings-save">Save changed settings</button></div></div>';
+  const container=host.querySelector('.settings');
+  for(const g of data.groups){
+    const rows=data.settings.filter(s=>s.group===g.key);
+    if(!rows.length)continue;
+    const group=document.createElement('section');group.className='settings-group';
+    group.innerHTML='<h3>'+esc(g.label)+'</h3>'+rows.map(s=>
+      '<div class="setting-row" data-key="'+esc(s.key)+'">'+
+        '<div class="setting-info"><span class="setting-label">'+esc(s.label)+'</span>'+
+        (s.description?'<p class="meta">'+esc(s.description)+'</p>':'')+
+        '<span class="setting-source'+(s.source==='file'?' from-file':'')+'">'+esc(s.source)+'</span></div>'+
+        '<div class="setting-field">'+settingControl(s)+'</div>'+
+      '</div>').join('');
+    container.append(group);
+  }
+  // Only fields the user actually touches get submitted -- a value merely
+  // *displayed* because it currently comes from an env var (a deliberate
+  // one-off override, per the config-file docs) must not get silently baked
+  // into the persistent file just because some other field was saved.
+  const dirty=new Set();
+  for(const s of data.settings){
+    const el=$('set-'+s.key);
+    el.addEventListener('input',()=>dirty.add(s.key));
+    el.addEventListener('change',()=>dirty.add(s.key));
+  }
+  $('settings-save').onclick=()=>safe(async()=>{
+    if(!dirty.size){notice('No changes to save.');return;}
+    const payload={};for(const key of dirty){const s=data.settings.find(x=>x.key===key);payload[key]=settingValue(s);}
+    await api('/api/config',payload);
+    notice('Settings saved. Restart the affected process to pick them up.');
+    await renderSettings();
+  });
+}
+async function showView(view){state.view=view;state.request++;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('library').hidden=view!=='library';$('secondary').hidden=view==='library';$('heading').textContent=({library:'Memory library',review:'Review & history',conflicts:'Potential conflicts',audit:'Vault health',settings:'Settings'})[view];notice('');if(view==='library'){await refresh();return;}const host=$('secondary');host.innerHTML='<p class="muted">Loading…</p>';
+if(view==='settings'){await renderSettings();return;}
 if(view==='review'){const rows=await api('/api/pending?history=1');if(state.view!==view)return;host.innerHTML='<p class="muted">Review proposed memories before they become part of your vault.</p>';for(const status of [...new Set([...reviewStatuses,...rows.map(r=>r.status)])]){const group=rows.filter(r=>r.status===status);const heading=document.createElement('h2');heading.textContent=human(status)+' · '+group.length;host.append(heading);for(const r of group){const card=document.createElement('article');card.className='review-card';card.innerHTML='<span class="kind">'+esc(r.kind)+'</span><h3>'+esc(human(r.subject))+'</h3><div class="meta">'+esc(r.writer)+' · '+esc(r.proposal_id)+'</div><div class="body-copy">'+pendingBody(r)+'</div>';if(r.note)card.insertAdjacentHTML('beforeend','<p>'+esc(r.note)+'</p>');if(status==='pending'){const footer=document.createElement('footer');for(const action of ['approve','reject'])footer.append(button(human(action),async()=>{const result=await api('/api/pending/'+r.proposal_id+'/'+action,{});if(!['approved','rejected','stored','stored_without_project_link','duplicate'].includes(result.status))throw Error(result.reason||result.status);await refresh();await showView('review');},action==='approve'?'primary':''));card.append(footer);}host.append(card);}}}
 if(view==='conflicts'){const groups=await api('/api/conflicts');if(state.view!==view)return;host.innerHTML='<p class="muted">These records share an identity. Review the facts before choosing which to keep current.</p>';if(!groups.length)host.insertAdjacentHTML('beforeend','<h2>No potential conflicts found.</h2>');for(const g of groups){const card=document.createElement('article');card.className='review-card';card.innerHTML='<h2>'+esc(human(g.subject))+'</h2>';for(const r of g.memories||g.records||[]){const div=document.createElement('div');div.innerHTML='<div class="body-copy">'+markdown(r.text)+'</div><p class="meta">'+esc(r.writer)+' · '+esc(r.date)+'</p>';div.append(button('Keep this one…',()=>dialog('Keep this memory current?','<p>Other conflicting records for this identity will be marked superseded, not deleted.</p>',async()=>{await api('/api/conflict/resolve',{keep_id:r.memory_id});await showView('conflicts');})));card.append(div);}host.append(card);}}
 if(view==='audit'){const result=await api('/api/audit');if(state.view!==view)return;host.innerHTML='<h2>'+ (result.healthy?'Your vault checks passed.':'Your vault needs attention.')+'</h2><p class="muted">Checks stored files against the search index. This does not change your memories.</p>';const dl=document.createElement('dl');for(const [k,v]of Object.entries(result)){const row=document.createElement('div');row.className='audit-row';const dt=document.createElement('dt');dt.textContent=k.replaceAll('_',' ');const dd=document.createElement('dd');dd.textContent=typeof v==='object'?JSON.stringify(v,null,2):String(v);dd.style.whiteSpace='pre-wrap';row.append(dt,dd);dl.append(row);}host.append(dl);}}

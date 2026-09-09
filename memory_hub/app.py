@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 
+from .app_config import bootstrap_environment
 from .dashboard import create_server, default_dashboard_port
 from .dashboard_data import revision
 from .manager import MemoryManager
@@ -27,6 +28,7 @@ def running_instance(vault, port):
 
 
 def run(vault, port=None, tray=True, open_browser=True):
+    bootstrap_environment(vault)  # config.json fills gaps; an explicit env var still wins.
     port = port if port is not None else default_dashboard_port()
     url = f'http://127.0.0.1:{port}/'
     if port and running_instance(vault, port):
@@ -77,7 +79,11 @@ def run(vault, port=None, tray=True, open_browser=True):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vault', default=os.environ.get('AI_MEMORY_VAULT'))
-    parser.add_argument('--port', type=int, default=default_dashboard_port())
+    # No default here on purpose: the dashboard port may come from the vault's
+    # config.json, which isn't known until run() bootstraps it from --vault.
+    # Resolving default_dashboard_port() this early would only see an env var,
+    # never a config-file setting.
+    parser.add_argument('--port', type=int, default=None)
     parser.add_argument('--no-tray', action='store_true')
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()

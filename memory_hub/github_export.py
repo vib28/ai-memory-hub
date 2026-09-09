@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ._env import int_env
+from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
 from .utils import atomic_write, slugify
@@ -439,6 +440,7 @@ class GitHubPublisher:
     def __init__(self, vault: Path | str, *, client: GitHubClient | None = None,
                  outbox: ExportOutbox | None = None):
         self.vault = Path(vault).expanduser().resolve()
+        bootstrap_environment(self.vault)  # config.json fills gaps; an explicit env var still wins.
         self.config = load_config(self.vault)
         self.outbox = outbox or ExportOutbox(outbox_path(self.vault))
         self._owns_outbox = outbox is None

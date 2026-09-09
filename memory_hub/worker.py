@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ._env import int_env as _int_env
+from .app_config import bootstrap_environment
 from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
@@ -81,6 +82,7 @@ class WorkerConfig:
     @classmethod
     def from_env(cls, vault: Path | str, buffer_path: Path | str | None = None) -> "WorkerConfig":
         root = Path(vault).expanduser()
+        bootstrap_environment(root)  # config.json fills gaps; an explicit env var still wins.
         configured_buffer = buffer_path or os.environ.get("MEMORY_CAPTURE_DB")
         return cls(
             vault=root,

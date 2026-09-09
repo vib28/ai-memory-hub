@@ -2,11 +2,12 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Memory workspace · AI Memory Hub</title><style>__CSS__</style></head>
 <body><div class="workspace">
-<aside class="rail"><a class="brand" href="/" aria-label="Memory home"><span class="mark">m</span> memory<span class="brand-small">AI MEMORY HUB</span></a>
-<p class="eyebrow">WORKSPACE</p><nav aria-label="Workspace">
-<button data-view="library" class="nav active">Library <span id="total">—</span></button>
-<button data-view="review" class="nav">Review &amp; history <span id="pending-count"></span></button>
+<aside class="rail"><a class="brand" href="/" aria-label="Memory home"><span class="mark">m</span><span class="brand-name">Memory<span class="brand-small">AI MEMORY HUB</span></span></a>
+<p class="eyebrow">Workspace</p><nav aria-label="Workspace">
+<button data-view="library" class="nav active">Library <span class="count" id="total">—</span></button>
+<button data-view="review" class="nav">Review &amp; history <span class="count" id="pending-count"></span></button>
 <button data-view="conflicts" class="nav">Conflicts</button><button data-view="audit" class="nav">Vault health</button>
+<button data-view="settings" class="nav">Settings</button>
 </nav><div class="rail-bottom"><span class="live-dot"></span> Local workspace<p id="worker-status">Worker: not configured</p><p>Your files. Your memory.</p><button id="refresh">Refresh data</button></div></aside>
 <main><header class="topbar"><div><p class="eyebrow">YOUR SHARED KNOWLEDGE</p><h1 id="heading">Memory library</h1></div><div class="appearance" role="group" aria-label="Color mode"><label class="toggle"><input id="dark-mode" type="checkbox" role="switch"><span>Dark mode</span></label><label class="toggle"><input id="colorblind-mode" type="checkbox" role="switch"><span>Colorblind</span></label></div></header>
 <div id="notice" role="status" aria-live="polite" hidden></div>

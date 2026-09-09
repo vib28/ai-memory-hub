@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .app_config import bootstrap_environment
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -438,6 +439,7 @@ def hook_main(argv: list[str] | None = None) -> int:
     transcript = None
     transcript_error = None
     try:
+        bootstrap_environment(os.environ.get("AI_MEMORY_VAULT"))  # never blocks; best-effort only.
         raw = sys.stdin.read()
         payloads = _payloads_from_stdin(json.loads(raw))
         buffer = ObservationBuffer()

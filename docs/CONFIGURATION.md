@@ -1,24 +1,44 @@
 # Configuration
 
-Set configuration on the process that uses it. Environment variables in one terminal
-do not automatically update an already-running MCP server.
+Every setting below has two ways to reach a process: an environment variable, or the
+per-vault **Settings** pane in the dashboard (Workspace → Settings), which writes
+`<vault>/.ai-memory-hub/config.json`. Neither is loaded automatically by every process on
+its own — see [Two configuration paths](#two-configuration-paths) below.
 
-[Client setup](CLIENTS.md) · [Architecture](../ARCHITECTURE.md) · [Troubleshooting](TROUBLESHOOTING.md)
+[Client setup](CLIENTS.md) · [Dashboard](DASHBOARD.md) · [Architecture](../ARCHITECTURE.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
 ```mermaid
 flowchart LR
-    Env[Process environment] --> Server[MCP server]
+    Settings[Dashboard Settings pane] --> ConfigFile["&lt;vault&gt;/.ai-memory-hub/config.json"]
+    Env[Process environment] -.explicit override, always wins.-> Bootstrap
+    ConfigFile --> Bootstrap[bootstrap_environment at startup]
+    Bootstrap --> Server[MCP server / worker / dashboard / exporter]
     Server --> Vault[AI_MEMORY_VAULT]
     Server --> Policy[Write mode and policy]
     Server --> Chat[Optional chat model]
     Server --> Embed[Optional embedding model]
 ```
 
-There are two configuration layers. The MCP server reads its environment when the
-client launches it. The worker, handoff reader and GitHub exporter are separate
-processes and read their own environment when they start. Changing a terminal variable
-does not change an already-running client, worker or exporter; restart the relevant
-process after configuration changes.
+## Two configuration paths
+
+**The dashboard's Settings pane** is the easiest path for most settings below: open the
+dashboard, choose **Settings** in the left rail, edit a field, and save. Each field shows
+where its current value comes from — `FILE` (the config file), `ENV` (an environment
+variable), or `DEFAULT`. Saving writes only the fields you actually changed to
+`config.json`; it never touches a field just because you saved a different one.
+
+**An environment variable** set directly (`$env:NAME` in PowerShell, or a client's own
+MCP registration) always takes precedence over `config.json` for that one process — it's
+the escape hatch for a one-off override without touching the file. Every process that
+reads these settings calls `bootstrap_environment(vault)` once at startup, which fills in
+whatever `config.json` has for a variable *not already set* in that process's
+environment; it never overwrites an explicit one.
+
+Either way, a change takes effect only for processes **started after** the change. The
+MCP server reads its environment when the client launches it. The worker, handoff
+reader, dashboard and GitHub exporter are separate processes and read their own
+environment when they start. Restart the relevant process (or reconnect the client)
+after changing a setting.
 
 ## Server settings
 
@@ -54,6 +74,15 @@ process after configuration changes.
 | MEMORY_DASHBOARD_PORT | Dashboard/tray port, shared by `memory_hub.app`, `memory_hub.dashboard` and all three `start-*.ps1` launchers | 8765 |
 | GEMINI_CONFIG_DIR | Override for the Gemini CLI settings directory | `~/.gemini` |
 | QWEN_CONFIG_DIR | Override for the Qwen CLI settings directory | `~/.qwen` |
+| KIMI_CONFIG_DIR | Override for the Kimi Code settings directory | `~/.kimi` |
+
+Every variable above except the last four appears as a field in the dashboard's Settings
+pane. `AI_MEMORY_VAULT` is the one exception with its own reason: it names *which*
+vault's `config.json` to read, so it can't sensibly live inside that same file — set it
+as an environment variable, or pass `--vault`/`-VaultPath` to whichever script you're
+running. `GEMINI_CONFIG_DIR`, `QWEN_CONFIG_DIR` and `KIMI_CONFIG_DIR` are read by
+`connect-ai-tools.ps1` directly, not by any Python process, so they stay environment-only
+too.
 
 See [mcp_server.py](../memory_hub/mcp_server.py),
 [capture.py](../memory_hub/capture.py), [extractor.py](../memory_hub/extractor.py),

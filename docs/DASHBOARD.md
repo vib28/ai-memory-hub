@@ -122,6 +122,31 @@ pending proposals; other recorded statuses remain visible as history.
 Conflicts lets you explicitly choose a current fact and supersede the other conflicting
 records. Vault health compares files and index without changing records.
 
+## Settings
+
+Choose **Settings** in the left rail to change any of the values documented in
+[Configuration](CONFIGURATION.md), grouped the same way as this vault's data: Vault &
+Identity, Write Mode, Capture, Transcript, Worker, Dashboard, LLM & Embeddings, and
+GitHub Export.
+
+Each field shows a small label naming where its current value comes from:
+
+| Label | Meaning |
+| --- | --- |
+| `DEFAULT` | Nothing has set this yet; the built-in default is in effect. |
+| `ENV` | An environment variable is currently supplying this value. |
+| `FILE` | This vault's `config.json` is currently supplying this value. |
+
+**Save changed settings** writes only the fields you actually edited to
+`<vault>/.ai-memory-hub/config.json` — an unrelated field showing `ENV` (a deliberate
+one-off override in your current terminal, say) is never swept into the file just
+because you saved something else on the same page. A saved change takes effect the next
+time the affected process starts; restart the worker, dashboard or exporter, or
+reconnect the client, to pick it up. GitHub export's destination approval
+(`-EnableGitHubExport`) and client hooks/handoff/session-auto installation remain
+`connect-ai-tools.ps1`'s job — those touch a client's own files or Windows startup
+entries, not this vault's configuration.
+
 ## Verification
 
 The tracked [redesign plan](dashboard-redesign-plan.md) and

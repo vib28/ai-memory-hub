@@ -133,6 +133,49 @@ def test_shared_server_security_metadata_and_reopen(manager):
         other.server_close()
 
 
+def test_config_api_reads_writes_and_validates(manager):
+    server = create_server(manager, port=0)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    port = server.server_address[1]
+    token = server.RequestHandlerClass.launch_token
+    def request(method, path, body=None, headers=None):
+        connection = http.client.HTTPConnection("127.0.0.1", port)
+        connection.request(method, path, body, headers or {})
+        response = connection.getresponse()
+        value = response.read()
+        connection.close()
+        return response.status, value
+    try:
+        status, body = request("GET", "/api/config")
+        assert status == 200
+        payload = json.loads(body)
+        settings = {row["key"]: row for row in payload["settings"]}
+        assert settings["MEMORY_WRITE_MODE"]["value"] == "review"
+        assert settings["MEMORY_WRITE_MODE"]["source"] == "default"
+        assert {g["key"] for g in payload["groups"]} >= {"identity", "write_mode", "worker"}
+
+        # Unauthenticated write is refused, same as every other state-changing endpoint.
+        assert request("POST", "/api/config", json.dumps({"MEMORY_WRITER": "codex"}))[0] == 403
+
+        headers = {"X-Launch-Token": token}
+        status, body = request("POST", "/api/config", json.dumps({"MEMORY_WRITER": "codex"}), headers)
+        assert status == 200
+        saved = {row["key"]: row for row in json.loads(body)["settings"]}
+        assert saved["MEMORY_WRITER"]["value"] == "codex"
+        assert saved["MEMORY_WRITER"]["source"] == "file"
+        # A field never submitted must not be swept into the file alongside it.
+        assert saved["MEMORY_WRITE_MODE"]["source"] == "default"
+
+        status, body = request("POST", "/api/config", json.dumps({"MEMORY_DASHBOARD_PORT": 999999}), headers)
+        assert status == 400
+        assert "MEMORY_DASHBOARD_PORT" in json.loads(body)["error"]
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+
 def test_disallow_non_loopback(manager):
     with pytest.raises(ValueError):
         create_server(manager, "0.0.0.0", 0)
@@ -171,10 +214,13 @@ def test_palette_text_and_control_contrast(theme):
     css = (Path(__file__).resolve().parents[1] / "memory_hub/static/app.css").read_text()
     match = re.search(r'\[data-theme="' + theme + r'"\]\s*\{([^}]+)', css)
     colors = dict(re.findall(r'--([\w-]+):\s*(#[0-9a-fA-F]{6})', match.group(1)))
-    text_pairs = [(fg, bg) for fg in ("ink", "muted", "blue")
+    # --blue and --primary were consolidated into one --accent token used for
+    # links, kind labels and primary-button fill alike (see app.css); --on-primary
+    # became --on-accent to match.
+    text_pairs = [(fg, bg) for fg in ("ink", "muted", "accent")
                   for bg in ("paper", "wash", "field", "collection", "hover", "selected")]
     text_pairs += [("chip-text", "chip-bg"), ("muted", "subtle-bg"),
-                   ("danger", "paper"), ("danger", "error-bg"), ("on-primary", "primary"),
+                   ("danger", "paper"), ("danger", "error-bg"), ("on-accent", "accent"),
                    ("nav", "rail"), ("nav-muted", "rail"), ("on-rail", "nav-active")]
     for fg, bg in text_pairs:
         assert contrast(colors[fg], colors[bg]) >= 4.5, (theme, fg, bg, contrast(colors[fg], colors[bg]))

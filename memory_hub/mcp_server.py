@@ -6,6 +6,7 @@ from pathlib import Path
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from .app_config import bootstrap_environment
 from .manager import AUTO_POLICY, MemoryManager
 from .models import MemoryCandidate
 from .capture import ObservationBuffer, default_buffer_path
@@ -13,6 +14,7 @@ from .session_capture import consolidate_buffered_session
 from .history import commit_vault_change
 
 VAULT = os.environ.get("AI_MEMORY_VAULT") or str(Path.cwd() / "memory-vault")
+bootstrap_environment(VAULT)  # config.json fills gaps; an explicit env var still wins.
 WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
 WRITE_MODE = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
 HISTORY_ENABLED = os.environ.get("MEMORY_VAULT_HISTORY", "false").strip().lower() in {"1", "true", "yes", "on"}

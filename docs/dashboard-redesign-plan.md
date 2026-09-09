@@ -107,3 +107,37 @@ issue open until the following review is complete:
 - [ ] Check review/history, conflicts and vault-health results.
 - [ ] Verify one-launch tray/browser behavior and reopening the same app.
 - [ ] Record any failures as tracked follow-ups; close only after verification.
+
+## Follow-up: palette/typography refresh and a Settings pane
+
+Superseded a separate WinForms configuration script (native `TabControl` failed to
+render its tab strip in this environment, undiagnosable without a live interactive
+session) with a Settings pane inside this dashboard instead — one UI, one already-proven
+rendering surface, and this project already had no build toolchain to leverage for a
+second one.
+
+The visual system was also reworked at the same time, on the user's explicit "do it
+again, it is ugly" — every text/control contrast pair recomputed by the WCAG formula
+before writing a single hex value (not eyeballed), verified again by
+`test_palette_text_and_control_contrast`:
+
+- `--blue` and `--primary` consolidated into one `--accent` token (teal-forest, not the
+  prior flat blue) used consistently for links, kind labels, chip borders and the
+  primary button; `--on-primary` renamed `--on-accent` to match.
+- The reading pane (`.body-copy`, card previews, reader headings) now sets a serif stack
+  distinct from the sans-serif UI chrome — a deliberate signal ("this is the canonical
+  content") rather than decoration, since reading stored memories is the point of that
+  pane specifically.
+- Settings live behind a config-file-backed API (`GET`/`POST /api/config`, backed by
+  `memory_hub/app_config.py`) rather than direct environment-variable writes from the
+  browser, which has no way to set a Windows environment variable at all. Every
+  process-entry point calls `bootstrap_environment(vault)` at startup to seed its own
+  environment from that file (an explicit env var still wins) — see
+  [Configuration](CONFIGURATION.md).
+
+Verified live in a real Chrome tab against a disposable seeded demo vault on a scratch
+port (never the user's configured vault) — light/dark/colorblind toggles, the reader
+pane's new typography, and a full Settings save round-trip (including that an
+env-var-sourced field displayed but not edited stays `ENV`, not swept into the file).
+That is not the same as the still-open real-vault review above, which remains the user's
+to complete.
