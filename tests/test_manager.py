@@ -449,6 +449,7 @@ class SubjectAuditTests(unittest.TestCase):
         self.assertTrue(report["healthy"], report)
         self.assertEqual(report["exact_duplicate_groups"], [])
         self.assertEqual(report["subject_variant_candidates"], [])
+        self.assertEqual(report["lexical_candidates"], [])
         self.assertEqual(report["possible_file_splits"], [])
 
     def test_exact_duplicate_detected_for_a_non_project_kind(self):
@@ -547,6 +548,64 @@ class SubjectAuditTests(unittest.TestCase):
         ))
         self.assertEqual(
             [s for s in report["possible_file_splits"] if s["kind"] == "preference"], [])
+
+    def test_lexical_audit_finds_non_prefix_related_preferences_without_false_positive(self):
+        related = [
+            ("ai-memory-bug-workflow", "For AI Memory Hub bug fixes, create a GitHub issue with reproduction steps, acceptance criteria, implementation details, verification results, and a regression test. Commonvault. This workflow covers implementation safeguards."),
+            ("ai-memory-change-documentation", "For AI Memory Hub documentation changes, document the GitHub issue with reproduction steps, acceptance criteria, implementation details, verification results, and clear rationale. Commonvault. This change record explains reader communication."),
+            ("ai-memory-github-documentation", "For AI Memory Hub GitHub work, record reproduction steps, acceptance criteria, implementation details, verification results, and the final implementation comment. Commonvault. This audit case names a reviewable maintenance outcome."),
+        ]
+        for subject, text in related:
+            self.manager.propose(MemoryCandidate(
+                text=text, kind="preference", tag="preference", subject=subject, writer="codex",
+            ))
+        unrelated = [
+            ("dashboard-theme", "Prefer dark mode in the dashboard for accessibility. Commonvault. This interface choice concerns visual comfort."),
+            ("index-storage", "Use SQLite WAL mode for crash-safe indexing. Commonvault. This storage rule concerns recovery behavior."),
+        ]
+        for subject, text in unrelated:
+            self.manager.propose(MemoryCandidate(
+                text=text, kind="preference", tag="preference", subject=subject, writer="codex",
+            ))
+
+        report = self.manager.subject_audit(kinds=["preference"])
+        pairs = {
+            frozenset(candidate["subjects"])
+            for candidate in report["lexical_candidates"]
+        }
+        self.assertEqual(
+            pairs,
+            {
+                frozenset({related[0][0], related[1][0]}),
+                frozenset({related[0][0], related[2][0]}),
+                frozenset({related[1][0], related[2][0]}),
+            },
+        )
+        self.assertTrue(all(
+            candidate["token_overlap"] >= self.manager._LEXICAL_AUDIT_MIN_SHARED_TOKENS
+            and candidate["similarity"] >= self.manager._LEXICAL_AUDIT_DICE_THRESHOLD
+            for candidate in report["lexical_candidates"]
+        ))
+        self.assertTrue(all(
+            "commonvault" not in candidate["shared_tokens"]
+            for candidate in report["lexical_candidates"]
+        ))
+        self.assertTrue(report["lexical_candidates"])
+        self.assertFalse(report["healthy"])
+
+    def test_lexical_audit_does_not_reclassify_cumulative_project_logs(self):
+        self.manager.propose(MemoryCandidate(
+            text="The project keeps Markdown as the canonical source and records the migration decision.",
+            kind="project", tag="stated", subject="shared-project", writer="codex",
+        ))
+        self.manager.propose(MemoryCandidate(
+            text="The project keeps Markdown as the canonical source and records the retrieval decision.",
+            kind="project", tag="stated", subject="shared-project", writer="codex",
+        ))
+
+        report = self.manager.subject_audit(kinds=["project"])
+        self.assertEqual(report["lexical_candidates"], [])
+        self.assertTrue(report["healthy"])
 
     def test_session_subjects_are_never_treated_as_variants(self):
         """Session subjects are per-instance (writer-title-date), not entity names --

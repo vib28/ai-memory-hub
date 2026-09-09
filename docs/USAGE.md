@@ -178,8 +178,17 @@ handoff, and no bug issue is closed because a session was published.
 ~~~
 
 A candidate is something to inspect, not proof that two entries should be merged.
-Use stable subjects and explicit entity IDs for related writes. The project-link and
-entity-alias-link commands preview by default; --apply changes stored identity/linking.
+`subject-audit` reports exact duplicates, subject-prefix variants, possible file
+splits, optional embedding candidates, and a conservative `lexical_candidates`
+fallback for singleton-fact kinds (`preference` and `profile`). It automatically
+derives per-kind token salience from active-record document frequency, considers
+tokens of length four or more, and omits tokens present in more than 75% of a
+corpus with at least four records. It then requires at least four shared salient
+tokens plus a token Dice score of 0.25. It works even when no local embedding
+endpoint is configured. Cumulative project, topic, decision and person logs are
+not sent through this tier. Use stable subjects and explicit entity IDs for related
+writes. The project-link and entity-alias-link commands preview by default;
+--apply changes stored identity/linking.
 Read their help and the [identity boundary](../ARCHITECTURE.md#identity-and-duplicate-handling)
 before applying a decision.
 

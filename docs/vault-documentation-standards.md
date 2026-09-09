@@ -164,10 +164,10 @@ the single current ordering and records the remaining open work.
 | 8 | #46 — Consolidate duplicated preference rule via "Applies to" | Content decision — complete | The approved surviving rule now names both applicable entities |
 | 9 | #47 — Resolve flagged project/plan file-split | Content decision — complete | `project_link` merged the completed plan entity with a reversible backup; the targeted audit finding is gone |
 | 10 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability — complete | Active content now supplies deterministic, readable descriptions |
-| 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth — open | Most involved: it needs investigation of why semantic candidates missed a case a human sees immediately |
+| 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth — complete | Adaptive lexical candidates now complement optional embeddings without changing write-time decisions |
 | 12 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision — complete: keep session-only blocks | The current inline templates plus safe companion deletion are sufficient; any future block format needs a separate migration proposal |
 
-The table above records the original design-review sequence. #40, #41, and #46–#48
+The table above records the original design-review sequence. #40, #41, and #46–#49
 are now complete; current execution order, including the remaining dashboard
 verification #64, the completed date-filter follow-up #65, and transcript enhancement
 #66, is maintained in [`docs/issue-priority-order.md`](issue-priority-order.md).

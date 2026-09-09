@@ -178,8 +178,16 @@ Routing uses explicit identity and recorded aliases, not fuzzy title-prefix merg
 Audit candidates do not authorize unattended merging or deletion.
 
 Write matching uses normalized hashes and lexical similarity. The current thresholds
-are 0.985 for duplicate suppression and 0.85 for the update-review band. Embeddings
-remain advisory for search/audit; they do not decide write-time removal.
+are 0.985 for duplicate suppression and 0.85 for the update-review band. The
+read-only `subject_audit` also reports a separate conservative `lexical_candidates`
+tier for singleton-fact kinds (`preference` and `profile`) whose subjects are not
+prefix-related: at least four shared corpus-salient tokens of length four or more
+and a token Dice score of 0.25. Salience is derived per kind from active-record
+document frequency; tokens present in more than 75% of a corpus of four or more
+records are omitted automatically. Cumulative project/topic/decision/person logs
+are intentionally excluded so normal historical entries are not mislabeled as
+duplicates. This is an audit signal, not a write decision or an automatic link.
+Embeddings remain advisory for search/audit; they do not decide write-time removal.
 
 Session retry detection is scoped to the canonical project session path
 ([#55](https://github.com/vib28/ai-memory-hub/issues/55)); identical prose in distinct

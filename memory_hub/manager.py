@@ -4,6 +4,7 @@ import re
 import uuid
 import json
 import shutil
+from collections import Counter
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -946,6 +947,44 @@ class MemoryManager:
     # they still get subject-variant comparison, just not the file-split check.
     _SUBJECT_SPRAWL_DIRS = {"project": "projects", "topic": "topics",
                             "decision": "decisions", "person": "people"}
+    # A conservative, embedding-free audit tier for related singleton facts whose
+    # subjects do not share a prefix (#49). Token salience is derived from the
+    # current same-kind corpus at audit time rather than from a hand-maintained
+    # English stopword list.
+    _LEXICAL_AUDIT_MIN_SHARED_TOKENS = 4
+    _LEXICAL_AUDIT_DICE_THRESHOLD = 0.25
+
+    @classmethod
+    def _lexical_audit_tokens(cls, text: str) -> set[str]:
+        return set(re.findall(r"[a-z0-9]{4,}", normalize_text(text)))
+
+    @classmethod
+    def _lexical_audit_candidate(cls, left: MemoryRecord, right: MemoryRecord,
+                                 salient_tokens: dict[str, set[str]]) -> dict | None:
+        """Return a reviewable text-overlap candidate, or ``None`` (#49).
+
+        This is deliberately separate from write-time duplicate classification:
+        it only helps a read-only audit surface related records for human review.
+        Subject identity and exact-hash duplicate handling remain independent.
+        """
+        if text_hash(left.text) == text_hash(right.text):
+            return None
+        left_tokens = salient_tokens[left.memory_id]
+        right_tokens = salient_tokens[right.memory_id]
+        shared = left_tokens & right_tokens
+        denominator = len(left_tokens) + len(right_tokens)
+        dice = (2 * len(shared) / denominator) if denominator else 0.0
+        if (len(shared) < cls._LEXICAL_AUDIT_MIN_SHARED_TOKENS
+                or dice < cls._LEXICAL_AUDIT_DICE_THRESHOLD):
+            return None
+        return {
+            "kind": left.kind,
+            "memory_ids": [left.memory_id, right.memory_id],
+            "subjects": [left.subject, right.subject],
+            "shared_tokens": sorted(shared),
+            "token_overlap": len(shared),
+            "similarity": round(dice, 4),
+        }
 
     def subject_audit(self, kinds: list[str] | None = None) -> dict:
         """Read-only report of exact duplicates and subject-variant candidates across
@@ -993,6 +1032,45 @@ class MemoryManager:
                     else:
                         subject_variant_candidates.append({"kind": kind, "subjects": [left, right]})
 
+        lexical_candidates = []
+        by_kind_records: dict[str, list[MemoryRecord]] = {}
+        for record in records:
+            # Only singleton facts use this lexical tier. Cumulative logs have
+            # intentional historical overlap and keep their existing audit paths.
+            if record.kind in SINGLETON_KINDS:
+                by_kind_records.setdefault(record.kind, []).append(record)
+        for kind, kind_records in sorted(by_kind_records.items()):
+            tokens_by_id = {
+                record.memory_id: self._lexical_audit_tokens(record.text)
+                for record in kind_records
+            }
+            document_frequency = Counter(
+                token for tokens in tokens_by_id.values() for token in tokens
+            )
+            # A small corpus cannot reliably identify common vocabulary. Once
+            # there are four or more records, omit only tokens present in more
+            # than 75% of this kind's corpus; this adapts to the user's own
+            # terminology without maintaining a language-specific list.
+            max_common_documents = (
+                max(1, int(len(kind_records) * 0.75)) if len(kind_records) >= 4 else len(kind_records)
+            )
+            salient_tokens = {
+                memory_id: {
+                    token for token in tokens
+                    if document_frequency[token] <= max_common_documents
+                }
+                for memory_id, tokens in tokens_by_id.items()
+            }
+            for index, left in enumerate(kind_records):
+                for right in kind_records[index + 1:]:
+                    candidate = self._lexical_audit_candidate(left, right, salient_tokens)
+                    if candidate:
+                        lexical_candidates.append(candidate)
+        lexical_candidates.sort(
+            key=lambda item: (item["similarity"], item["token_overlap"], item["memory_ids"]),
+            reverse=True,
+        )
+
         possible_file_splits = []
         alias_collisions = []
         for kind in target_kinds:
@@ -1036,11 +1114,13 @@ class MemoryManager:
             "kinds": target_kinds,
             "exact_duplicate_groups": exact_duplicate_groups,
             "subject_variant_candidates": subject_variant_candidates,
+            "lexical_candidates": lexical_candidates[:200],
             "possible_file_splits": possible_file_splits,
             "alias_collisions": alias_collisions,
             "linked_entities": linked_entities,
             "semantic_candidates": semantic_candidates,
             "healthy": not (exact_duplicate_groups or subject_variant_candidates
+                            or lexical_candidates
                             or possible_file_splits or alias_collisions or semantic_candidates),
         }
 

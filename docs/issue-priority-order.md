@@ -19,7 +19,7 @@ flowchart LR
     J["#64 dashboard verification"] -. opportunistic .-> F
     J --> K["#65 dashboard date filter complete"]
     L["#66 full session transcript"] -. later enhancement .-> J
-    M["#46/#47/#48 vault quality complete"] -. history .-> J
+    M["#46/#47/#48/#49 vault quality complete"] -. history .-> J
 ```
 
 ## Completed prerequisite
@@ -94,6 +94,12 @@ split was resolved with the reviewed, reversible `project_link` operation. The p
 entity is now an alias of the canonical project, with a timestamped merge backup;
 the targeted `subject_audit()` `possible_file_splits` finding is gone.
 
+[#49](https://github.com/vib28/ai-memory-hub/issues/49) — `subject_audit()` now adds
+an adaptive, read-only lexical candidate tier for singleton facts with non-prefix
+subjects. Per-kind document frequency derives token salience automatically, while
+the optional Nomic embedding path remains available as a semantic signal; no
+automatic linking or rewriting was added.
+
 ## Continuity and handoff first
 
 | Order | Issue | Work | Reason for position |
@@ -106,8 +112,7 @@ the targeted `subject_audit()` `possible_file_splits` finding is gone.
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
 | 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
-| 4 | [#49](https://github.com/vib28/ai-memory-hub/issues/49) | Broaden conceptual duplicate detection | Most invasive matching change and therefore last among the current vault-quality issues. |
-| 5 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
+| 4 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
 
 ## Dependency chain
 
@@ -117,8 +122,8 @@ The critical implementation path is:
 
 The remaining items do not block the first-priority continuity phase. #40 is
 complete and remains an independent retrieval-quality change. #41, #46, #47, #48, #50,
-#51, and #65 are complete. #64's manual verification can be performed opportunistically;
-#49 is the remaining vault-quality queue. #66 is intentionally later because it spans
+#51, #49, and #65 are complete. #64's manual verification can be performed opportunistically;
+#66 is the remaining later enhancement because it spans
 provider hooks, durable capture, Obsidian objects, configuration, and retention.
 
 This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,

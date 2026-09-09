@@ -74,8 +74,8 @@ manual trigger. Explicit session-auto and GitHub export permissions remain separ
 
 The earlier vault-quality work is now split between completed history and the canonical
 open queue: #40 (section embeddings) and #41 (per-kind authoring templates) are complete;
-#42-#45 are closed; #46/#47/#48 are complete preference, project-file, and index
-decisions; #49 is the remaining variant-detection improvement; #50 is complete and
+#42-#45 are closed; #46/#47/#48/#49 are complete preference, project-file, index,
+and variant-detection decisions; #50 is complete and
 #51 records the session-only multiline-format decision. Dashboard verification and
 date filtering are #64/#65, and optional full transcript capture is #66. Follow
 [`docs/issue-priority-order.md`](issue-priority-order.md) for the current order; do not
@@ -146,6 +146,13 @@ path and human-readable Obsidian vault.
   duplicate-safe reruns, and post-import `memory_audit()` verification.
 - Read-only semantic candidate reporting through `subject_audit()` when local embeddings
   are available; vectors do not affect write decisions.
+- Read-only conservative lexical candidate reporting through `subject_audit()` for
+  conceptually related singleton facts (`preference`/`profile`) whose subjects do
+  not share a prefix. It automatically derives per-kind token salience from active
+  record frequency, then requires four shared salient tokens of length four or more
+  and a token Dice score of at least 0.25. Cumulative project/topic/decision/person
+  logs are excluded to avoid reclassifying intentional history. It never links or
+  rewrites records ([#49](https://github.com/vib28/ai-memory-hub/issues/49)).
 - Safe write-path duplicate pruning based only on a mathematical text-length bound; it
   preserves the existing lexical thresholds and does not use embeddings for write decisions.
 
