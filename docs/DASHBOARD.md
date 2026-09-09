@@ -55,6 +55,19 @@ file path and memory ID remain visible. **View original Markdown** shows the exa
 stored record or session block. Search previews are deliberately short; the reading
 pane is not truncated. A missing source record produces an error, not invented content.
 
+### Filter by date
+
+The Library includes an optional date filter alongside text, type, and tag
+filters. Use **On date** for one calendar day, or **From** and **To** for an
+inclusive range. Stored timestamps are compared by their `YYYY-MM-DD` date
+portion, so a session recorded at any time on a selected day is included.
+
+The date controls compose with the other filters and only change the visible
+list; they never rewrite canonical Markdown or dashboard metadata. **Clear
+dates** removes the date constraint while leaving the other filters unchanged.
+Invalid ranges or conflicting single-day/range inputs show an explanation and
+return no matches until corrected.
+
 Use **Refresh data** after another tool changes the indexed library. A file changed
 outside AI Memory Hub may need reindexing before its new records enter the library.
 

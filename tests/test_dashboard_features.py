@@ -142,6 +142,12 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertIn("new Set(rows.map(r=>r.group_key))", HTML)
         self.assertIn("r.subject||r.group_label", HTML)
 
+    def test_dashboard_exposes_composable_date_filter(self):
+        for control in ('date-on', 'date-from', 'date-to', 'clear-date', 'date-filter-status'):
+            self.assertIn(f'id="{control}"', HTML)
+        self.assertIn('function dateFilter()', HTML)
+        self.assertIn('matchesDate(r,date)', HTML)
+
     def test_dashboard_recency_uses_the_full_canonical_project_group(self):
         with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
             older = self.manager.propose(MemoryCandidate(

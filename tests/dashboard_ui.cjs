@@ -26,15 +26,32 @@ const context=vm.createContext({document,window:{matchMedia:()=>({matches:false}
   localStorage:{getItem:key=>stored.get(key)||null,setItem:(key,value)=>stored.set(key,value)},
   Option:class {},console});
 const code=fs.readFileSync('memory_hub/static/app.js','utf8').replace(/safe\(refresh\);\s*$/,'');
-vm.runInContext(code+'\nthis.ui={state,editRelations,markdown,pendingBody,applyTheme};',context);
+vm.runInContext(code+'\nthis.ui={state,editRelations,markdown,pendingBody,applyTheme,renderList,dateFilter};',context);
 const {ui}=context;
 ui.state.rows=[
-  {memory_id:'self',subject:'current',text:'current memory',tags:['work'],kind:'session'},
-  {memory_id:'target',subject:'release-plan',text:'Check the launch checklist',tags:['release'],kind:'project',writer:'codex'},
-  {memory_id:'second',subject:'writing-style',text:'Prefer short paragraphs',tags:[],kind:'preference',writer:'user'},
+  {memory_id:'self',subject:'current',text:'current memory',tags:['work'],kind:'session',date:'2026-09-10T08:00:00',writer:'codex'},
+  {memory_id:'target',subject:'release-plan',text:'Check the launch checklist',tags:['release'],kind:'project',writer:'codex',date:'2026-09-09'},
+  {memory_id:'second',subject:'writing-style',text:'Prefer short paragraphs',tags:[],kind:'preference',writer:'user',date:'2026-09-11T18:30:00'},
 ];
 const element=id=>document.getElementById(id);
 (async()=>{
+  ui.renderList();
+  assert.equal(element('memory-list').children.length,3,'No date constraint must show all memories');
+  element('date-on').value='2026-09-10';
+  ui.renderList();
+  assert.equal(element('memory-list').children.length,1,'Single-day filtering must include timestamped records');
+  element('date-on').value='';element('date-from').value='2026-09-09';element('date-to').value='2026-09-10';
+  ui.renderList();
+  assert.equal(element('memory-list').children.length,2,'Bounded date filtering must include both boundaries');
+  element('search').value='checklist';element('kind').value='project';element('tag-filter').value='release';
+  ui.renderList();
+  assert.equal(element('memory-list').children.length,1,'Date filtering must compose with search, kind and tag filters');
+  element('date-from').value='2026-09';element('date-to').value='';
+  ui.renderList();
+  assert.equal(element('memory-list').children.length,0,'Incomplete date input must not return unfiltered rows');
+  assert.match(element('date-filter-status').textContent,/YYYY-MM-DD/);
+  element('search').value='';element('kind').value='';element('tag-filter').value='';element('date-from').value='';element('date-to').value='';element('clear-date').onclick();
+  assert.equal(element('memory-list').children.length,3,'Clearing dates must restore the complete result set');
   ui.editRelations({memory_id:'self',tags:[],links:[],source_tags:['claude'],metadata_revision:'rev'});
   assert.equal(element('link-results').children.length,2,'Opening lookup must immediately offer other memories');
   assert.equal(element('tag-results').children.length,3,'Existing tags, including source tags, are discoverable');
@@ -68,4 +85,3 @@ const element=id=>document.getElementById(id);
   }
   console.log('Dashboard JavaScript unit tests passed: lookups, renderer, dialog choices, four themes.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-

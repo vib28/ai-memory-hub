@@ -67,3 +67,4 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .lookup-preview{font-size:.875rem;color:var(--muted);line-height:1.5;margin-top:5px;overflow-wrap:anywhere}
 .lookup-option.create-tag{color:var(--blue);border-style:dashed}
 .rail :focus-visible{outline-color:var(--on-rail)}
+.date-filter{border:0;padding:14px 0 0;margin:0;min-width:0}.date-filter legend{font-size:.875rem;font-weight:600;padding:0}.date-filter label{font-size:.8125rem;font-weight:500;margin-bottom:0}.date-filter input{margin-top:5px;padding:8px}.date-range{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.clear-filter{margin-top:8px;padding:6px 10px;font-size:.8125rem}.date-filter .meta{margin:8px 0 0}

@@ -15,8 +15,10 @@ flowchart LR
     D --> E["#60 publication complete"]
     E --> F["#61 continuity closeout"]
     F --> G["#62 paired benchmark"]
-    I["#40 retrieval quality"] -. independent .-> B
+    I["#40 retrieval quality complete"] -. independent .-> B
     J["#64 dashboard verification"] -. opportunistic .-> F
+    J --> K["#65 dashboard date filter"]
+    L["#66 full session transcript"] -. later enhancement .-> J
 ```
 
 ## Completed prerequisite
@@ -53,6 +55,11 @@ owned issue/comment updates, bidirectional links, health reporting, and reversib
 startup registration — is complete. Live repository publication remains an opt-in
 operator action; #61 and #62 track closeout and measurement.
 
+[#40](https://github.com/vib28/ai-memory-hub/issues/40) - per-section session
+embeddings with section-aware retrieval, bounded chunking, and backward-compatible
+fallback for legacy session records - is complete. Its focused tests, full suite,
+lint, and wheel build passed; the implementation was pushed in commit `fe5ec37`.
+
 ## Continuity and handoff first
 
 | Order | Issue | Work | Reason for position |
@@ -64,15 +71,16 @@ operator action; #61 and #62 track closeout and measurement.
 
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
-| 3 | [#40](https://github.com/vib28/ai-memory-hub/issues/40) | Embed session sections separately | Independent retrieval-quality improvement after continuity correctness. |
-| 4 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
+| 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
+| 4 | [#65](https://github.com/vib28/ai-memory-hub/issues/65) | Add a dashboard date filter | User-visible retrieval bug that is small, testable, and adjacent to the dashboard verification work. |
 | 5 | [#41](https://github.com/vib28/ai-memory-hub/issues/41) | Document per-kind entry templates | Foundation for the remaining vault-content quality work. |
 | 6 | [#50](https://github.com/vib28/ai-memory-hub/issues/50) | Make companion-block deletion safe | Small correctness improvement needed before relying on richer templates. |
 | 7 | [#51](https://github.com/vib28/ai-memory-hub/issues/51) | Decide on multiline formats beyond sessions | Architectural decision best made after template and deletion semantics are clear. |
 | 8 | [#48](https://github.com/vib28/ai-memory-hub/issues/48) | Improve `MEMORY.md` index descriptions | Readability improvement, but not an operational blocker. |
 | 9 | [#46](https://github.com/vib28/ai-memory-hub/issues/46) | Consolidate duplicated preference rules | Vault-content cleanup that benefits from #41's template shape. |
 | 10 | [#47](https://github.com/vib28/ai-memory-hub/issues/47) | Resolve the recurring project/plan split finding | Depends on the related project-link/status decision. |
-| 11 | [#49](https://github.com/vib28/ai-memory-hub/issues/49) | Broaden conceptual duplicate detection | Most invasive matching change and therefore last among the current issues. |
+| 11 | [#49](https://github.com/vib28/ai-memory-hub/issues/49) | Broaden conceptual duplicate detection | Most invasive matching change and therefore last among the current vault-quality issues. |
+| 12 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Broad capture enhancement related to #61; schedule after the correctness and vault-quality queue. |
 
 ## Dependency chain
 
@@ -81,9 +89,10 @@ The critical implementation path is:
 `#54/#56/#57/#58/#59/#60 completed → #61 → #62`
 
 The remaining items do not block the first-priority continuity phase. #40 is
-independent and can move earlier if retrieval quality becomes the immediate
-product concern. #64's manual verification can also be performed opportunistically
-without changing the runtime dependency chain.
+complete and remains an independent retrieval-quality change. #64's manual
+verification can be performed opportunistically; #65 follows it as the next
+dashboard correctness change. #66 is intentionally later because it spans
+provider hooks, durable capture, Obsidian objects, configuration, and retention.
 
-This ordering was recorded on 2026-09-09 after reviewing the open issue bodies,
-their stated dependencies, and the current branch state.
+This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,
+their historical comments, stated dependencies, and the current branch state.
