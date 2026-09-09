@@ -194,7 +194,8 @@ $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 
 The setup creates the environment and initializes missing vault files. The connection
 script attempts supported installed clients. The dashboard runs locally, normally at
-[localhost:8765](http://127.0.0.1:8765). Start a new client session after connecting.
+[localhost:8765](http://127.0.0.1:8765) (configurable via `MEMORY_DASHBOARD_PORT`/
+`MEMORY_DASHBOARD_HOST`). Start a new client session after connecting.
 
 Verify the first run in this order:
 

@@ -59,15 +59,17 @@ $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
-Check the vault path and whether another process already uses port 8765.
-For a different local port:
+Check the vault path and whether another process already uses port 8765 (the default;
+`MEMORY_DASHBOARD_PORT` overrides it consistently across `app.py`, `dashboard.py` and
+every `start-*.ps1` launcher — see [Configuration](CONFIGURATION.md)).
+For a one-off different local port:
 
 ~~~powershell
 .\.venv\Scripts\python.exe -m memory_hub.dashboard --vault $memoryVault --port 8766
 ~~~
 
 Keep the default loopback binding; changing the port is not permission to expose the
-dashboard publicly.
+dashboard publicly. `MEMORY_DASHBOARD_HOST` only accepts `127.0.0.1` or `localhost`.
 
 ## Database will not open
 

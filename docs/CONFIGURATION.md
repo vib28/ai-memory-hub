@@ -35,8 +35,8 @@ process after configuration changes.
 | MEMORY_TRANSCRIPT_DB | Operational SQLite path for opt-in transcript events | `<vault>/.ai-memory-hub/transcripts.sqlite3` |
 | MEMORY_TRANSCRIPT_RETENTION_DAYS | Days to retain transcript event rows; zero means retain until forget | 0 |
 | MEMORY_WORKER_TOKEN_BUDGET | Estimated captured-evidence tokens before a checkpoint | 4000 |
-| MEMORY_WORKER_FLUSH_SECONDS | Maximum age of new evidence before a checkpoint | 60 |
-| MEMORY_WORKER_IDLE_SECONDS | Age at which an idle closure becomes provisional | 300 |
+| MEMORY_WORKER_FLUSH_SECONDS | Maximum age of the oldest pending row before a routine checkpoint | 60 |
+| MEMORY_WORKER_IDLE_SECONDS | Age of the newest pending row (checked before flush) at which a checkpoint closes provisional instead of routine | 300 |
 | MEMORY_WORKER_INTERVAL_SECONDS | Worker polling interval | 15 |
 | MEMORY_WORKER_BATCH_LIMIT | Maximum observations claimed per worker pass | 500 |
 | MEMORY_WORKER_HEALTH | Optional explicit worker-health JSON path | Per-vault default |
@@ -50,6 +50,10 @@ process after configuration changes.
 | MEMORY_LLM_API_KEY | Optional transcript-extractor authorization | Unset; not used by the consolidator |
 | MEMORY_EMBED_BASE_URL | Embeddings endpoint base | Unset, so embeddings are disabled |
 | MEMORY_EMBED_MODEL | Embedding model name | nomic-embed-text |
+| MEMORY_DASHBOARD_HOST | Dashboard bind address (loopback only; `127.0.0.1` or `localhost`) | 127.0.0.1 |
+| MEMORY_DASHBOARD_PORT | Dashboard/tray port, shared by `memory_hub.app`, `memory_hub.dashboard` and all three `start-*.ps1` launchers | 8765 |
+| GEMINI_CONFIG_DIR | Override for the Gemini CLI settings directory | `~/.gemini` |
+| QWEN_CONFIG_DIR | Override for the Qwen CLI settings directory | `~/.qwen` |
 
 See [mcp_server.py](../memory_hub/mcp_server.py),
 [capture.py](../memory_hub/capture.py), [extractor.py](../memory_hub/extractor.py),

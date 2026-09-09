@@ -56,8 +56,13 @@ summary.
 Structured payload values are stored as UTF-8 JSON and string payloads as UTF-8
 text. The Markdown renderer places the stored representation in a delimited
 `json` or `text` block. This preserves the received values without replacing them
-with the four-section model summary. Generated timestamps are timezone-aware when
-the provider supplies a timestamp or when the local fallback is used.
+with the four-section model summary. Generated timestamps are timezone-aware
+whether the provider supplied one or the local capture time was substituted — but
+the two are never presented as equivalent. Each event records a
+`generated_at_source` of `provider` or `capture`, and the rendered Markdown adds
+an explicit "not supplied by provider — capture time recorded" line on a
+substituted event only, so a reader can tell a real provider timestamp from a
+local fallback without inspecting the SQLite row.
 
 Every event has a stable ID and a session-local monotonic sequence. A provider ID
 is preferred. If it is absent, a deterministic fallback is derived from the
@@ -83,7 +88,10 @@ Checkpoint and final summaries contain a link such as:
 The transcript lists real links back to the summary blocks, while
 `/sessions/session-manifest.json` records the transcript path and event coverage.
 Retries reuse the same checkpoint identity and re-render the same transcript rather
-than appending a second copy.
+than appending a second copy. The worker's routine poll-driven re-render of
+unattached events resolves the same path/project/links from the manifest before
+rendering, so it reproduces the existing file rather than overwriting it with a
+copy that has lost its summary links or landed at a different path.
 
 ## Lifecycle, retention and privacy
 
@@ -95,9 +103,11 @@ retryable; the synchronous hook does not wait for a model or remote service.
 
 `MEMORY_TRANSCRIPT_RETENTION_DAYS` controls operational event-row retention. The
 default `0` keeps rows until explicit deletion. Forgetting the last canonical
-summary in a session group removes its transcript rows and Markdown object; if
-other checkpoints remain, the transcript is re-rendered with only their links.
-Deletion is local and does not publish a raw transcript.
+summary in a session group removes its transcript rows and every Markdown object
+the group's rows ever used — the unscoped default path and any project-scoped
+path a row's project resolved to — not only whichever single path the caller
+happened to pass; if other checkpoints remain, the transcript is re-rendered
+with only their links. Deletion is local and does not publish a raw transcript.
 
 This option is deliberately separate from `MEMORY_CAPTURE_EXCLUDE_PATHS` and the
 bounded observation redaction rules: enabling it means the operator accepts that

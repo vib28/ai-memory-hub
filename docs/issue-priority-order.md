@@ -43,6 +43,9 @@ checkpoint processing, trigger coalescing, provisional/final state handling,
 privacy filtering, terminal retention, health reporting, and reversible startup
 registration — is complete. The supported Claude/Codex handoff was delivered in #59;
 interactive client-launch certification remains an explicit limitation in its record.
+A 2026-09-09 acceptance-criteria audit found the idle-closure trigger unreachable at
+the shipped defaults (`flush_seconds=60 < idle_seconds=300` meant the flush trigger
+always claimed pending rows first); fixed and verified in #71.
 
 [#59](https://github.com/vib28/ai-memory-hub/issues/59) — provider-specific lifecycle
 capture, model-free SessionStart handoff, bounded quoted-evidence packets, age and
@@ -55,6 +58,10 @@ approval, accepted-only sanitization, durable outbox retries, timeout reconcilia
 owned issue/comment updates, bidirectional links, health reporting, and reversible
 startup registration — is complete. Live repository publication remains an opt-in
 operator action; #61 and #62 track closeout and measurement.
+A 2026-09-09 acceptance-criteria audit found "retries do not create duplicate
+issues/comments" held only within the first 100 issues/comments (unpaginated lookup),
+and that a publish pass rewrote the whole group's already-`sent` comments instead of
+only the newly claimed batch; both fixed and verified in #73 and #74.
 
 [#40](https://github.com/vib28/ai-memory-hub/issues/40) - per-section session
 embeddings with section-aware retrieval, bounded chunking, and backward-compatible
@@ -106,6 +113,13 @@ events with stable IDs/sequences, renders linked Obsidian Markdown, reports work
 health, honors retention/forget cleanup, and remains outside ordinary retrieval and
 sanitized GitHub export. Live delivery from an installed external client remains an
 operational boundary rather than an unverified repository claim.
+A 2026-09-09 acceptance-criteria audit found three gaps against the closed criteria:
+the worker's routine re-render silently stripped the required summary↔transcript
+back-links and could land a second orphaned file at a different path (#68); an
+absent provider `generated_at` was invented rather than recorded as absent (#77);
+and `delete_group` left project-scoped transcript Markdown on disk when the caller
+omitted an explicit path (#76). All three are fixed and verified; #70 fixed a
+related transcript-path divergence in the capture bridge that fed #68.
 
 ## Current execution status
 

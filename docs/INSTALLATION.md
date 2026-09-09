@@ -91,7 +91,9 @@ before using `auto` or a remote model endpoint.
 .\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
-The dashboard normally opens at [localhost:8765](http://127.0.0.1:8765).
+The dashboard normally opens at [localhost:8765](http://127.0.0.1:8765) — set
+`MEMORY_DASHBOARD_PORT` (and `MEMORY_DASHBOARD_HOST`, still loopback-only) to change it;
+see [Configuration](CONFIGURATION.md).
 Keep the terminal open while using it. The same command starts the optional tray.
 To run without a tray:
 
