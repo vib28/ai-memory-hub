@@ -30,6 +30,48 @@ ENTRY_RE = re.compile(
 SESSION_RE = re.compile(r"^## (?P<slug>[a-zA-Z0-9_-]+)\s*\n(?P<body>.*?)(?=^## |\Z)", re.M | re.S)
 SESSION_ID_RE = re.compile(r"<!-- session:(?P<id>[a-zA-Z0-9_-]+) -->")
 SESSION_META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
+SESSION_SECTION_RE = re.compile(r"^### (?P<name>[^\r\n]+)\s*$", re.M)
+
+
+def session_embedding_chunks(path: Path, memory_id: str) -> list[tuple[str, str]]:
+    """Read non-empty Markdown sections for one session embedding.
+
+    The search index is disposable, so this deliberately reads the canonical
+    session block from disk rather than relying on the live session payload.
+    ``parse_records`` keeps its historical flattened text contract; callers
+    that need section-level vectors use this separate reader instead.
+    """
+    if not path.exists() or path.suffix.lower() != ".md":
+        return []
+    try:
+        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+    except OSError:
+        return []
+    if str(meta.get("type", "")) != "session":
+        return []
+    for block in SESSION_RE.finditer(body):
+        marker = SESSION_ID_RE.search(block.group("body"))
+        if not marker or marker.group("id") != memory_id:
+            continue
+        sections = list(SESSION_SECTION_RE.finditer(block.group("body")))
+        chunks: list[tuple[str, str]] = []
+        for index, section in enumerate(sections):
+            end = sections[index + 1].start() if index + 1 < len(sections) else len(block.group("body"))
+            section_body = block.group("body")[section.end():end]
+            values: list[str] = []
+            for line in section_body.splitlines():
+                value = line.strip()
+                if not value or value.startswith("<!--") or value.startswith("**"):
+                    continue
+                if value.startswith("- "):
+                    value = value[2:].strip()
+                if value:
+                    values.append(value)
+            text = " ".join(values)
+            if text:
+                chunks.append((slugify(section.group("name")), text))
+        return chunks
+    return []
 
 def today() -> str:
     return date.today().isoformat()

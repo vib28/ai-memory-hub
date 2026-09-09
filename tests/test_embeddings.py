@@ -9,6 +9,7 @@ from pathlib import Path
 from memory_hub.embeddings import LocalEmbeddingProvider, cosine_similarity
 from memory_hub.index import MemoryIndex, embedding_text_for
 from memory_hub.models import MemoryRecord
+from memory_hub.vault import parse_records
 
 
 class FakeEmbeddingProvider:
@@ -29,6 +30,13 @@ class RecordingEmbeddingProvider:
     def embed(self, texts):
         self.calls.extend(texts)
         return [[float(len(t)), 0.0] for t in texts]
+
+
+class SectionEmbeddingProvider:
+    model = "sections"
+
+    def embed(self, texts):
+        return [[1.0, 0.0] if "sqlite" in text.lower() else [0.0, 1.0] for text in texts]
 
 
 class EmbeddingTests(unittest.TestCase):
@@ -97,6 +105,79 @@ class EmbeddingTests(unittest.TestCase):
             index.search("responses", 5)
             index.close()
         self.assertEqual(provider.calls, ["responses"])
+
+    def test_session_sections_embed_separately_and_resolve_to_parent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "sessions" / "codex.md"
+            path.parent.mkdir()
+            path.write_text(
+                "---\n"
+                "type: session\n"
+                "---\n\n"
+                "## codex-retrieval-2026-09-09-120000\n"
+                "**Model:** codex\n"
+                "**Session title:** Retrieval\n"
+                "**Date:** 2026-09-09T12:00:00\n"
+                "**Project:** None\n"
+                "**Tags:** #codex #2026-09-09\n\n"
+                "### Investigated\n"
+                "- Reviewed the OAuth refresh flow.\n\n"
+                "### Learned\n"
+                "- SQLite WAL checkpoints keep writes recoverable.\n\n"
+                "### Completed\n\n"
+                "### Next Steps\n"
+                "- Verify the worker retry path.\n\n"
+                "<!-- session:session-1 -->\n",
+                encoding="utf-8",
+            )
+            record = parse_records(path, root)[0]
+            self.assertEqual(
+                record.text,
+                "Reviewed the OAuth refresh flow. SQLite WAL checkpoints keep writes recoverable. "
+                "Verify the worker retry path.",
+            )
+            provider = SectionEmbeddingProvider()
+            index = MemoryIndex(root, provider)
+            index.upsert(record)
+
+            keys = [row[0] for row in index.conn.execute(
+                "SELECT memory_id FROM memory_embeddings ORDER BY memory_id"
+            )]
+            self.assertEqual(keys, ["session-1::investigated", "session-1::learned", "session-1::next-steps"])
+            self.assertEqual(index.search("SQLite WAL", 1)[0]["memory_id"], "session-1")
+
+            live_vectors = [tuple(row) for row in index.conn.execute(
+                "SELECT memory_id, vector_json, content_hash FROM memory_embeddings ORDER BY memory_id"
+            )]
+            index.rebuild(parse_records(path, root))
+            rebuilt_vectors = [tuple(row) for row in index.conn.execute(
+                "SELECT memory_id, vector_json, content_hash FROM memory_embeddings ORDER BY memory_id"
+            )]
+            self.assertEqual(rebuilt_vectors, live_vectors)
+            index.close()
+
+    def test_semantic_candidates_resolve_chunked_session_pairs_to_parent_ids(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "sessions" / "codex.md"
+            path.parent.mkdir()
+            path.write_text(
+                "---\n"
+                "type: session\n"
+                "---\n\n"
+                "## first\n### Investigated\n- SQLite recovery notes.\n\n<!-- session:first -->\n\n"
+                "## second\n### Learned\n- SQLite recovery decisions.\n\n<!-- session:second -->\n",
+                encoding="utf-8",
+            )
+            records = parse_records(path, root)
+            index = MemoryIndex(root, SectionEmbeddingProvider())
+            for record in records:
+                index.upsert(record)
+            pairs = index.semantic_candidates("session")
+            self.assertEqual(pairs[0]["memory_ids"], ["first", "second"])
+            self.assertNotIn("::", " ".join(pairs[0]["memory_ids"]))
+            index.close()
 
     def test_provider_sorts_response_by_index(self):
         class Response:

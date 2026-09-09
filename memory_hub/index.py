@@ -10,6 +10,7 @@ from typing import Iterable
 from .models import MemoryRecord
 from .utils import text_hash
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
+from .vault import session_embedding_chunks
 
 
 def embedding_text_for(record: MemoryRecord) -> str:
@@ -26,6 +27,11 @@ def embedding_text_for(record: MemoryRecord) -> str:
     indexed side is the standard asymmetric-retrieval pattern.
     """
     return f"[{record.kind}] {record.subject}: {record.text}"
+
+
+def embedding_text_for_section(record: MemoryRecord, section: str, text: str) -> str:
+    """Add the session section label without changing the parent record text."""
+    return f"[{record.kind}] {record.subject} [{section}]: {text}"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -66,7 +72,8 @@ CREATE INDEX IF NOT EXISTS idx_pending_status ON pending(status, created_at);
 
 class MemoryIndex:
     def __init__(self, vault_root: Path, embedding_provider: LocalEmbeddingProvider | None = None):
-        self.path = Path(vault_root) / ".memory_index.sqlite3"
+        self.vault_root = Path(vault_root)
+        self.path = self.vault_root / ".memory_index.sqlite3"
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.embedding_provider = embedding_provider
@@ -127,23 +134,45 @@ class MemoryIndex:
         self._embed_record(r)
 
     def _embed_record(self, record: MemoryRecord) -> None:
-        if not self.embedding_provider:
-            return
-        text = embedding_text_for(record)
-        try:
-            vector = self.embedding_provider.embed([text])[0]
-        except Exception:
-            return
         with self.conn:
             self.conn.execute(
-                "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)",
-                (record.memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text)),
+                "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?",
+                (record.memory_id, f"{record.memory_id}::%"),
             )
+        if not self.embedding_provider:
+            return
+        if record.kind == "session":
+            chunks = session_embedding_chunks(
+                self.vault_root / record.path.lstrip("/"), record.memory_id
+            )
+            inputs = [
+                (f"{record.memory_id}::{section}", embedding_text_for_section(record, section, text))
+                for section, text in chunks
+            ]
+        else:
+            inputs = [(record.memory_id, embedding_text_for(record))]
+        if not inputs:
+            return
+        try:
+            vectors = self.embedding_provider.embed([text for _key, text in inputs])
+        except Exception:
+            return
+        if len(vectors) != len(inputs):
+            return
+        with self.conn:
+            for (memory_id, text), vector in zip(inputs, vectors):
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)",
+                    (memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text)),
+                )
 
     def remove(self, memory_id: str) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM memories WHERE memory_id=?", (memory_id,))
-            self.conn.execute("DELETE FROM memory_embeddings WHERE memory_id=?", (memory_id,))
+            self.conn.execute(
+                "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?",
+                (memory_id, f"{memory_id}::%"),
+            )
             if self.has_fts:
                 self.conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (memory_id,))
 
@@ -243,14 +272,16 @@ class MemoryIndex:
         vector_rows = self.conn.execute(
             "SELECT memory_id, vector_json FROM memory_embeddings"
         ).fetchall()
-        scores = {}
+        scores: dict[str, float] = {}
         for row in vector_rows:
-            if row["memory_id"] not in rows_by_id:
+            parent_id = row["memory_id"].split("::", 1)[0]
+            if parent_id not in rows_by_id:
                 continue
             try:
-                scores[row["memory_id"]] = cosine_similarity(query_vector, json.loads(row["vector_json"]))
+                score = cosine_similarity(query_vector, json.loads(row["vector_json"]))
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
+            scores[parent_id] = max(scores.get(parent_id, 0.0), score)
         vector_ids = [memory_id for memory_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:limit * 3]]
         ranked: dict[str, float] = {}
         for rank, row in enumerate(fts_rows):
@@ -265,22 +296,29 @@ class MemoryIndex:
         if not self.embedding_provider:
             return []
         rows = self.conn.execute(
-            """SELECT m.*, e.vector_json FROM memories m
-               JOIN memory_embeddings e USING(memory_id)
-               WHERE m.kind=? AND m.tag!='superseded' ORDER BY m.memory_id""",
+            "SELECT * FROM memories WHERE kind=? AND tag!='superseded' ORDER BY memory_id",
             (kind,),
         ).fetchall()
-        pairs = []
-        for index, left in enumerate(rows):
+        row_by_id = {row["memory_id"]: row for row in rows}
+        vectors_by_parent: dict[str, list[list[float]]] = {memory_id: [] for memory_id in row_by_id}
+        for embedding in self.conn.execute("SELECT memory_id, vector_json FROM memory_embeddings"):
+            parent_id = embedding["memory_id"].split("::", 1)[0]
+            if parent_id not in row_by_id:
+                continue
             try:
-                left_vector = json.loads(left["vector_json"])
+                vectors_by_parent[parent_id].append(json.loads(embedding["vector_json"]))
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
+        pairs = []
+        for index, left in enumerate(rows):
+            left_vectors = vectors_by_parent[left["memory_id"]]
             for right in rows[index + 1:]:
-                try:
-                    score = cosine_similarity(left_vector, json.loads(right["vector_json"]))
-                except (TypeError, ValueError, json.JSONDecodeError):
+                right_vectors = vectors_by_parent[right["memory_id"]]
+                scores = [cosine_similarity(left_vector, right_vector)
+                          for left_vector in left_vectors for right_vector in right_vectors]
+                if not scores:
                     continue
+                score = max(scores)
                 if score >= threshold and left["normalized_hash"] != right["normalized_hash"]:
                     pairs.append({
                         "kind": kind,

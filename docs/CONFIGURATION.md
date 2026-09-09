@@ -102,6 +102,16 @@ These settings intentionally define two different model roles:
 | Embedding model | `MEMORY_EMBED_BASE_URL`, `MEMORY_EMBED_MODEL` | Search, related-memory ranking and semantic audit candidates | Keyword search and lexical duplicate/update checks continue; it never deletes a memory by itself |
 | Local chat model | `MEMORY_LLM_BASE_URL`, `MEMORY_LLM_MODEL` | Session consolidation and durable-memory extraction | Consolidation uses the deterministic evidence-only fallback; extraction fails explicitly when no model is configured |
 
+Embedding granularity is kind-aware. Ordinary memories use one vector for the
+record. A session uses one vector for each non-empty Markdown section
+(`Investigated`, `Learned`, `Completed`, or `Next Steps`, plus any additional
+section headings), while keyword text and the indexed `MemoryRecord` remain the
+same flattened session content. Search and semantic audits resolve section
+matches back to the parent session ID, so callers never need to understand the
+synthetic section keys used inside the disposable SQLite vector table. Reindexing
+reads those sections from the canonical Markdown file and recreates the same
+vectors.
+
 The recommended setup is a small embedding model such as `nomic-embed-text` plus a
 separate local chat model such as Qwen, Llama or Mistral. The chat model writes the
 four structured session sections and atomic memory candidates; the embedding model
