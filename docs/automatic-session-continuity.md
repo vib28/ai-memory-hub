@@ -315,7 +315,8 @@ The canonical execution sequence is maintained in
 [`docs/issue-priority-order.md`](issue-priority-order.md). The continuity dependency
 chain is `#54/#56/#57/#58/#59/#60 completed → #61 → #62`; #40 is complete, while
 #64/#65 can proceed independently. #41 is now complete documentation foundation;
-#50/#51/#46/#47/#48/#49 are later vault-quality work, and #66 is the later optional
+#50 is complete and #51 records the session-only multiline decision. #46/#47/#48/#49
+are later vault-quality work, and #66 is the later optional
 full-transcript capture enhancement.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance

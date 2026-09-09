@@ -75,8 +75,8 @@ manual trigger. Explicit session-auto and GitHub export permissions remain separ
 The earlier vault-quality work is now split between completed history and the canonical
 open queue: #40 (section embeddings) and #41 (per-kind authoring templates) are complete;
 #42-#45 are closed; #46/#47 cover preference and project-file decisions; #48/#49 cover
-index/audit improvements and variant detection; #50/#51 cover companion-block safety and
-the multiline-format decision. Dashboard verification and date filtering are #64/#65,
+index/audit improvements and variant detection; #50 is complete and #51 records the
+session-only multiline-format decision. Dashboard verification and date filtering are #64/#65,
 and optional full transcript capture is #66. Follow
 [`docs/issue-priority-order.md`](issue-priority-order.md) for the current order; do not
 copy a second numbered priority list here. Closed #13 records the earlier v1 scope, not

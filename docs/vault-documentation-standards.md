@@ -119,10 +119,10 @@ presentation, not provenance.
 
 A larger, related question — should any kind beyond `session` get *real* multi-line
 structure (a heading block, like `session` already has) instead of a companion block under
-a one-line entry — is deliberately not answered here. It's tracked as its own decision,
-#51, since it is a materially bigger change (existing-content migration, and new answers
-needed for dedup/FTS/embedding text, the same questions `session` already had to answer)
-than making the companion-block pattern safe.
+a one-line entry — is now decided by #51: **no kind moves to a true block format for the
+current design**. The inline templates plus safe companion deletion are sufficient for
+the present vault content. A future block-format proposal would need a separate migration
+plan and explicit answers for deduplication, FTS, and embedding text before implementation.
 
 **Example, `decision` kind, inline (option 1):**
 
@@ -161,11 +161,12 @@ than making the companion-block pattern safe.
 | 9 | #47 — Resolve flagged project/plan file-split | Content decision | Needs human judgment; not urgent, `subject_audit` already surfaces it every run |
 | 10 | #48 — MEMORY.md index descriptions are structurally uninformative | Code, discoverability | Real design work (what should a good one-line summary contain, and where does it come from) |
 | 11 | #49 — Variant/duplicate detection misses non-prefix-related overlaps | Code, detection breadth | Most involved: needs investigating why semantic candidates missed a case a human sees immediately |
-| 12 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision, largest scope | Explicitly a decide-first item; a "yes" here would be the biggest single change in this whole series |
+| 12 | #51 — Decide whether any kind beyond `session` should get real multi-line structure | Decision — complete: keep session-only blocks | The current inline templates plus safe companion deletion are sufficient; any future block format needs a separate migration proposal |
 
 The table above records the original design-review sequence. #40 and #41 are now
-complete; current open-issue execution order, including dashboard #64/#65 and transcript
-enhancement #66, is maintained in [`docs/issue-priority-order.md`](issue-priority-order.md).
+complete; current execution order, including the remaining dashboard verification #64,
+the completed date-filter follow-up #65, and transcript enhancement #66, is maintained
+in [`docs/issue-priority-order.md`](issue-priority-order.md).
 
 All twelve were filed and on the project board (`Todo`, priority matching the original table above:
 #41/#42 High, #40,#43–#47 and #50 Medium, #48/#49/#51 Low). See each issue for the full
