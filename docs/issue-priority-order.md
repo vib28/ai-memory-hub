@@ -18,7 +18,7 @@ flowchart LR
     I["#40 retrieval quality complete"] -. independent .-> B
     J["#64 dashboard verification"] -. opportunistic .-> F
     J --> K["#65 dashboard date filter complete"]
-    L["#66 full session transcript"] -. follows manual gate .-> J
+    L["#66 transcript complete"] -. history .-> J
     M["#46/#47/#48/#49 vault quality complete"] -. history .-> J
 ```
 
@@ -100,13 +100,19 @@ subjects. Per-kind document frequency derives token salience automatically, whil
 the optional Nomic embedding path remains available as a semantic signal; no
 automatic linking or rewriting was added.
 
+[#66](https://github.com/vib28/ai-memory-hub/issues/66) — the default-off,
+vault-local full transcript companion is complete. It stores provider-neutral raw
+events with stable IDs/sequences, renders linked Obsidian Markdown, reports worker
+health, honors retention/forget cleanup, and remains outside ordinary retrieval and
+sanitized GitHub export. Live delivery from an installed external client remains an
+operational boundary rather than an unverified repository claim.
+
 ## Current execution status
 
-[#66](https://github.com/vib28/ai-memory-hub/issues/66) is the active implementation
-item after the automated portions of #64 were verified. Its opt-in transcript store,
-provider-neutral envelope, worker rendering, summary/manifest links, retention and
-forget behavior are being implemented and tested here. The real browser/tray gate
-for #64 remains open; #61 and #62 retain their explicit live-client/provider gates.
+#61 and #62 remain the first-priority continuity and live benchmark gates. #64 is
+the next open product-verification item; its automated dashboard work is complete but
+the real browser/tray gate remains open. #66 is closed and retained above as completed
+history rather than as an open priority.
 
 ## Continuity and handoff first
 
@@ -120,7 +126,6 @@ for #64 remains open; #61 and #62 retain their explicit live-client/provider gat
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
 | 3 | [#64](https://github.com/vib28/ai-memory-hub/issues/64) | Complete real-vault dashboard verification | Implementation is largely complete; remaining work is user/browser validation and follow-ups. |
-| 4 | [#66](https://github.com/vib28/ai-memory-hub/issues/66) | Optionally persist full verbatim session transcripts | Active implementation after automated verification; live delivery for every client surface remains a separately stated gate. |
 
 ## Dependency chain
 
@@ -130,9 +135,8 @@ The critical implementation path is:
 
 The remaining items do not block the first-priority continuity phase. #40 is
 complete and remains an independent retrieval-quality change. #41, #46, #47, #48, #50,
-#51, #49, and #65 are complete. #64's manual verification can be performed opportunistically;
-#66 is now the active broad enhancement because it spans provider hooks, durable
-capture, Obsidian objects, configuration, and retention.
+#51, #49, #65, and #66 are complete. #64's manual verification can be performed
+opportunistically; #61 and #62 retain their explicit live gates.
 
 This ordering was refreshed on 2026-09-09 after reviewing the open issue bodies,
 their historical comments, stated dependencies, and the current branch state.

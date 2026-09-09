@@ -340,9 +340,9 @@ The canonical execution sequence is maintained in
 chain is `#54/#56/#57/#58/#59/#60 completed → #61 → #62`; #40 is complete, while
 #64/#65 can proceed independently. #41 is now complete documentation foundation;
 #50 is complete and #51 records the session-only multiline decision. #46/#47/#48 are
-complete vault-quality work, including adaptive audit detection in #49; #66 is the
-active optional full-transcript capture implementation, with live client delivery
-remaining an explicit verification boundary.
+complete vault-quality work, including adaptive audit detection in #49; #66's
+optional full-transcript capture implementation is complete, with live client
+delivery remaining an explicit operational verification boundary.
 
 Do not copy a second numbered priority list into this document. Keep issue acceptance
 criteria and implementation status here, while the linked priority file owns ordering.
@@ -351,7 +351,7 @@ hook and session-identity fixes; they are not current open work.
 
 ## Verification results
 
-Current repository verification: **230 passed** with a workspace-local pytest base
+Current repository verification: **231 passed** with a workspace-local pytest base
 directory; Ruff and `git diff --check` passed. Tests cover native payload mapping,
 managed hook preservation, concurrent queue claims, live leases, project-scoped context,
 separate embedding/chat-model configuration, process-level handoff and sanitized export.

@@ -169,7 +169,7 @@ the single current ordering and records the remaining open work.
 
 The table above records the original design-review sequence. #40, #41, and #46–#49
 are now complete; current execution order, including the remaining dashboard
-verification #64, the completed date-filter follow-up #65, and active transcript
+verification #64, the completed date-filter follow-up #65, and completed transcript
 enhancement #66, is maintained in [`docs/issue-priority-order.md`](issue-priority-order.md).
 
 See each issue for the full where/why/how/repro/acceptance-criteria/verification detail —

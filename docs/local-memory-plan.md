@@ -77,8 +77,8 @@ open queue: #40 (section embeddings) and #41 (per-kind authoring templates) are 
 #42-#45 are closed; #46/#47/#48/#49 are complete preference, project-file, index,
 and variant-detection decisions; #50 is complete and
 #51 records the session-only multiline-format decision. Dashboard verification and
-date filtering are #64/#65, and optional full transcript capture is the active #66
-implementation. Follow
+date filtering are #64/#65, and optional full transcript capture #66 is complete.
+Follow
 [`docs/issue-priority-order.md`](issue-priority-order.md) for the current order; do not
 copy a second numbered priority list here. Closed #13 records the earlier v1 scope, not
 completion of the new unattended workflow.
@@ -156,6 +156,10 @@ path and human-readable Obsidian vault.
   rewrites records ([#49](https://github.com/vib28/ai-memory-hub/issues/49)).
 - Safe write-path duplicate pruning based only on a mathematical text-length bound; it
   preserves the existing lexical thresholds and does not use embeddings for write decisions.
+- #66 full transcript companion: default-off provider-neutral raw event capture,
+  deterministic IDs/sequences, human-readable linked Obsidian Markdown, worker health,
+  retention and forget cleanup. Transcripts remain outside ordinary search and the
+  sanitized GitHub exporter; live external-client delivery is an operational boundary.
 
 ### In progress
 
@@ -171,11 +175,6 @@ path and human-readable Obsidian vault.
   and precision@3/precision@10. It reports exact `tiktoken` counts when that optional
   package is installed and explicitly reports token counts as unavailable otherwise; it
   does not claim a universal savings percentage.
-- #66 is implementing a default-off, vault-local transcript companion: provider-neutral
-  raw event envelopes, deterministic IDs/sequences, human-readable Obsidian Markdown,
-  summary/manifest wikilinks, worker rendering, retention and forget cleanup. It remains
-  separate from the bounded capture queue, ordinary search and sanitized GitHub export;
-  live delivery certification for every client surface is not implied by repository tests.
 
 ### Safety gate — complete
 
