@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any
 
 from .entities import load_entity_aliases, resolve_subject
 from .index import MemoryIndex
@@ -379,6 +380,31 @@ class MemoryManager:
                     or entry.get("final_id") == current.get("checkpoint_id")):
                 self.vault.update_session_metadata(entry["path"], entry["memory_id"], entry)
 
+    def session_transcript_target(self, session_group_id: str) -> dict[str, Any] | None:
+        """Resolve a session group's transcript path, project, and summary back-links
+        from the session manifest — the single source of truth for what a transcript
+        re-render should reproduce.
+
+        Both `propose_session` (the authoritative writer) and the worker's routine
+        poll-driven re-render must agree on this, or the routine re-render silently
+        overwrites the authoritative one with a degraded copy that has lost its links
+        or landed at a different path (#68, #70). Returns `None` when the group has no
+        manifest entry yet.
+        """
+        manifest = self._load_session_manifest()
+        group = manifest.get("groups", {}).get(session_group_id)
+        if not group:
+            return None
+        entries = group.get("entries", [])
+        path = next((entry["transcript_path"] for entry in reversed(entries)
+                    if entry.get("transcript_path")), None)
+        summary_links = [
+            f"[[{entry['path'].lstrip('/')}#{entry['heading']}]]"
+            for entry in entries
+            if entry.get("path") and entry.get("heading")
+        ]
+        return {"path": path, "project": group.get("project"), "summary_links": summary_links}
+
     def _duplicate_session(self, model: str, title: str, text: str,
                            project: str | None = None) -> dict | None:
         """An already-stored session by the same writer, under the same title, with a
@@ -472,17 +498,12 @@ class MemoryManager:
             self._complete_checkpoint_links(metadata)
             transcript_store = TranscriptStore(vault=self.vault)
             try:
-                manifest = self._load_session_manifest()
-                group = manifest.get("groups", {}).get(data["session_group_id"], {})
-                links = [
-                    f"[[{entry['path'].lstrip('/')}#{entry['heading']}]]"
-                    for entry in group.get("entries", [])
-                    if entry.get("path") and entry.get("heading")
-                ]
+                target = self.session_transcript_target(data["session_group_id"]) or {}
                 transcript_store.render(
                     data["session_group_id"], self.vault,
-                    project=data.get("project"), path=data.get("transcript_path"),
-                    summary_links=links,
+                    project=target.get("project") or data.get("project"),
+                    path=target.get("path") or data.get("transcript_path"),
+                    summary_links=target.get("summary_links") or [],
                 )
             finally:
                 transcript_store.close()

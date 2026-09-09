@@ -39,7 +39,59 @@ class SectionEmbeddingProvider:
         return [[1.0, 0.0] if "sqlite" in text.lower() else [0.0, 1.0] for text in texts]
 
 
+class FlakyEmbeddingProvider:
+    """Succeeds on setup, then raises on demand, then can be told to fail always."""
+    model = "flaky"
+
+    def __init__(self):
+        self.should_fail = False
+
+    def embed(self, texts):
+        if self.should_fail:
+            raise RuntimeError("embedding endpoint unavailable")
+        return [[1.0, 0.0] for _ in texts]
+
+
 class EmbeddingTests(unittest.TestCase):
+    def test_failed_embed_call_does_not_delete_existing_vectors(self):
+        """#78: a transient provider outage must leave a record's existing vectors in
+        place rather than deleting them first with nothing to replace them.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            provider = FlakyEmbeddingProvider()
+            index = MemoryIndex(Path(temp), provider)
+            record = MemoryRecord("one", "/one.md", "Authentication note", "decision",
+                                  "decided", "auth", "user", "2026-09-06")
+            index.upsert(record)
+            before = index.conn.execute(
+                "SELECT vector_json FROM memory_embeddings WHERE memory_id='one'").fetchone()
+            self.assertIsNotNone(before)
+            provider.should_fail = True
+            index.upsert(record)
+            after = index.conn.execute(
+                "SELECT vector_json FROM memory_embeddings WHERE memory_id='one'").fetchone()
+            self.assertIsNotNone(after)
+            self.assertEqual(before["vector_json"], after["vector_json"])
+            index.close()
+
+    def test_rebuild_transaction_is_owned_by_the_caller_not_embed_record(self):
+        """#79: rebuild() wraps every record in one outer transaction via
+        upsert(commit=False). Before the fix, _embed_record's own `with self.conn`
+        committed the whole connection early regardless of commit=False, so a
+        mid-rebuild crash left only the records processed so far instead of rolling
+        back to the pre-rebuild state.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            index = MemoryIndex(Path(temp), FakeEmbeddingProvider())
+            record = MemoryRecord("one", "/one.md", "Authentication note", "decision",
+                                  "decided", "auth", "user", "2026-09-06")
+            index.upsert(record, commit=False)
+            index.conn.rollback()
+            self.assertIsNone(index.by_id("one"))
+            self.assertEqual(
+                index.conn.execute("SELECT COUNT(*) FROM memory_embeddings").fetchone()[0], 0)
+            index.close()
+
     def test_cosine_similarity(self):
         self.assertAlmostEqual(cosine_similarity([1, 0], [1, 0]), 1.0)
         self.assertAlmostEqual(cosine_similarity([1, 0], [0, 1]), 0.0)

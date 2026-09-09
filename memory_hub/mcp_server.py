@@ -179,12 +179,13 @@ def session_consolidate(session_id: str) -> dict:
             buffer, manager, session_id, writer=WRITER, write_mode=WRITE_MODE,
         )
         if HISTORY_ENABLED and result.get("status") in {"stored", "stored_without_project_link"}:
-            written = result.get("write", {})
+            written = result.get("write") or {}
             paths = []
-            if written.get("memory", {}).get("path"):
+            if (written.get("memory") or {}).get("path"):
                 paths.append(written["memory"]["path"])
-            if written.get("project", {}).get("memory", {}).get("path"):
-                paths.append(written["project"]["memory"]["path"])
+            project = written.get("project") or {}
+            if (project.get("memory") or {}).get("path"):
+                paths.append(project["memory"]["path"])
             result["history"] = commit_vault_change(VAULT, session_id, paths)
         else:
             result["history"] = {"status": "disabled"}

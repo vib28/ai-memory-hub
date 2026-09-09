@@ -1,6 +1,8 @@
 param(
     [string]$VaultPath = $env:AI_MEMORY_VAULT,
-    [int]$Port = 8765,
+    # MEMORY_DASHBOARD_PORT overrides the default; a malformed value falls back
+    # safely to 8765 rather than failing param binding (#81).
+    [int]$Port = $(if ($env:MEMORY_DASHBOARD_PORT -and ($env:MEMORY_DASHBOARD_PORT -as [int])) { [int]$env:MEMORY_DASHBOARD_PORT } else { 8765 }),
     [switch]$NoTray
 )
 

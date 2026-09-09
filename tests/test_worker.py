@@ -94,6 +94,26 @@ class WorkerTests(unittest.TestCase):
         self.assertTrue(payload["host_session_finalized"])
 
     def test_time_trigger_flushes_older_evidence(self):
+        # Age must sit strictly between flush_seconds (60) and idle_seconds (300) — old
+        # enough to flush, not old enough to count as the severe gap #71 fixed idle to
+        # catch (see test_idle_trigger_is_reachable_at_shipped_defaults for that case).
+        self.config = WorkerConfig(**{**self.config.__dict__, "token_budget": 10000})
+        self.append(created_at="2026-09-09T12:00:00+00:00")
+        manager = FakeManager()
+        worker = self.worker(manager)
+        try:
+            result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, 30, tzinfo=timezone.utc))
+        finally:
+            worker.close()
+        self.assertEqual(result["processed"][0]["trigger"], "time")
+
+    def test_idle_trigger_is_reachable_at_shipped_defaults(self):
+        """#71: with the real shipped WorkerConfig defaults (flush_seconds=60 <
+        idle_seconds=300) — not the inverted values the pre-existing idle-closure test
+        below uses — a severe gap since the last activity (e.g. the worker having been
+        down) must still close as idle/provisional, not silently as an ordinary "time"
+        checkpoint.
+        """
         self.config = WorkerConfig(**{**self.config.__dict__, "token_budget": 10000})
         self.append(created_at="2026-09-09T11:00:00+00:00")
         manager = FakeManager()
@@ -102,7 +122,8 @@ class WorkerTests(unittest.TestCase):
             result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
         finally:
             worker.close()
-        self.assertEqual(result["processed"][0]["trigger"], "time")
+        self.assertEqual(result["processed"][0]["trigger"], "idle")
+        self.assertEqual(manager.calls[0][0]["state"], "provisional")
 
     def test_idle_closure_is_provisional_and_new_evidence_reopens_session(self):
         self.config = WorkerConfig(**{
@@ -137,6 +158,27 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.buffer.for_session("session-1")[0]["status"], "failed")
         self.assertEqual(health["status"], "degraded")
         self.assertIn("local model unavailable", health["last_error"])
+
+    def test_degraded_run_does_not_erase_last_success_at(self):
+        """#72: a transient failure must not overwrite the last known-good timestamp
+        with null — an operator needs to tell "failing for a minute" apart from
+        "never succeeded".
+        """
+        self.append()
+        with patch.dict("os.environ", {"MEMORY_WORKER_HEALTH": str(self.health)}):
+            worker = self.worker(FakeManager())
+            try:
+                worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
+                good_health = read_health(self.config.vault)
+                self.assertIsNotNone(good_health["last_success_at"])
+                self.append()
+                worker.manager = FakeManager(error=RuntimeError("transient"))
+                worker.run_once(now=datetime(2026, 9, 9, 12, 2, tzinfo=timezone.utc))
+            finally:
+                worker.close()
+            degraded_health = read_health(self.config.vault)
+        self.assertEqual(degraded_health["status"], "degraded")
+        self.assertEqual(degraded_health["last_success_at"], good_health["last_success_at"])
 
     def test_health_file_is_written_when_configured(self):
         self.append()

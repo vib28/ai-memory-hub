@@ -160,6 +160,18 @@ class HookConfigTests(unittest.TestCase):
         self.assertEqual(result["status"], "removed")
         self.assertEqual(config["hooks"]["PostToolUse"][0]["hooks"], [{"type": "command", "command": "other"}])
 
+    def test_codex_uninstall_removes_sole_handler_and_empty_group(self):
+        # Regression for #67: install_codex_hook always creates a single-handler group
+        # ({"matcher": "*", "hooks": [entry]}), which is the common case — not the
+        # sibling-survives case test_codex_uninstall_removes_only_marked_handler covers.
+        settings = self.settings.with_name("hooks.json")
+        install_codex_hook(settings, event="SessionStart", command="ai-memory-hook")
+        result = uninstall_codex_hook(settings, command="ai-memory-hook")
+        config = json.loads(settings.read_text(encoding="utf-8"))
+        self.assertEqual(result["status"], "removed")
+        self.assertEqual(result["removed"], 1)
+        self.assertNotIn("SessionStart", config.get("hooks", {}))
+
     def test_codex_reinstall_preserves_sibling_and_updates_path(self):
         settings = self.settings.with_name("hooks.json")
         install_codex_hook(settings, event="PostToolUse", command="old-hook")

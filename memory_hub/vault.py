@@ -377,8 +377,13 @@ class Vault:
             return False
         with file_lock(p):
             meta, body = parse_frontmatter(p.read_text(encoding="utf-8"))
+            matches = list(SESSION_RE.finditer(body))
+            # Content above the first `## ` heading (a user's own preamble note, or a
+            # malformed/missing frontmatter block) is outside every match and was
+            # silently dropped on rewrite — same defect as update_session_metadata (#80).
+            preamble = body[:matches[0].start()].strip("\n") if matches else ""
             kept, changed = [], False
-            for block in SESSION_RE.finditer(body):
+            for block in matches:
                 found = SESSION_ID_RE.search(block.group("body"))
                 if found and found.group("id") == memory_id:
                     changed = True
@@ -386,6 +391,8 @@ class Vault:
                 kept.append(block.group(0).rstrip())
             if changed:
                 rebuilt = dump_frontmatter(meta) if meta else ""
+                if preamble:
+                    rebuilt += ("\n" if rebuilt else "") + preamble + "\n"
                 if kept:
                     rebuilt += ("\n" if rebuilt else "") + "\n\n".join(kept) + "\n"
                 atomic_write(p, rebuilt)
@@ -401,9 +408,15 @@ class Vault:
         with file_lock(p):
             content = p.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(content)
+            matches = list(SESSION_RE.finditer(body))
+            # Content above the first `## ` heading (a user's own preamble note, or a
+            # malformed/missing frontmatter block) is outside every match and was
+            # silently dropped on rewrite. _complete_checkpoint_links calls this on
+            # every checkpoint, so the loss was routine, not exceptional (#80).
+            preamble = body[:matches[0].start()].strip("\n") if matches else ""
             blocks = []
             changed = False
-            for block in SESSION_RE.finditer(body):
+            for block in matches:
                 text = block.group(0)
                 found = SESSION_ID_RE.search(text)
                 if found and found.group("id") == memory_id:
@@ -423,6 +436,8 @@ class Vault:
                 blocks.append(text.rstrip())
             if changed:
                 rebuilt = dump_frontmatter(meta) if meta else ""
+                if preamble:
+                    rebuilt += ("\n" if rebuilt else "") + preamble + "\n"
                 if blocks:
                     rebuilt += ("\n" if rebuilt else "") + "\n\n".join(blocks) + "\n"
                 atomic_write(p, rebuilt)

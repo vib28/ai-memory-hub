@@ -121,6 +121,47 @@ class TranscriptStoreTests(unittest.TestCase):
         self.assertEqual(rows[1]["object_type"], "session-start")
         self.assertIn("exact result", rows[0]["payload_raw"])
 
+    def test_generated_at_marks_substituted_timestamps_explicitly(self):
+        """#77: a provider-omitted generated_at must be recorded and rendered as
+        substituted, never presented identically to a real provider timestamp.
+        """
+        self.store.append({
+            "event_id": "supplied", "session_id": "host-prov", "session_group_id": "prov-group",
+            "author": "user", "object_type": "user-message",
+            "generated_at": "2026-09-09T10:00:00+00:00", "payload": "has a timestamp",
+        })
+        self.store.append({
+            "event_id": "omitted", "session_id": "host-prov", "session_group_id": "prov-group",
+            "author": "agent", "object_type": "agent-message", "payload": "no timestamp given",
+        })
+        rows = self.store.events("prov-group")
+        supplied = next(r for r in rows if r["event_id"] == "supplied")
+        omitted = next(r for r in rows if r["event_id"] == "omitted")
+        self.assertEqual(supplied["generated_at_source"], "provider")
+        self.assertEqual(omitted["generated_at_source"], "capture")
+        self.store.render("prov-group", self.root / "vault")
+        content = (self.root / "vault" / "transcripts" / "prov-group.md").read_text(encoding="utf-8")
+        self.assertIn("not supplied by provider", content)
+        # The supplied event's block must not carry the substitution marker.
+        supplied_block = content.split("### ")[1]
+        self.assertNotIn("not supplied by provider", supplied_block)
+
+    def test_delete_group_removes_project_scoped_transcript_with_no_explicit_path(self):
+        """#76: a caller that omits `path` must still reach a project-scoped file, or
+        the SQLite rows are gone while the rendered Markdown stays on disk.
+        """
+        self.store.append({
+            "event_id": "scoped-1", "session_id": "host-del", "session_group_id": "del-group",
+            "project": "widget-app", "payload": "raw prompt",
+        })
+        self.store.render("del-group", self.root / "vault", project="widget-app")
+        destination = self.root / "vault" / "transcripts" / "widget-app" / "del-group.md"
+        self.assertTrue(destination.exists())
+        removed = self.store.delete_group("del-group", vault=self.root / "vault")
+        self.assertEqual(removed, 1)
+        self.assertFalse(destination.exists())
+        self.assertEqual(self.store.events("del-group"), [])
+
     def test_prune_is_opt_in_and_deletes_only_old_events(self):
         self.store.append({
             "event_id": "old", "session_id": "host-4", "session_group_id": "group-4",
@@ -227,7 +268,14 @@ class TranscriptIntegrationTests(unittest.TestCase):
                 })
                 store.close()
                 config = WorkerConfig(vault=vault, buffer_path=root / "capture.sqlite3")
-                worker = SessionWorker(config, manager=object())
+                # A group with no session_write yet has no manifest entry, so the real
+                # MemoryManager.session_transcript_target would return None here too —
+                # this stub models exactly that, not a manager capable of full session
+                # writes (#68's resolver call needs a manager, unlike plain rendering).
+                stub_manager = type("StubManager", (), {
+                    "session_transcript_target": lambda self, group_id: None,
+                })()
+                worker = SessionWorker(config, manager=stub_manager)
                 try:
                     result = worker.run_once()
                     health = read_health(vault)
@@ -237,6 +285,56 @@ class TranscriptIntegrationTests(unittest.TestCase):
                 self.assertEqual(result["transcript_rendered"], 1)
                 self.assertTrue(health["config"]["transcript_enabled"])
                 self.assertTrue((vault / "transcripts" / "group-6.md").exists())
+
+    def test_worker_reroll_preserves_summary_back_links_and_single_path(self):
+        """#68: the worker's routine poll-driven re-render must not silently strip the
+        summary back-link the authoritative writer just set, or land the group's file
+        at a second, orphaned path.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            vault = root / "vault"
+            manager = MemoryManager(vault)
+            manager.initialize(Path(__file__).resolve().parent.parent / "vault_template")
+            env = {
+                "MEMORY_TRANSCRIPT_ENABLED": "true",
+                "MEMORY_TRANSCRIPT_DB": str(root / "transcripts.sqlite3"),
+                "MEMORY_WORKER_HEALTH": str(root / "worker-health.json"),
+            }
+            try:
+                with patch.dict("os.environ", env, clear=False):
+                    store = TranscriptStore(vault=vault)
+                    store.append({
+                        "event_id": "reroll-event", "session_id": "host-8",
+                        "session_group_id": "group-8", "author": "user",
+                        "object_type": "user-message", "project": "demo",
+                        "payload": "raw prompt",
+                    })
+                    store.close()
+                    result = manager.propose_session({
+                        "model": "codex", "title": "Re-render regression", "date": "2026-09-09T10:00:00",
+                        "project": "demo", "investigated": ["Reviewed the raw event"],
+                        "learned": [], "completed": ["Linked the transcript"], "next_steps": [],
+                        "session_group_id": "group-8", "checkpoint_id": "checkpoint-8",
+                        "sequence": 1, "entry_type": "checkpoint",
+                    })
+                    self.assertEqual(result["status"], "stored")
+                    transcript = vault / "transcripts" / "demo" / "group-8.md"
+                    before = transcript.read_text(encoding="utf-8")
+                    self.assertIn("Summaries:", before)
+                    config = WorkerConfig(vault=vault, buffer_path=root / "capture.sqlite3")
+                    worker = SessionWorker(config, manager=manager)
+                    try:
+                        worker.run_once()
+                        worker.run_once()
+                    finally:
+                        worker.close()
+                    after = transcript.read_text(encoding="utf-8")
+                    self.assertIn("Summaries:", after)
+                    self.assertIn("sessions/demo/codex.md#codex-re-render-regression", after)
+                    self.assertFalse((vault / "transcripts" / "group-8.md").exists())
+            finally:
+                manager.close()
 
     def test_crash_between_transcript_and_summary_is_retryable(self):
         with tempfile.TemporaryDirectory() as temp:

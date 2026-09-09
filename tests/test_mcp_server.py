@@ -82,6 +82,21 @@ class McpServerTests(unittest.TestCase):
                 preference_rule_text="rule", subject="demo")
         self.assertEqual(result["status"], "queued")
 
+    def test_session_consolidate_survives_project_less_session_with_history_enabled(self):
+        """#69: propose_session returns {"project": None} for a project-less summary, and
+        the old `.get("project", {}).get(...)` chain called .get() on that None, crashing
+        after the session Markdown was already written. Must not raise.
+        """
+        stored = {"status": "stored", "write": {"memory": {"path": "/sessions/x.md"}, "project": None}}
+        fake_buffer = type("FakeBuffer", (), {"close": lambda self: None})()
+        with patch.object(mcp_server, "ObservationBuffer", return_value=fake_buffer), \
+             patch.object(mcp_server, "consolidate_buffered_session", return_value=stored), \
+             patch.object(mcp_server, "HISTORY_ENABLED", True), \
+             patch.object(mcp_server, "commit_vault_change", return_value={"status": "committed"}):
+            result = mcp_server.session_consolidate(session_id="s1")
+        self.assertEqual(result["status"], "stored")
+        self.assertEqual(result["history"], {"status": "committed"})
+
 
 class McpBoundaryTests(unittest.TestCase):
     """#21: clients reach the vault through public MCP tools, never through the manager.

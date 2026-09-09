@@ -40,10 +40,11 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
         "evidence_end": rows[-1].get("created_at"),
         "session_tags": ["capture", "automatic"],
     }
-    if transcript_enabled():
-        metadata["transcript_path"] = transcript_path_for(
-            metadata["session_group_id"], rows[0].get("project") or None
-        )
+    # transcript_path is deliberately NOT derived here: at this point the consolidated
+    # summary's project has not been resolved yet, and rows[0]'s project is frequently
+    # empty even when a later row (or the summary/fallback project rule) carries one.
+    # Two checkpoints in the same group could otherwise disagree on where the group's
+    # transcript lives (#70). The caller sets it once the summary's project is known.
     return metadata
 
 
@@ -72,6 +73,14 @@ def consolidate_buffered_session(
     )
     try:
         summary = consolidate_session(rows)
+        if transcript_enabled():
+            # Derived from the same resolved project the summary itself carries, so
+            # every checkpoint in this group agrees on one transcript_path (#70) —
+            # never from rows[0] independently, which the summary's own project
+            # resolution rule does not always match.
+            metadata["transcript_path"] = transcript_path_for(
+                metadata["session_group_id"], summary.get("project") or None
+            )
         result = manager.propose_session({
             "model": writer,
             "title": summary["title"],

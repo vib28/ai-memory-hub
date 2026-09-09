@@ -186,6 +186,14 @@ class TranscriptStore:
                 ON transcript_events(generated_at);
             """
         )
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(transcript_events)")}
+        if "generated_at_source" not in columns:
+            # Rows written before this column existed have no recoverable provenance —
+            # "unknown" rather than defaulting to "capture", which would falsely claim
+            # the substitution happened when it may not have (#77).
+            self.conn.execute(
+                "ALTER TABLE transcript_events ADD COLUMN generated_at_source "
+                "TEXT NOT NULL DEFAULT 'unknown'")
         self.conn.commit()
 
     def close(self) -> None:
@@ -206,6 +214,9 @@ class TranscriptStore:
             source_sequence = None
         generated_supplied = payload.get("generated_at") or payload.get("created_at")
         generated_at = _timestamp(generated_supplied)
+        # #77: a substituted timestamp must be recorded as substituted, not presented
+        # identically to one the provider actually supplied.
+        generated_at_source = "provider" if generated_supplied else "capture"
         captured_at = _timestamp(payload.get("captured_at"))
         kind, raw = _raw_payload(payload)
         explicit_id = _text(payload.get("event_id") or payload.get("id") or
@@ -246,6 +257,7 @@ class TranscriptStore:
             "project": seed["project"],
             "topic": seed["topic"],
             "generated_at": generated_at,
+            "generated_at_source": generated_at_source,
             "captured_at": captured_at,
             "payload_kind": kind,
             "payload_text": raw,
@@ -275,14 +287,15 @@ class TranscriptStore:
             self.conn.execute(
                 """INSERT INTO transcript_events
                 (event_id, session_group_id, host_session_id, sequence, source_sequence,
-                 author, object_type, client, model, project, topic, generated_at, captured_at,
-                 payload_kind, payload_text, envelope_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 author, object_type, client, model, project, topic, generated_at,
+                 generated_at_source, captured_at, payload_kind, payload_text, envelope_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (event["event_id"], event["session_group_id"], event["host_session_id"],
                  event["sequence"], event["source_sequence"], event["author"], event["object_type"],
                  event["client"], event["model"], event["project"], event["topic"],
-                 event["generated_at"], event["captured_at"], event["payload_kind"],
-                 event["payload_text"], json.dumps(envelope, ensure_ascii=False, sort_keys=True)),
+                 event["generated_at"], event["generated_at_source"], event["captured_at"],
+                 event["payload_kind"], event["payload_text"],
+                 json.dumps(envelope, ensure_ascii=False, sort_keys=True)),
             )
             self.conn.commit()
         except Exception:
@@ -368,6 +381,15 @@ class TranscriptStore:
                           f"**Client:** {row.get('client') or 'unknown'}",
                           f"**Model:** {row.get('model') or 'unknown'}",
                           f"**Captured:** {row['captured_at']}"])
+            # #77: a substituted generated_at must be recorded as substituted, not
+            # presented as though the provider supplied it. Only annotate the cases
+            # that are not plain provider-supplied, so an ordinary reader is not
+            # burdened with a marker on every line.
+            source = row.get("generated_at_source")
+            if source == "capture":
+                lines.append("**Generated-at source:** not supplied by provider — capture time recorded")
+            elif source == "unknown":
+                lines.append("**Generated-at source:** unknown (recorded before provenance tracking)")
             if row.get("topic"):
                 lines.append(f"**Topic:** {row['topic']}")
             if row.get("project"):
@@ -409,12 +431,27 @@ class TranscriptStore:
 
     def delete_group(self, session_group_id: str, *, vault: Path | str | Any | None = None,
                      path: str | None = None) -> int:
+        # Read the group's distinct projects BEFORE deleting rows: a caller that omits
+        # `path` (a manifest entry with no session-meta marker) must still reach a
+        # project-scoped file, or the SQLite rows are gone while the rendered Markdown
+        # — verbatim prompts, tool inputs, tool outputs — stays on disk (#76). Mirrors
+        # the same project-enumeration prune() already does below.
+        projects = {
+            str(row[0]) if row[0] else None
+            for row in self.conn.execute(
+                "SELECT DISTINCT project FROM transcript_events WHERE session_group_id=?",
+                (session_group_id,),
+            ).fetchall()
+        }
         with self.conn:
             result = self.conn.execute(
                 "DELETE FROM transcript_events WHERE session_group_id=?", (session_group_id,)
             )
-        relative = path or transcript_path_for(session_group_id)
-        destination = _vault_root(vault or self.vault) / str(relative).lstrip("/")
-        if destination.exists() and destination.is_file():
-            destination.unlink()
+        root = _vault_root(vault or self.vault)
+        candidates = {path} if path else set()
+        candidates |= {transcript_path_for(session_group_id, project) for project in (projects or {None})}
+        for relative in candidates:
+            destination = root / str(relative).lstrip("/")
+            if destination.exists() and destination.is_file():
+                destination.unlink()
         return result.rowcount

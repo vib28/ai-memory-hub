@@ -283,8 +283,6 @@ def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any
             if kept_handlers:
                 group["hooks"] = kept_handlers
                 kept_groups.append(group)
-            elif group.get("hooks"):
-                kept_groups.append(group)
         if kept_groups:
             hooks[event] = kept_groups
         else:

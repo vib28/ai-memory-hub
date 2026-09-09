@@ -392,8 +392,14 @@ function Remove-CodexHook {
     $results.Add("[hooks]     Codex CLI hook $status ($settingsPath)")
 }
 
-function Get-GeminiSettingsPath { return Join-Path $HOME ".gemini\settings.json" }
-function Get-QwenSettingsPath { return Join-Path $HOME ".qwen\settings.json" }
+function Get-GeminiSettingsPath {
+    $geminiConfigHome = if ($env:GEMINI_CONFIG_DIR) { $env:GEMINI_CONFIG_DIR } else { Join-Path $HOME ".gemini" }
+    return Join-Path $geminiConfigHome "settings.json"
+}
+function Get-QwenSettingsPath {
+    $qwenConfigHome = if ($env:QWEN_CONFIG_DIR) { $env:QWEN_CONFIG_DIR } else { Join-Path $HOME ".qwen" }
+    return Join-Path $qwenConfigHome "settings.json"
+}
 function Get-KimiSettingsPath {
     $kimiConfigHome = if ($env:KIMI_CONFIG_DIR) { $env:KIMI_CONFIG_DIR } else { Join-Path $HOME ".kimi" }
     return Join-Path $kimiConfigHome "config.toml"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from memory_hub.capture import ObservationBuffer
 from memory_hub.session_capture import consolidate_buffered_session
@@ -118,6 +119,30 @@ class SessionCaptureTests(unittest.TestCase):
                 self.assertEqual(result["recovered"], 1)
                 self.assertEqual(buffer.for_session("s1")[0]["status"], "completed")
                 self.assertGreaterEqual(buffer.for_session("s1")[0]["attempts"], 4)
+            finally:
+                buffer.close()
+
+    def test_transcript_path_matches_summary_project_not_first_row(self):
+        """#70: rows[0]'s project is frequently empty even when a later row (or the
+        fallback consolidator's "first non-empty" rule) resolves one. transcript_path
+        must agree with the project the summary itself carries, or two checkpoints in
+        the same group can point at two different transcript files.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            buffer = ObservationBuffer(Path(temp) / "capture.sqlite3")
+            try:
+                buffer.append({"observation_id": "one", "session_id": "s1", "project": "",
+                               "tool": "Edit", "files": ["a.py"], "output_summary": "changed a.py"})
+                buffer.append({"observation_id": "two", "session_id": "s1", "project": "widget-app",
+                               "tool": "Edit", "files": ["b.py"], "output_summary": "changed b.py"})
+                manager = FakeManager("stored")
+                with patch.dict("os.environ", {"MEMORY_TRANSCRIPT_ENABLED": "true"}):
+                    result = consolidate_buffered_session(
+                        buffer, manager, "s1", writer="codex", write_mode="auto"
+                    )
+                self.assertEqual(result["summary"]["project"], "widget-app")
+                payload = manager.calls[0][0]
+                self.assertIn("widget-app", payload["transcript_path"])
             finally:
                 buffer.close()
 

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ._env import int_env
 from .utils import slugify
 
 
@@ -300,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", default=os.environ.get("AI_MEMORY_VAULT"))
     parser.add_argument("--client", default=os.environ.get("MEMORY_WRITER", "unknown"))
     parser.add_argument("--max-chars", type=int,
-                        default=int(os.environ.get("MEMORY_HANDOFF_MAX_CHARS", DEFAULT_MAX_CHARS)))
+                        default=int_env("MEMORY_HANDOFF_MAX_CHARS", DEFAULT_MAX_CHARS, minimum=1))
     args = parser.parse_args(argv)
     try:
         raw = sys.stdin.read().strip()

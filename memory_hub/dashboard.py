@@ -9,6 +9,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from ._env import int_env
 from .entities import resolve_subject
 from .manager import MemoryManager
 from .utils import slugify
@@ -18,6 +19,21 @@ from pathlib import Path
 from .dashboard_data import detail, metadata, save_metadata
 
 ASSETS = Path(__file__).with_name('static')
+
+# The single source of truth for the dashboard's bind address/port: app.py,
+# dashboard.py and the *.ps1 launchers all previously hardcoded 8765 independently,
+# so changing it meant editing five files consistently and a missed one made
+# app.py's single-instance probe silently check the wrong port (#81).
+DEFAULT_DASHBOARD_HOST = '127.0.0.1'
+DEFAULT_DASHBOARD_PORT = 8765
+
+
+def default_dashboard_host() -> str:
+    return os.environ.get('MEMORY_DASHBOARD_HOST', '').strip() or DEFAULT_DASHBOARD_HOST
+
+
+def default_dashboard_port() -> int:
+    return int_env('MEMORY_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT)
 
 
 def load_html():
@@ -222,8 +238,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._json({"error": str(exc)}, 500)
 
-def create_server(manager: MemoryManager, host: str = '127.0.0.1', port: int = 8765):
+def create_server(manager: MemoryManager, host: str | None = None, port: int | None = None):
     """Every launch path receives an isolated token, host guard and request lock."""
+    host = host if host is not None else default_dashboard_host()
+    port = port if port is not None else default_dashboard_port()
     if host not in ('127.0.0.1', 'localhost'):
         raise ValueError('The memory dashboard only supports loopback access.')
     handler = type('LocalDashboardHandler', (DashboardHandler,), {
@@ -236,7 +254,9 @@ def create_server(manager: MemoryManager, host: str = '127.0.0.1', port: int = 8
     return server
 
 
-def serve(vault: str, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True):
+def serve(vault: str, host: str | None = None, port: int | None = None, open_browser: bool = True):
+    host = host if host is not None else default_dashboard_host()
+    port = port if port is not None else default_dashboard_port()
     manager = MemoryManager(vault)
     httpd = None
     try:
@@ -257,8 +277,8 @@ def serve(vault: str, host: str = "127.0.0.1", port: int = 8765, open_browser: b
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--vault", default=os.environ.get("AI_MEMORY_VAULT"))
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--host", default=default_dashboard_host())
+    p.add_argument("--port", type=int, default=default_dashboard_port())
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args()
     if not args.vault:

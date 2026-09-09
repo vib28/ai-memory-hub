@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ._env import int_env as _int_env
 from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
@@ -22,13 +23,6 @@ from .utils import atomic_write
 
 FINAL_EVENTS = {"session-end"}
 TURN_EVENTS = {"stop", "post-tool-use-failure", "pre-compact", "post-compaction"}
-
-
-def _int_env(name: str, default: int, minimum: int = 1) -> int:
-    try:
-        return max(minimum, int(os.environ.get(name, default)))
-    except (TypeError, ValueError):
-        return default
 
 
 def _parse_time(value: str | None, fallback: datetime) -> datetime:
@@ -166,12 +160,20 @@ class SessionWorker:
         if events & TURN_EVENTS:
             state = "provisional" if events & {"stop", "pre-compact", "post-compaction"} else "accepted"
             return "turn", state, "checkpoint", False
-        first = _parse_time(rows[0].get("created_at"), now)
-        age = now - first
-        if age >= timedelta(seconds=self.config.flush_seconds):
-            return "time", "accepted", "checkpoint", False
-        if age >= timedelta(seconds=self.config.idle_seconds):
+        # Idle measures time since the most RECENT activity and is checked first: with
+        # the shipped defaults (flush_seconds=60 < idle_seconds=300), the oldest pending
+        # row always crosses flush_seconds first on routine polling, so checking flush
+        # first made idle permanently unreachable (#71). Checking idle first only
+        # changes behavior when the gap since the newest row is itself severe — e.g. the
+        # worker was down or otherwise missed a long stretch of polls — which is exactly
+        # when a provisional/incomplete close is the more honest result than a routine
+        # "accepted" checkpoint.
+        newest = _parse_time(rows[-1].get("created_at"), now)
+        if now - newest >= timedelta(seconds=self.config.idle_seconds):
             return "idle", "provisional", "checkpoint", False
+        oldest = _parse_time(rows[0].get("created_at"), now)
+        if now - oldest >= timedelta(seconds=self.config.flush_seconds):
+            return "time", "accepted", "checkpoint", False
         return None
 
     def _batch_size(self, rows: list[dict[str, Any]], reason: str) -> int:
@@ -197,7 +199,19 @@ class SessionWorker:
             try:
                 transcript_deleted = self.transcript_store.prune(now=now)
                 for group_id in self.transcript_store.groups():
-                    self.transcript_store.render(group_id, self.config.vault)
+                    # A routine poll re-render must reproduce the same file with the same
+                    # summary back-links the authoritative writer set, not a degraded copy
+                    # that drops them and can land at a second, orphaned path (#68). Fall
+                    # back to the plain default when the group has no summary yet.
+                    target = self.manager.session_transcript_target(group_id)
+                    if target:
+                        self.transcript_store.render(
+                            group_id, self.config.vault,
+                            project=target.get("project"), path=target.get("path"),
+                            summary_links=target.get("summary_links") or [],
+                        )
+                    else:
+                        self.transcript_store.render(group_id, self.config.vault)
                     transcript_rendered += 1
             except Exception as exc:
                 errors.append({"session_id": "transcript", "reason": str(exc)})
@@ -224,14 +238,19 @@ class SessionWorker:
             for session_id in self.buffer.pending_sessions()
         )
         status = "degraded" if errors else "ok"
-        self._write_health(
-            status=status, last_run_at=stamp, last_success_at=stamp if not errors else None,
-            last_error=errors[0]["reason"] if errors else None,
-            backlog=backlog, processed=len(processed), errors=errors,
-            retention_deleted=retention_deleted,
-            transcript_deleted=transcript_deleted,
-            transcript_rendered=transcript_rendered,
-        )
+        health_updates: dict[str, Any] = {
+            "status": status, "last_run_at": stamp,
+            "last_error": errors[0]["reason"] if errors else None,
+            "backlog": backlog, "processed": len(processed), "errors": errors,
+            "retention_deleted": retention_deleted,
+            "transcript_deleted": transcript_deleted,
+            "transcript_rendered": transcript_rendered,
+        }
+        # A degraded run must not overwrite the last known-good timestamp with null —
+        # omit the key entirely so _write_health's dict.update() leaves it untouched (#72).
+        if not errors:
+            health_updates["last_success_at"] = stamp
+        self._write_health(**health_updates)
         return {"status": status, "processed": processed, "errors": errors, "backlog": backlog,
                 "retention_deleted": retention_deleted,
                 "transcript_deleted": transcript_deleted,

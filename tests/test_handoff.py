@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,22 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("quoted-evidence", context)
         tiny = build_handoff(self.vault, payload=payload, client="codex", max_chars=200)
         self.assertLessEqual(tiny["packet_chars"], 200)
+
+    def test_malformed_max_chars_env_degrades_instead_of_crashing(self):
+        """#75: MEMORY_HANDOFF_MAX_CHARS is read while argparse builds the parser, outside
+        the try block whose entire purpose is "startup context must never block the host
+        client". A non-numeric value must still exit 0 with an unavailable packet, not a
+        traceback.
+        """
+        env = dict(os.environ, MEMORY_HANDOFF_MAX_CHARS="6k")
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_hub.handoff", "--vault", str(self.vault), "--client", "codex"],
+            input=json.dumps({"session_id": "malformed-env", "cwd": self.tmp.name, "source": "startup"}),
+            text=True, capture_output=True, env=env,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        output = json.loads(result.stdout)
+        self.assertIn(output["status"], {"ok", "empty", "unavailable"})
 
     def test_codex_to_claude_fixture_reads_without_network_dependencies(self):
         self._checkpoint(model="codex", group="codex-claude", title="Continue from Codex")

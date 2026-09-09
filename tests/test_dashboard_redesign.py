@@ -1,5 +1,6 @@
 import http.client
 import json
+import os
 from pathlib import Path
 import re
 import threading
@@ -8,7 +9,8 @@ from unittest.mock import patch
 import pytest
 
 from memory_hub.app import running_instance, run
-from memory_hub.dashboard import create_server, memory_rows_for_dashboard, load_html
+from memory_hub.dashboard import (DEFAULT_DASHBOARD_PORT, create_server, default_dashboard_host,
+                                  default_dashboard_port, memory_rows_for_dashboard, load_html)
 from memory_hub.dashboard_data import detail, metadata, save_metadata
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryRecord
@@ -134,6 +136,23 @@ def test_shared_server_security_metadata_and_reopen(manager):
 def test_disallow_non_loopback(manager):
     with pytest.raises(ValueError):
         create_server(manager, "0.0.0.0", 0)
+
+
+def test_dashboard_port_and_host_are_environment_driven():
+    """#81: the port/host were hardcoded independently in six places; changing one
+    without the others left app.py's single-instance probe checking the wrong port.
+    One MEMORY_DASHBOARD_PORT/HOST pair must now drive every call site.
+    """
+    with patch.dict("os.environ", {}, clear=False):
+        for key in ("MEMORY_DASHBOARD_PORT", "MEMORY_DASHBOARD_HOST"):
+            os.environ.pop(key, None)
+        assert default_dashboard_port() == DEFAULT_DASHBOARD_PORT == 8765
+        assert default_dashboard_host() == "127.0.0.1"
+    with patch.dict("os.environ", {"MEMORY_DASHBOARD_PORT": "9100", "MEMORY_DASHBOARD_HOST": "localhost"}):
+        assert default_dashboard_port() == 9100
+        assert default_dashboard_host() == "localhost"
+    with patch.dict("os.environ", {"MEMORY_DASHBOARD_PORT": "not-a-port"}):
+        assert default_dashboard_port() == DEFAULT_DASHBOARD_PORT
 
 
 def luminance(hex_color):

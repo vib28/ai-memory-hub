@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 
-from .dashboard import create_server
+from .dashboard import create_server, default_dashboard_port
 from .dashboard_data import revision
 from .manager import MemoryManager
 
@@ -26,7 +26,8 @@ def running_instance(vault, port):
             and value.get('vault') == revision(str(Path(vault).resolve())))
 
 
-def run(vault, port=8765, tray=True, open_browser=True):
+def run(vault, port=None, tray=True, open_browser=True):
+    port = port if port is not None else default_dashboard_port()
     url = f'http://127.0.0.1:{port}/'
     if port and running_instance(vault, port):
         if open_browser:
@@ -76,7 +77,7 @@ def run(vault, port=8765, tray=True, open_browser=True):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vault', default=os.environ.get('AI_MEMORY_VAULT'))
-    parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--port', type=int, default=default_dashboard_port())
     parser.add_argument('--no-tray', action='store_true')
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()

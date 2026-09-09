@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from memory_hub.github_export import ExportError, ExportOutbox, GitHubPublisher, build_export_payloads, configure, run_once
+from memory_hub.github_export import (ExportError, ExportOutbox, GitHubClient, GitHubPublisher,
+                                      build_export_payloads, configure, run_once)
 from memory_hub.manager import MemoryManager
 
 
@@ -18,6 +19,9 @@ class FakeGitHub:
         self.next_comment_id = 1
         self.fail_after_comment = fail_after_comment
         self.failed_once = False
+        self.create_comment_calls = 0
+        self.update_comment_calls = 0
+        self.update_issue_calls = 0
 
     def repo_visibility(self):
         return "private"
@@ -30,12 +34,14 @@ class FakeGitHub:
         return self.issue
 
     def update_issue(self, number, body):
+        self.update_issue_calls += 1
         self.issue["body"] = body
 
     def list_comments(self, number):
         return list(self.comments)
 
     def create_comment(self, number, body):
+        self.create_comment_calls += 1
         record = {
             "id": self.next_comment_id,
             "html_url": f"https://github.com/owner/repo/issues/42#issuecomment-{self.next_comment_id}",
@@ -49,6 +55,7 @@ class FakeGitHub:
         return record
 
     def update_comment(self, comment_id, body):
+        self.update_comment_calls += 1
         for comment in self.comments:
             if comment["id"] == comment_id:
                 comment["body"] = body
@@ -57,6 +64,37 @@ class FakeGitHub:
 class OfflineGitHub(FakeGitHub):
     def repo_visibility(self):
         raise ExportError("simulated offline")
+
+
+class GitHubClientPaginationTests(unittest.TestCase):
+    """#73: find_issue/list_comments must reach a marker past the first 100 items."""
+
+    def _paginated_runner(self, pages):
+        # `gh api ... --paginate --slurp` on an array-returning endpoint prints one
+        # combined JSON array whose elements are the individual pages' arrays.
+        stdout = json.dumps(pages)
+
+        def runner(args, **kwargs):
+            self.assertIn("--paginate", args)
+            self.assertIn("--slurp", args)
+            return Mock(returncode=0, stdout=stdout, stderr="")
+        return runner
+
+    def test_find_issue_locates_marker_past_first_page(self):
+        page_one = [{"number": n, "body": f"issue {n}"} for n in range(1, 101)]
+        page_two = [{"number": 101, "body": "AI Memory Hub session marker: group-9"}]
+        client = GitHubClient("owner/repo", runner=self._paginated_runner([page_one, page_two]))
+        found = client.find_issue("marker: group-9")
+        assert found is not None
+        self.assertEqual(found["number"], 101)
+
+    def test_list_comments_returns_every_page(self):
+        page_one = [{"id": n} for n in range(1, 101)]
+        page_two = [{"id": 101}]
+        client = GitHubClient("owner/repo", runner=self._paginated_runner([page_one, page_two]))
+        comments = client.list_comments(42)
+        self.assertEqual(len(comments), 101)
+        self.assertEqual(comments[-1]["id"], 101)
 
 
 class GitHubExportTests(unittest.TestCase):
@@ -119,6 +157,38 @@ class GitHubExportTests(unittest.TestCase):
             self.assertIn(user_comment, fake.comments)
             self.assertEqual(len([item for item in fake.comments if "ai-memory-hub:checkpoint" in item["body"]]), 5)
             self.assertEqual(publisher.enqueue_accepted()["enqueued"], 5)
+        finally:
+            publisher.close()
+            outbox.close()
+
+    def test_republish_only_writes_newly_claimed_rows(self):
+        """#74: a second publish pass must not rewrite already-`sent` comments — only
+        the newly claimed row(s) should reach GitHub, or every poll's write cost grows
+        with the whole group instead of the new batch.
+        """
+        for sequence in (1, 2, 3):
+            self._store(sequence)
+        fake = FakeGitHub()
+        outbox = ExportOutbox(self.root / "outbox.sqlite3")
+        publisher = GitHubPublisher(self.vault, client=fake, outbox=outbox)
+        try:
+            publisher.enqueue_accepted()
+            publisher.publish_once()
+            self.assertEqual(fake.create_comment_calls, 3)
+            first_update_issue_calls = fake.update_issue_calls
+            first_update_comment_calls = fake.update_comment_calls
+            self._store(4)
+            publisher.enqueue_accepted()
+            result = publisher.publish_once()
+            self.assertEqual(result["status"], "ok")
+            # Only the new 4th checkpoint should have produced a comment write.
+            self.assertEqual(fake.create_comment_calls, 4)
+            # A freshly created comment gets one self-referential update once the
+            # links map is complete — but rows 1-3 were already `sent` and must not
+            # be re-updated on this pass, so the count rises by exactly 1, not 4.
+            self.assertEqual(fake.update_comment_calls, first_update_comment_calls + 1)
+            self.assertGreater(fake.update_issue_calls, first_update_issue_calls)
+            self.assertEqual(len(fake.comments), 4)
         finally:
             publisher.close()
             outbox.close()

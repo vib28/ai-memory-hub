@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ._env import int_env
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
 from .utils import atomic_write, slugify
@@ -316,7 +317,19 @@ class ExportOutbox:
                     "UPDATE exports SET status='processing',lease_owner=?,lease_expires_at=?,attempts=attempts+1,updated_at=? WHERE marker=?",
                     [(owner, lease, stamp, marker) for marker in markers],
                 )
-        return self.group_rows(group_id)
+        if not markers:
+            return []
+        # Return only the rows this call actually locked — group_rows() returns the
+        # whole group (every status), and the caller uses this return value both to
+        # decide what needs a GitHub write this pass and to mark_sent() afterward.
+        # Returning the whole group made every already-`sent` row look newly claimed
+        # on every poll, republishing it and risking a write to a row another
+        # publisher currently holds a lease on (#74).
+        placeholders = ",".join("?" for _ in markers)
+        rows = self.conn.execute(
+            f"SELECT * FROM exports WHERE marker IN ({placeholders})", markers
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def group_rows(self, group_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute("SELECT * FROM exports WHERE session_group_id=? ORDER BY json_extract(payload_json,'$.sequence'), marker", (group_id,)).fetchall()
@@ -373,15 +386,30 @@ class GitHubClient:
         except json.JSONDecodeError as exc:
             raise ExportError("GitHub returned invalid JSON") from exc
 
+    def _api_json_all_pages(self, endpoint: str) -> list[Any]:
+        """Like `_api_json`, but for an endpoint returning a JSON array: fetch every
+        page, not only the first 100 items (#73). `--slurp` combines the pages into
+        one flat array instead of printing one JSON array per page back to back.
+        """
+        raw = self._run(["api", endpoint, "--paginate", "--slurp"])
+        try:
+            pages = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ExportError("GitHub returned invalid JSON") from exc
+        if not isinstance(pages, list):
+            return []
+        items: list[Any] = []
+        for page in pages:
+            items.extend(page if isinstance(page, list) else [page])
+        return items
+
     def repo_visibility(self) -> str:
         value = self._api_json(f"repos/{self.repo}")
         return str(value.get("visibility", "")).lower()
 
     def find_issue(self, marker: str) -> dict[str, Any] | None:
-        value = self._api_json(f"repos/{self.repo}/issues?state=all&per_page=100")
-        if not isinstance(value, list):
-            return None
-        return next((item for item in value if not item.get("pull_request") and marker in str(item.get("body") or "")), None)
+        items = self._api_json_all_pages(f"repos/{self.repo}/issues?state=all&per_page=100")
+        return next((item for item in items if not item.get("pull_request") and marker in str(item.get("body") or "")), None)
 
     def create_issue(self, title: str, body: str) -> dict[str, Any]:
         raw = self._run(["issue", "create", "--repo", self.repo, "--title", title, "--body", body])
@@ -394,8 +422,7 @@ class GitHubClient:
         self._run(["api", f"repos/{self.repo}/issues/{number}", "--method", "PATCH", "-f", f"body={body}"])
 
     def list_comments(self, number: int) -> list[dict[str, Any]]:
-        value = self._api_json(f"repos/{self.repo}/issues/{number}/comments?per_page=100")
-        return value if isinstance(value, list) else []
+        return self._api_json_all_pages(f"repos/{self.repo}/issues/{number}/comments?per_page=100")
 
     def create_comment(self, number: int, body: str) -> dict[str, Any]:
         raw = self._run(["issue", "comment", str(number), "--repo", self.repo, "--body", body])
@@ -433,6 +460,13 @@ class GitHubPublisher:
     def _publish_group(self, group_id: str, claimed: list[dict[str, Any]], owner: str) -> dict[str, Any]:
         all_rows = self.outbox.group_rows(group_id)
         payloads = [json.loads(row["payload_json"]) for row in all_rows]
+        # `all_rows`/`payloads` supply full-group context for the issue body and link
+        # map — every checkpoint needs to appear there. But only rows this call
+        # actually claimed get a GitHub write: an already-`sent` row's link is already
+        # durable in the outbox from a prior pass, and rewriting it on every poll is
+        # the unbounded per-poll write growth #74 was filed for (it also risked writing
+        # a row another publisher currently holds a lease on).
+        claimed_markers = {str(row["marker"]) for row in claimed}
         group_marker = _group_marker(group_id)
         issue = self.client.find_issue(group_marker)
         if issue is None:
@@ -444,6 +478,10 @@ class GitHubPublisher:
         comment_records: dict[str, dict[str, Any]] = {}
         for row, payload in zip(all_rows, payloads):
             marker = payload["marker"]
+            if marker not in claimed_markers:
+                if row.get("remote_comment_url"):
+                    links[marker] = str(row["remote_comment_url"])
+                continue
             existing = next((comment for comment in comments if marker in str(comment.get("body") or "")), None)
             if existing:
                 comment_records[marker] = existing
@@ -458,12 +496,15 @@ class GitHubPublisher:
         issue_body = _replace_owned_block(issue_body, f"<!-- {group_marker} -->", "<!-- ai-memory-hub:group-end -->", render_issue_block(group_id, payloads, links))
         self.client.update_issue(issue_number, issue_body)
         for payload in payloads:
-            record = comment_records[payload["marker"]]
+            marker = payload["marker"]
+            if marker not in claimed_markers:
+                continue
+            record = comment_records[marker]
             body = render_comment(payload, links)
             if record.get("id"):
                 self.client.update_comment(int(record["id"]), body)
         self.outbox.mark_sent([str(row["marker"]) for row in claimed])
-        return {"group": group_id, "issue": issue_number, "comments": len(payloads), "status": "published"}
+        return {"group": group_id, "issue": issue_number, "comments": len(claimed), "status": "published"}
 
     def publish_once(self) -> dict[str, Any]:
         if not self.config.get("enabled") or not self.config.get("approved"):
@@ -526,7 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", default=os.environ.get("AI_MEMORY_VAULT"))
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--group")
-    parser.add_argument("--interval-seconds", type=int, default=int(os.environ.get("MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS", DEFAULT_INTERVAL_SECONDS)))
+    parser.add_argument("--interval-seconds", type=int,
+                        default=int_env("MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS", DEFAULT_INTERVAL_SECONDS, minimum=1))
     args = parser.parse_args(argv)
     if not args.vault:
         parser.error("Set --vault or AI_MEMORY_VAULT")

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
+from memory_hub.vault import dump_frontmatter, parse_frontmatter
 
 
 class SessionTests(unittest.TestCase):
@@ -115,6 +116,33 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(entries[0]["next_id"], "link-2")
         self.assertTrue(self.manager.vault.has_session_block(entries[1]["path"], entries[1]["memory_id"]))
 
+    def test_preamble_above_first_session_heading_survives_metadata_update(self):
+        """#80: update_session_metadata rebuilt the file from dump_frontmatter(meta) plus
+        only the matched `## ` blocks, silently dropping anything a user typed above the
+        first heading. _complete_checkpoint_links calls it on every checkpoint, so this
+        was routine data loss, not a rare edge case.
+        """
+        base = {
+            "model": "codex", "title": "Preamble one", "date": "2026-09-09T11:00:00",
+            "project": "alpha", "investigated": ["Checked links"], "learned": [],
+            "completed": [], "next_steps": ["Continue"], "session_group_id": "preamble-group",
+            "host_session_id": "host-3", "entry_type": "checkpoint",
+        }
+        first = self.manager.propose_session({**base, "checkpoint_id": "pre-1", "sequence": 1})
+        self.assertEqual(first["status"], "stored")
+        path = first["memory"]["path"]
+        note = "A user's own note, kept above the first session heading."
+        full_path = self.manager.vault.resolve(path)
+        meta, body = parse_frontmatter(full_path.read_text(encoding="utf-8"))
+        full_path.write_text(dump_frontmatter(meta) + f"\n{note}\n\n{body.lstrip(chr(10))}",
+                             encoding="utf-8")
+        second_data = {**base, "title": "Preamble two", "checkpoint_id": "pre-2", "sequence": 2}
+        second = self.manager.propose_session(second_data)
+        self.assertIn(second["status"], {"stored", "stored_without_project_link"})
+        rebuilt = full_path.read_text(encoding="utf-8")
+        self.assertIn(note, rebuilt)
+        self.assertIn("## codex-preamble-one", rebuilt)
+
     def test_orphaned_checkpoint_manifest_is_repaired_after_append_crash(self):
         data = {
             "model": "codex", "title": "Crash boundary", "date": "2026-09-09T10:00:00",
@@ -194,6 +222,23 @@ class SessionTests(unittest.TestCase):
         self.assertIn("type: session", content)
         self.assertIn("## claude-second", content)
         self.assertNotIn("## claude-first", content)
+
+    def test_forget_preserves_preamble_above_sibling_session_heading(self):
+        """#80: delete_session_block has the identical preamble-drop pattern as
+        update_session_metadata — content above the first `## ` heading is outside
+        every SESSION_RE match and was dropped when the file is rebuilt.
+        """
+        stored = self._store(title="deletable", project="demo")
+        second = self._store(title="sibling", project="demo")
+        path = self.manager.vault.resolve(second["memory"]["path"])
+        note = "A user's own note, kept above the first session heading."
+        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+        path.write_text(dump_frontmatter(meta) + f"\n{note}\n\n{body.lstrip(chr(10))}", encoding="utf-8")
+        result = self.manager.forget(stored["memory"]["memory_id"])
+        self.assertEqual(result["status"], "forgotten")
+        rebuilt = path.read_text(encoding="utf-8")
+        self.assertIn(note, rebuilt)
+        self.assertIn("## claude-sibling", rebuilt)
 
     def test_forget_missing_session_id_reports_not_found(self):
         self.assertEqual(self.manager.forget("nosuchid")["status"], "not_found")

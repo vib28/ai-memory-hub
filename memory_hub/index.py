@@ -131,15 +131,26 @@ class MemoryIndex:
             )
         if commit:
             self.conn.commit()
-        self._embed_record(r)
+        # `commit=False` means the caller (rebuild()) owns one outer transaction for
+        # the whole batch — _embed_record must not open its own nested `with self.conn`
+        # in that case, or its first commit closes the caller's transaction early and a
+        # mid-rebuild crash leaves only the records processed so far (#79).
+        self._embed_record(r, manage_transaction=commit)
 
-    def _embed_record(self, record: MemoryRecord) -> None:
-        with self.conn:
-            self.conn.execute(
-                "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?",
-                (record.memory_id, f"{record.memory_id}::%"),
-            )
+    def _delete_embeddings(self, memory_id: str, *, manage_transaction: bool) -> None:
+        sql = "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?"
+        params = (memory_id, f"{memory_id}::%")
+        if manage_transaction:
+            with self.conn:
+                self.conn.execute(sql, params)
+        else:
+            self.conn.execute(sql, params)
+
+    def _embed_record(self, record: MemoryRecord, *, manage_transaction: bool = True) -> None:
         if not self.embedding_provider:
+            # Nothing to embed, but any previously computed vectors for this record
+            # are now stale (the record itself changed) and must still be cleared.
+            self._delete_embeddings(record.memory_id, manage_transaction=manage_transaction)
             return
         if record.kind == "session":
             chunks = session_embedding_chunks(
@@ -152,19 +163,28 @@ class MemoryIndex:
         else:
             inputs = [(record.memory_id, embedding_text_for(record))]
         if not inputs:
+            self._delete_embeddings(record.memory_id, manage_transaction=manage_transaction)
             return
         try:
             vectors = self.embedding_provider.embed([text for _key, text in inputs])
         except Exception:
+            # Compute vectors BEFORE touching stored state: a transient provider
+            # outage must leave the record's existing (possibly stale, but present)
+            # vectors in place rather than deleting them with nothing to replace
+            # them, which silently drops the record out of semantic search until
+            # someone notices and runs a manual reindex (#78).
             return
         if len(vectors) != len(inputs):
             return
-        with self.conn:
-            for (memory_id, text), vector in zip(inputs, vectors):
-                self.conn.execute(
-                    "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)",
-                    (memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text)),
-                )
+        self._delete_embeddings(record.memory_id, manage_transaction=manage_transaction)
+        writes = ((memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text))
+                 for (memory_id, text), vector in zip(inputs, vectors))
+        sql = "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)"
+        if manage_transaction:
+            with self.conn:
+                self.conn.executemany(sql, list(writes))
+        else:
+            self.conn.executemany(sql, list(writes))
 
     def remove(self, memory_id: str) -> None:
         with self.conn:
