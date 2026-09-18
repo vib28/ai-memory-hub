@@ -3,8 +3,8 @@
 Runs after each checkpoint on the batch's observations. Rules are conservative
 (high precision, low recall). Candidates go through ``MemoryManager.queue`` /
 ``propose`` under the configured write mode and inherit exact-hash + lexical
-dedup, so re-running on the same evidence is a no-op. ``MEMORY_LLM_MODEL`` is
-never required; if set, it is an optional enrichment stage on top.
+dedup, so re-running on the same evidence is a no-op. MEMORY_LLM_* is never
+consulted; if set, it would only be an optional enrichment stage on top.
 """
 
 from __future__ import annotations

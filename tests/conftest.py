@@ -22,6 +22,7 @@ Tests that want a specific variable set it explicitly (``patch.dict`` or
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
