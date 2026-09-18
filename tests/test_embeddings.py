@@ -235,7 +235,7 @@ class EmbeddingTests(unittest.TestCase):
         class Response:
             def __enter__(self): return self
             def __exit__(self, *args): return False
-            def read(self): return json.dumps({"data": [{"index": 1, "embedding": [2]}, {"index": 0, "embedding": [1]}]}).encode()
+            def read(self, *args, **kwargs): return json.dumps({"data": [{"index": 1, "embedding": [2]}, {"index": 0, "embedding": [1]}]}).encode()
         provider = LocalEmbeddingProvider("http://local/v1", "nomic-embed-text")
         def provider_urlopen(*args, **kwargs):
             return Response()

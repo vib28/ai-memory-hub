@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import uuid
@@ -12,6 +13,9 @@ from .models import MemoryRecord
 from .utils import text_hash
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
 from .vault import session_embedding_chunks
+
+
+logger = logging.getLogger(__name__)
 
 
 def embedding_text_for(record: MemoryRecord) -> str:
@@ -279,8 +283,8 @@ class MemoryIndex:
                         ).fetchall()
                         if rows:
                             fts_rows = [dict(r) for r in rows]
-                    except sqlite3.OperationalError:
-                        pass
+                    except sqlite3.OperationalError as exc:
+                        logger.debug("FTS query failed, falling back to LIKE: %s", exc)
             if not fts_rows:
                 like = f"%{query}%"
                 filters = ["(text LIKE ? OR path LIKE ? OR subject LIKE ?)"]
@@ -305,9 +309,9 @@ class MemoryIndex:
                 query_vector = self.embedding_provider.embed([query])[0]
             except Exception:
                 return fts_rows[:limit]
-            rows_by_id = {row["memory_id"]: row for row in self.all_rows()
-                          if (allowed_paths is None or row["path"] in allowed_paths)
-                          and (not exclude_superseded or row["tag"] != "superseded")}
+            # Build rows_by_id from the FTS/LIKE candidates rather than all_rows() (#181):
+            # the embedding lookup should only score records that already text-matched.
+            rows_by_id = {row["memory_id"]: row for row in fts_rows}
         if not rows_by_id:
             return []
         # Restrict the embedding lookup to candidate memory_ids only (#148).

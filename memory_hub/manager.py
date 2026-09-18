@@ -331,7 +331,7 @@ class MemoryManager:
         existing = next((item for item in entries if item.get("checkpoint_id") == checkpoint_id), None)
         if existing:
             if self.vault.has_session_block(existing["path"], existing["memory_id"]):
-                self._complete_checkpoint_links(existing)
+                self._complete_checkpoint_links(existing, manifest=manifest)
                 return existing
             # A crash can leave the manifest ahead of the Markdown append. The
             # orphaned entry is safe to replace with the retry's new memory ID.
@@ -368,10 +368,13 @@ class MemoryManager:
         entries.sort(key=lambda item: (item.get("sequence", 0), item.get("checkpoint_id", "")))
         group["revision"] = int(group.get("revision", 0)) + 1
         self._write_session_manifest(manifest)
+        # Stash manifest so propose_session can reuse it in _complete_checkpoint_links (#180).
+        self._last_manifest = manifest
         return base
 
-    def _complete_checkpoint_links(self, metadata: dict) -> None:
-        manifest = self._load_session_manifest()
+    def _complete_checkpoint_links(self, metadata: dict, manifest: dict | None = None) -> None:
+        if manifest is None:
+            manifest = self._load_session_manifest()
         group = manifest["groups"].get(metadata["session_group_id"])
         if not group:
             return
@@ -530,7 +533,7 @@ class MemoryManager:
         slug, block = self._session_block(data, memory_id, metadata)
         self.vault.append_session_block(relative, block, writer=data["model"])
         if metadata:
-            self._complete_checkpoint_links(metadata)
+            self._complete_checkpoint_links(metadata, manifest=getattr(self, "_last_manifest", None))
             transcript_store = TranscriptStore(vault=self.vault)
             try:
                 target = self.session_transcript_target(data["session_group_id"]) or {}
@@ -1082,26 +1085,26 @@ class MemoryManager:
         return {"status": "resolved", "kept": keep_id, "superseded": changed}
 
     def audit(self) -> dict:
-        records = self._all_records()
         seen = {}
         duplicate_ids = []
         malformed_files = []
-        for r in records:
-            if r.memory_id in seen:
-                duplicate_ids.append(r.memory_id)
-            seen[r.memory_id] = r.path
-        indexed_ids = {r["memory_id"] for r in self.index.all_rows()}
-        file_ids = {r.memory_id for r in records}
-        missing_from_index = sorted(file_ids - indexed_ids)
-        stale_in_index = sorted(indexed_ids - file_ids)
         orphan_sessions = []
+        file_ids: set[str] = set()
+        records_count = 0
         for p in self.vault.all_memory_files():
             if p.name in {"MEMORY.md", "AI_INSTRUCTIONS.md"}:
                 continue
             relative = "/" + p.relative_to(self.vault.root).as_posix()
+            records = parse_records(p, self.vault.root)
+            records_count += len(records)
+            for r in records:
+                file_ids.add(r.memory_id)
+                if r.memory_id in seen:
+                    duplicate_ids.append(r.memory_id)
+                seen[r.memory_id] = r.path
             content = p.read_text(encoding="utf-8")
             # Single file-walker: malformed-line scan and orphan-session detection
-            # both read the file once instead of one re-read per pass (#167).
+            # both read the file once instead of one re-read per pass (#167, #179).
             malformed_lines = []
             for i, line in enumerate(content.splitlines(), start=1):
                 if line.startswith("- [") and not ENTRY_RE.match(line):
@@ -1110,8 +1113,11 @@ class MemoryManager:
             meta, _ = parse_frontmatter(content)
             if str(meta.get("type", "")) == "session":
                 orphan_sessions.extend(self.vault.orphan_session_blocks(relative))
+        indexed_ids = {r["memory_id"] for r in self.index.all_rows()}
+        missing_from_index = sorted(file_ids - indexed_ids)
+        stale_in_index = sorted(indexed_ids - file_ids)
         return {
-            "records_in_files": len(records),
+            "records_in_files": records_count,
             "records_in_index": len(indexed_ids),
             "pending_review": len(self.list_pending()),
             "potential_conflicts": len(self.conflicts()),

@@ -181,7 +181,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return self._json({"error": "forbidden: bad host"}, 403)
         u = urlparse(self.path)
         if u.path == "/":
-            data = load_html().replace("__LAUNCH_TOKEN__", self.launch_token).encode()
+            data = HTML.replace("__LAUNCH_TOKEN__", self.launch_token).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -214,7 +214,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(read_health(self.manager.vault.root))
             if u.path == "/api/config":
                 return self._json({"groups": GROUPS, "settings": effective_config(self.manager.vault.root)})
-            self._json({"error": "not found"}, 404)
+            return self._json({"error": "not found"}, 404)
         except KeyError as exc:
             self._json({"error": str(exc)}, 404)
         except (ValueError, TypeError) as exc:

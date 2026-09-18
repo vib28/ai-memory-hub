@@ -78,7 +78,7 @@ def extract_from_transcript(transcript: str) -> list[dict]:
 
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+            payload = json.loads(resp.read(16 * 1024 * 1024).decode("utf-8"))
     except Exception as exc:
         raise ExtractionError(f"extractor request failed: {exc}") from exc
 

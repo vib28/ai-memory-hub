@@ -209,8 +209,8 @@ class SessionWorker:
             try:
                 if path.exists() and path.read_text(encoding="utf-8") == last_terminal:
                     return current
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Health file read failed, will rewrite: %s", exc)
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(path, payload)
         return current

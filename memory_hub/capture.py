@@ -426,7 +426,8 @@ class ObservationBuffer:
         row = self.conn.execute(
             "SELECT * FROM observations WHERE observation_id=?", (observation.observation_id,)
         ).fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError("observation vanished between insert and select")
         result = self._row(row)
         result["duplicate"] = cursor.rowcount == 0
         return result

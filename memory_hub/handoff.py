@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -20,6 +21,9 @@ from typing import Any
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .utils import clean_list, one_line, parse_iso_datetime, read_json, slugify
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_MAX_CHARS = 6000
@@ -157,8 +161,8 @@ def _read_block(root: Path, entry: dict[str, Any]) -> tuple[dict[str, Any], str 
             parsed = json.loads(meta.group("meta"))
             if isinstance(parsed, dict):
                 result["metadata"] = parsed
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.warning("Skipping corrupt metadata in %s: %s", entry.get("path"), exc)
     return result, body
 
 

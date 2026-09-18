@@ -219,7 +219,7 @@ def consolidate_session(
     )
     try:
         with opener(request, timeout=120) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            payload = json.loads(response.read(16 * 1024 * 1024).decode("utf-8"))
         content = payload["choices"][0]["message"]["content"]
         if content.startswith("```"):
             content = content.strip("`").removeprefix("json").strip()

@@ -281,20 +281,22 @@ class Vault:
         if cache.get("key") != cache_key:
             cache = {"key": cache_key, "index": {}}
             self._entity_slug_cache = cache
+            index = cache["index"]
+            wanted_id = slugify(entity_id) if entity_id else None
+            for path in base.glob("*.md"):
+                current_id = slugify(str(path.stem))
+                meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+                file_id = slugify(str(meta.get("id", ""))) if meta.get("id") else current_id
+                aliases = meta.get("aliases") or []
+                if not isinstance(aliases, list):
+                    aliases = [str(aliases)]
+                aliases_set = {slugify(str(value)) for value in aliases}
+                for key in (file_id, current_id, *aliases_set):
+                    if key:
+                        index[key] = path.stem
+            cache["index"] = index
         index = cache["index"]
         wanted_id = slugify(entity_id) if entity_id else None
-        for path in base.glob("*.md"):
-            current_id = slugify(str(path.stem))
-            meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
-            file_id = slugify(str(meta.get("id", ""))) if meta.get("id") else current_id
-            aliases = meta.get("aliases") or []
-            if not isinstance(aliases, list):
-                aliases = [str(aliases)]
-            aliases_set = {slugify(str(value)) for value in aliases}
-            for key in (file_id, current_id, *aliases_set):
-                if key:
-                    index[key] = path.stem
-        cache["index"] = index
         if wanted_id and wanted_id in index:
             return index[wanted_id]
         if subject_slug in index:

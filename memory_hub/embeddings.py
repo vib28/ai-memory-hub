@@ -34,7 +34,7 @@ class LocalEmbeddingProvider:
         )
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+                payload: dict[str, Any] = json.loads(response.read(32 * 1024 * 1024).decode("utf-8"))
             rows = sorted(payload["data"], key=lambda row: row.get("index", 0))
             vectors = [[float(value) for value in row["embedding"]] for row in rows]
             if len(vectors) != len(texts) or any(not vector for vector in vectors):

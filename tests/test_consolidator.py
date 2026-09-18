@@ -16,7 +16,7 @@ class FakeResponse:
     def __exit__(self, *args):
         return False
 
-    def read(self):
+    def read(self, *args, **kwargs):
         return json.dumps(self.payload).encode("utf-8")
 
 
