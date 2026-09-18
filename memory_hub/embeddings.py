@@ -45,9 +45,15 @@ class LocalEmbeddingProvider:
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
+    """Single-pass cosine similarity: one loop computes all three sums (#168)."""
     if len(left) != len(right) or not left:
         return 0.0
-    denominator = sqrt(sum(value * value for value in left)) * sqrt(sum(value * value for value in right))
+    dot = left_norm = right_norm = 0.0
+    for a, b in zip(left, right):
+        dot += a * b
+        left_norm += a * a
+        right_norm += b * b
+    denominator = sqrt(left_norm) * sqrt(right_norm)
     if denominator == 0:
         return 0.0
-    return sum(a * b for a, b in zip(left, right)) / denominator
+    return dot / denominator

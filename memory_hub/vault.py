@@ -268,20 +268,37 @@ class Vault:
         explicit link decision instead of a silent merge. A missing entity_id
         must not activate a prefix fallback: a caller that has not identified
         the entity must get a separate subject-based path (#37).
+
+        The resolved stem is cached on the Vault keyed by directory mtime so a
+        glob+parse per canonical_path call during a hot propose/render loop
+        reuses the cache when the directory is unchanged (#165).
         """
         base = self.root / directory
         if not base.exists():
             return slugify(entity_id or subject_slug)
+        cache_key = (directory, base.stat().st_mtime)
+        cache = getattr(self, "_entity_slug_cache", {})
+        if cache.get("key") != cache_key:
+            cache = {"key": cache_key, "index": {}}
+            self._entity_slug_cache = cache
+        index = cache["index"]
         wanted_id = slugify(entity_id) if entity_id else None
         for path in base.glob("*.md"):
+            current_id = slugify(str(path.stem))
             meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
-            current_id = slugify(str(meta.get("id", ""))) if meta.get("id") else path.stem
+            file_id = slugify(str(meta.get("id", ""))) if meta.get("id") else current_id
             aliases = meta.get("aliases") or []
             if not isinstance(aliases, list):
                 aliases = [str(aliases)]
-            aliases = {slugify(str(value)) for value in aliases}
-            if (wanted_id and current_id == wanted_id) or subject_slug == current_id or subject_slug in aliases:
-                return path.stem
+            aliases_set = {slugify(str(value)) for value in aliases}
+            for key in (file_id, current_id, *aliases_set):
+                if key:
+                    index[key] = path.stem
+        cache["index"] = index
+        if wanted_id and wanted_id in index:
+            return index[wanted_id]
+        if subject_slug in index:
+            return index[subject_slug]
         return slugify(entity_id or subject_slug)
 
     def append_entry(self, relative: str, line: str, *, kind: str, writer: str,

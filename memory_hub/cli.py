@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -232,6 +233,7 @@ def main():
             )))
         elif args.command == "ingest":
             transcript = Path(args.transcript_file).read_text(encoding="utf-8")
+            transcript_hash = hashlib.sha256(transcript.encode("utf-8")).hexdigest()[:16]
             candidates = extract_from_transcript(transcript)
             results = []
             for raw in candidates:
@@ -242,6 +244,7 @@ def main():
                         tag=str(raw["tag"]),
                         subject=str(raw.get("subject", "general")),
                         writer=args.writer,
+                        evidence_ids=[transcript_hash],
                     )
                     results.append(manager.propose(c))
                 except KeyError as exc:

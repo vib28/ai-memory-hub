@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import os
 import uuid
@@ -27,6 +28,13 @@ from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, 
 # per-subject file to carry id/aliases frontmatter -- identity for these is
 # resolved through the entity-aliases.md registry instead (#35).
 SHARED_FILE_KINDS = {"preference", "profile"}
+
+logger = logging.getLogger(__name__)
+
+# Session block sections rendered by _session_block and expected by consumers
+# (transcript_store, dashboard memory_rows_for_dashboard). Single source of truth
+# so adding a section only requires editing one place (#163).
+SESSION_SECTIONS = ("Investigated", "Learned", "Completed", "Next Steps")
 
 AUTO_POLICY = """
 Store automatically only when the information is durable, user-specific, future-useful,
@@ -258,8 +266,7 @@ class MemoryManager:
         project = f"[[{slugify(data['project'])}]]" if data.get("project") else "None"
         lines = [f"## {slug}", f"**Model:** {data['model']}", f"**Session title:** {data['title']}",
                  f"**Date:** {data['date']}", f"**Project:** {project}", f"**Tags:** {tags}", ""]
-        for heading, key in (("Investigated", "investigated"), ("Learned", "learned"),
-                             ("Completed", "completed"), ("Next Steps", "next_steps")):
+        for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps")):
             lines.append(f"### {heading}")
             lines.extend(f"- {item}" for item in data[key])
             lines.append("")
@@ -544,10 +551,10 @@ class MemoryManager:
         linked = None
         if data.get("project"):
             parts = []
-            for label, key in (("Investigated", "investigated"), ("Learned", "learned"),
-                               ("Completed", "completed"), ("Next steps", "next_steps")):
+            # SESSION_SECTIONS maps to investigated/learned/completed/next_steps in order
+            for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps")):
                 values = "; ".join(data[key]) if data[key] else "-"
-                parts.append(f"**{label}:** {values}")
+                parts.append(f"**{heading}:** {values}")
             project_text = f"Session summary [[{slug}]]: " + " ".join(parts) + "."
 
             linked = self.propose(MemoryCandidate(
@@ -992,6 +999,7 @@ class MemoryManager:
                 ledger = load_ledger(self.vault.root, host or "generic", session_id)
                 injected_by_hook = bool(ledger.get("start_sent"))
         except Exception:
+            logger.debug("context_prime: packet build/load failed", exc_info=True)
             packet_text = ""
         return {
             "status": "ok",
@@ -1092,12 +1100,13 @@ class MemoryManager:
                 continue
             relative = "/" + p.relative_to(self.vault.root).as_posix()
             content = p.read_text(encoding="utf-8")
+            # Single file-walker: malformed-line scan and orphan-session detection
+            # both read the file once instead of one re-read per pass (#167).
+            malformed_lines = []
             for i, line in enumerate(content.splitlines(), start=1):
                 if line.startswith("- [") and not ENTRY_RE.match(line):
-                    malformed_files.append({"path": relative, "line": i, "text": line[:200]})
-            # A session block whose id marker was lost (a hand edit in Obsidian will do
-            # it) is invisible to parse_records, so neither side of the file/index
-            # reconciliation above can see it. Check the files directly (#24).
+                    malformed_lines.append({"path": relative, "line": i, "text": line[:200]})
+            malformed_files.extend(malformed_lines)
             meta, _ = parse_frontmatter(content)
             if str(meta.get("type", "")) == "session":
                 orphan_sessions.extend(self.vault.orphan_session_blocks(relative))
@@ -1276,7 +1285,11 @@ class MemoryManager:
         return lexical_candidates
 
     def _subject_audit_file_splits(self, target_kinds):
-        """Detect possible file splits (prefix-overlapping stems) per kind."""
+        """Detect possible file splits (prefix-overlapping stems) per kind.
+
+        After sorting, only adjacent pairs can be prefix-overlapping — the
+        nested loop is O(n²) for nothing. Sort once, check neighbors (#164).
+        """
         possible_file_splits = []
         for kind in target_kinds:
             directory = self._SUBJECT_SPRAWL_DIRS.get(kind)
@@ -1286,13 +1299,12 @@ class MemoryManager:
             if not base.exists():
                 continue
             stems = sorted(p.stem for p in base.glob("*.md"))
-            for left in stems:
-                for right in stems:
-                    if left < right and (right.startswith(left + "-") or left.startswith(right + "-")):
-                        possible_file_splits.append({
-                            "kind": kind,
-                            "paths": [f"/{directory}/{left}.md", f"/{directory}/{right}.md"],
-                        })
+            for left, right in zip(stems, stems[1:]):
+                if right.startswith(left + "-") or left.startswith(right + "-"):
+                    possible_file_splits.append({
+                        "kind": kind,
+                        "paths": [f"/{directory}/{left}.md", f"/{directory}/{right}.md"],
+                    })
         return possible_file_splits
 
     def _subject_audit_alias_collisions(self, target_kinds):

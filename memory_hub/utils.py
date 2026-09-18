@@ -120,7 +120,13 @@ def file_lock(target: Path, timeout: float = 8.0, poll: float = 0.05):
 
 def atomic_write(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
+    # Restrict tmp to owner-only before write so secrets are never world-readable
+    # on the transient file (#169).
+    fd = os.open(str(tmp), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, content.encode("utf-8"))
+    finally:
+        os.close(fd)
     os.replace(tmp, path)
 
 

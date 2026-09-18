@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict, field
-from typing import Optional
 
 ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision", "session"}
 ALLOWED_TAGS = {"stated", "decided", "inferred", "preference", "constraint", "open", "superseded"}
@@ -20,9 +19,9 @@ class MemoryCandidate:
     tag: str
     subject: str = "general"
     writer: str = "other"
-    target_path: Optional[str] = None
-    supersedes_id: Optional[str] = None
-    entity_id: Optional[str] = None
+    target_path: str | None = None
+    supersedes_id: str | None = None
+    entity_id: str | None = None
     evidence_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:

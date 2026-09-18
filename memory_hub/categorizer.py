@@ -140,10 +140,9 @@ def extract_memory_candidates(observations: list[dict[str, Any]], *, project: st
 
 def _candidate(text: str, kind: str, tag: str, subject: str, writer: str,
                evidence_ids: list[str]) -> MemoryCandidate:
-    candidate = MemoryCandidate(text=text[:1500], kind=kind, tag=tag,
-                                subject=slugify(subject) or "general", writer=writer or "other")
-    candidate.evidence_ids = [item for item in evidence_ids if item]  # type: ignore[attr-defined]
-    return candidate
+    return MemoryCandidate(text=text[:1500], kind=kind, tag=tag,
+                           subject=slugify(subject) or "general", writer=writer or "other",
+                           evidence_ids=[item for item in evidence_ids if item])
 
 
 def apply_candidates(manager: Any, candidates: list[MemoryCandidate], *, write_mode: str) -> list[dict[str, Any]]:

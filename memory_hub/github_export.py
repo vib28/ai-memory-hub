@@ -337,7 +337,7 @@ class ExportOutbox:
 
     def mark_failed(self, markers: list[str], error: str) -> None:
         rows = self.conn.execute("SELECT marker,attempts FROM exports WHERE marker IN (%s)" % ",".join("?" for _ in markers), markers).fetchall() if markers else []
-        stamp_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        stamp_dt = datetime.now(timezone.utc)
         stamp = stamp_dt.isoformat(timespec="seconds")
         with self.conn:
             for row in rows:

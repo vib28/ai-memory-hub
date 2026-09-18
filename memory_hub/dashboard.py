@@ -99,7 +99,7 @@ def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[d
         key, _ = _dashboard_group(row, registry)
         if key not in newest or (row["date"], row["memory_id"]) > (newest[key]["date"], newest[key]["memory_id"]):
             newest[key] = row
-    rows = all_rows[::-1]
+    rows = list(reversed(all_rows))  # newest first; sorted via index ORDER BY DESC (#166)
     organization = metadata(manager)
     if query:
         rows = [row for row in rows if query.casefold() in
@@ -150,6 +150,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        # Hardened response headers: block MIME sniffing, lock down referrer
+        # leakage, and restrict resource loading to same-origin (#170).
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'none'; style-src 'unsafe-inline'; "
+                         "script-src 'unsafe-inline'; img-src data:; "
+                         "connect-src 'self'; frame-ancestors 'none'")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

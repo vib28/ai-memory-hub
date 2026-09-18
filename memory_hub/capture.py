@@ -498,22 +498,24 @@ class ObservationBuffer:
                 (session_id, now.isoformat(), max(1, min(int(limit), 5000))),
             ).fetchall()
             ids = [row[0] for row in rows]
+            if not ids:
+                return []
+            # Atomic UPDATE ... RETURNING in a single round-trip per ID avoids the
+            # post-claim re-read and a race where another worker could observe the
+            # rows between UPDATE and SELECT (#171).
+            claimed = []
             for observation_id in ids:
-                self.conn.execute(
+                row = self.conn.execute(
                     """UPDATE observations SET status='processing', attempts=attempts+1,
                        claim_token=?, lease_expires_at=?, last_error=NULL,
                        next_attempt_at=NULL
-                       WHERE observation_id=? AND status IN ('pending','failed')""",
+                       WHERE observation_id=? AND status IN ('pending','failed')
+                       RETURNING *""",
                     (owner, expires, observation_id),
-                )
-        if not ids:
-            return []
-        rows = self.conn.execute(
-            "SELECT * FROM observations WHERE session_id=? AND claim_token=? "
-            "ORDER BY created_at, observation_id LIMIT ?",
-            (session_id, owner, len(ids)),
-        ).fetchall()
-        return [self._row(row) for row in rows]
+                ).fetchone()
+                if row is not None:
+                    claimed.append(self._row(row))
+        return claimed
 
     def mark_status(self, observation_ids: Iterable[str], status: str, error: str | None = None,
                     owner: str | None = None) -> int:
