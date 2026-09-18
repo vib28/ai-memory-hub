@@ -1,15 +1,10 @@
 # Automatic session continuity
 
-Status: **partially implemented and tracked**. Reviewed 2026-09-09 against
-`enhancements/roadmap`. Native hook mapping, managed-handler preservation, bounded
-leased capture claims, project-scoped context and separate local-model roles are
-implemented. The #54 queue-correctness gate now includes bounded pagination, live leases,
-crash-idempotent batch identity and bounded retry backoff. Opt-in checkpoint metadata and
-manifest persistence and the supervised worker are implemented behind explicit
-session-auto setup. A model-free SessionStart handoff is available for the tested
-Claude Code and Codex CLI surfaces, and sanitized GitHub publication is available
-behind explicit destination/visibility approval. Parent:
-[#61](https://github.com/vib28/ai-memory-hub/issues/61).
+Status: **implemented** on `enhancements/auto-context-pipeline` (2026-09-18). Capture,
+project resolution, detached checkpointing, deterministic categorization and start/turn
+injection are installed for Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and
+Hermes Agent. The live token/cost benchmark remains [#62](https://github.com/vib28/ai-memory-hub/issues/62).
+Parent: [#91](https://github.com/vib28/ai-memory-hub/issues/91).
 
 ```mermaid
 flowchart LR
