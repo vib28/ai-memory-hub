@@ -259,8 +259,7 @@ def uninstall_nested_hook(settings: Path | str, *, command: str | None = None) -
             handlers = item["hooks"]
             remaining = [hook for hook in handlers if not (
                 isinstance(hook, dict) and str(hook.get("name", "")).startswith("ai-memory-hub")
-                and (command is None or hook.get("command") == command
-                     or str(hook.get("command", "")).startswith(str(command)))
+                and (command is None or hook.get("command") == command)
             )]
             removed += len(handlers) - len(remaining)
             if remaining:

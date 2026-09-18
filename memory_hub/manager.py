@@ -920,8 +920,9 @@ class MemoryManager:
                     or path in {"/preferences.md", "/profile.md"})
 
         allowed_paths = None
+        all_rows_cache = self.index.all_rows()
         if project_slug:
-            allowed_paths = {row["path"] for row in self.index.all_rows() if in_scope(row)}
+            allowed_paths = {row["path"] for row in all_rows_cache if in_scope(row)}
         rows = self.index.search(
             search_query,
             max(1, min(int(limit), 20)),
@@ -933,7 +934,7 @@ class MemoryManager:
             # Session-start context must not depend on vector ranking to find the
             # active task. Select the newest canonical project session first, then
             # retain ranked durable facts around it.
-            session_rows = [row for row in self.index.all_rows()
+            session_rows = [row for row in all_rows_cache
                             if row.get("kind") == "session" and in_scope(row)]
             if session_rows:
                 latest = max(session_rows, key=lambda row: (str(row.get("date", "")),

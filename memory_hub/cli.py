@@ -232,7 +232,7 @@ def main():
             )))
         elif args.command == "ingest":
             transcript = Path(args.transcript_file).read_text(encoding="utf-8")
-            candidates = extract_candidates(transcript)
+            candidates = extract_from_transcript(transcript)
             results = []
             for raw in candidates:
                 try:

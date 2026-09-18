@@ -310,9 +310,19 @@ class MemoryIndex:
                           and (not exclude_superseded or row["tag"] != "superseded")}
         if not rows_by_id:
             return []
+        # Restrict the embedding lookup to candidate memory_ids only (#148).
+        # A naive `SELECT ... FROM memory_embeddings` fetches and deserializes
+        # every vector in the database per query; chunked session records add
+        # ::section rows too, so this is O(vault size) on every search.
+        candidate_ids = list(rows_by_id.keys())
+        id_placeholders = ",".join("?" for _ in candidate_ids)
+        chunk_placeholders = " OR ".join("memory_id LIKE ?" for _ in candidate_ids)
+        params: list[object] = candidate_ids + [f"{cid}::%" for cid in candidate_ids]
         with self._db_lock:
             vector_rows = self.conn.execute(
-                "SELECT memory_id, vector_json FROM memory_embeddings"
+                f"SELECT memory_id, vector_json FROM memory_embeddings "
+                f"WHERE memory_id IN ({id_placeholders}) OR {chunk_placeholders}",
+                params,
             ).fetchall()
         scores: dict[str, float] = {}
         for row in vector_rows:
