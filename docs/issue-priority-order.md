@@ -123,13 +123,35 @@ related transcript-path divergence in the capture bridge that fed #68.
 
 ## Current execution status
 
-#61 and #62 remain the first-priority continuity and live benchmark gates. #64 is
-the next open product-verification item; its real-vault Chrome interaction pass and
-one-owner launcher checks are complete, while native tray-menu interaction remains open.
-#66 is closed and retained above as completed
-history rather than as an open priority.
+A 2026-09-18 audit of the live install found that the continuity components above
+exist but do not form an automatic pipeline: 1,257 observations were pending with no
+worker registered, no checkpoint manifest existed, no context had ever been injected
+into a Claude/Codex session, Gemini/Qwen/Kimi/Hermes had no injection path, captured
+rows held no prompt or assistant text, and categorization existed only as prompt
+instructions to the connected model. [#91](https://github.com/vib28/ai-memory-hub/issues/91)
+is the parent for closing that gap on branch `enhancements/auto-context-pipeline`;
+its children take precedence over #61/#62 because #62's benchmark cannot measure a
+pipeline that never runs.
 
-## Continuity and handoff first
+#64 remains the next open product-verification item; its real-vault Chrome
+interaction pass and one-owner launcher checks are complete, while native tray-menu
+interaction remains open. #66 is closed and retained above as completed history.
+
+## Zero-touch pipeline first (#91)
+
+| Order | Issue | Work | Reason for position |
+|---:|---|---|---|
+| 1 | [#88](https://github.com/vib28/ai-memory-hub/issues/88) | Suite independent of ambient `MEMORY_*` env; per-vault worker health path | Nothing else is verifiable on an installed machine until the suite runs there. |
+| 2 | [#84](https://github.com/vib28/ai-memory-hub/issues/84) | Deterministic project resolver (cwd/worktree/git root -> stable slug) | Prerequisite for routing, checkpoints, categorization and injection. |
+| 3 | [#82](https://github.com/vib28/ai-memory-hub/issues/82) | Receiver keeps prompts, assistant text, transcript_path, source/reason | Without this there is nothing to categorize or hand off. |
+| 4 | [#83](https://github.com/vib28/ai-memory-hub/issues/83) | Detached consolidation on terminal events + SessionStart catch-up; drain backlog | Makes the pipeline run without a separate opt-in worker. |
+| 5 | [#86](https://github.com/vib28/ai-memory-hub/issues/86) | Start + per-turn context injection for Claude, Codex, Gemini, Qwen, Kimi, Hermes | The user-visible deliverable. |
+| 6 | [#85](https://github.com/vib28/ai-memory-hub/issues/85) | Deterministic, evidence-linked categorizer through the existing review policy | Automatic categorization without a model dependency. |
+| 7 | [#87](https://github.com/vib28/ai-memory-hub/issues/87) | StopFailure/Interrupt/heartbeat triggers | Covers the usage-limit hand-over case. |
+| 8 | [#89](https://github.com/vib28/ai-memory-hub/issues/89) | `memory_context(cwd=)` parity with the hook packet | MCP-only clients get the same context. |
+| 9 | [#90](https://github.com/vib28/ai-memory-hub/issues/90) | README/ARCHITECTURE/CLIENTS/prompts/skill rewrite | Documents shipped behavior, so it ships last. |
+
+## Continuity and handoff (after #91)
 
 | Order | Issue | Work | Reason for position |
 |---:|---|---|---|
