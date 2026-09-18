@@ -206,6 +206,7 @@ class MemoryManager:
             clean["final_id"] = slugify(str(data["final_id"])) if data.get("final_id") else None
             clean["source_client"] = str(data.get("source_client") or clean["model"]).strip()[:100]
             clean["worktree"] = str(data.get("worktree") or "").strip()[:500] or None
+            clean["host_transcript_path"] = str(data.get("host_transcript_path") or "").strip()[:500] or None
             clean["state"] = str(data.get("state") or "accepted").strip().lower()[:40]
             clean["token_basis"] = str(data.get("token_basis") or "").strip()[:100] or None
             clean["token_count"] = data.get("token_count")
@@ -332,6 +333,7 @@ class MemoryManager:
             "evidence_end": data.get("evidence_end"), "token_count": data.get("token_count"),
             "token_basis": data.get("token_basis"), "session_tags": data.get("session_tags", []),
             "changed_files": data.get("changed_files", []),
+            "host_transcript_path": data.get("host_transcript_path"),
             "transcript_path": data.get("transcript_path"),
             "transcript_url": (f"[[{str(data['transcript_path']).lstrip('/')}]]"
                                 if data.get("transcript_path") else None),

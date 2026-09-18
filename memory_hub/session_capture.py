@@ -8,6 +8,7 @@ from typing import Any
 
 from .capture import ObservationBuffer
 from .consolidator import consolidate_session
+from .models import ALLOWED_WRITERS
 from .transcript import transcript_enabled, transcript_path_for
 
 
@@ -34,12 +35,22 @@ def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: Observa
         "state": state,
         "host_session_finalized": host_session_finalized,
         "source_client": writer,
-        "worktree": rows[0].get("cwd") or None,
+        # #84: the resolver's worktree (repository root) is the stable scope; cwd
+        # varies per row as the agent `cd`s around inside the same repository.
+        "worktree": next((row.get("worktree") for row in rows if row.get("worktree")), None)
+                    or rows[0].get("cwd") or None,
         "changed_files": changed_files[:100],
         "evidence_start": rows[0].get("created_at"),
         "evidence_end": rows[-1].get("created_at"),
         "session_tags": ["capture", "automatic"],
     }
+    # Host transcript path (Claude/Codex/Gemini/Qwen provide one) is provenance the
+    # next client can follow on demand; keep only the last value seen (#82).
+    transcript = next((row.get("host_meta", {}).get("transcript_path") for row in reversed(rows)
+                       if isinstance(row.get("host_meta"), dict)
+                       and row["host_meta"].get("transcript_path")), None)
+    if transcript:
+        metadata["host_transcript_path"] = str(transcript)[:500]
     # transcript_path is deliberately NOT derived here: at this point the consolidated
     # summary's project has not been resolved yet, and rows[0]'s project is frequently
     # empty even when a later row (or the summary/fallback project rule) carries one.
@@ -66,6 +77,12 @@ def consolidate_buffered_session(
     if not rows:
         return {"status": "empty", "session_id": session_id, "observations": 0}
     observation_ids = [row["observation_id"] for row in rows]
+    # The worker's own MEMORY_WRITER is who *consolidated*; the evidence itself
+    # says which client produced it. Route the checkpoint under that client so a
+    # Claude session never lands in /sessions/<project>/other.md (#82).
+    evidence_writer = next((str(row.get("source", "")).strip().lower() for row in rows
+                            if str(row.get("source", "")).strip().lower() in ALLOWED_WRITERS), None)
+    writer = evidence_writer or writer
     metadata = _batch_metadata(
         session_id, rows, buffer, writer, batch_limit=batch_limit,
         entry_type=entry_type, state=state,

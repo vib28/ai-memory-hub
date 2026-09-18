@@ -6,6 +6,7 @@ step turns observations into the existing four-section ``session_write`` contrac
 
 from __future__ import annotations
 
+import argparse
 import json
 import fnmatch
 import os
@@ -13,12 +14,13 @@ import re
 import sqlite3
 import sys
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 from .app_config import bootstrap_environment
+from .project_resolver import UNSCOPED, resolve_project_cached
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -49,8 +51,45 @@ _EVENT_ALIASES = {
     "pre-compact": "pre-compact",
     "postcompaction": "post-compaction",
     "post-compaction": "post-compaction",
+    "postcompact": "post-compaction",
+    "post-compact": "post-compaction",
     "stop": "stop",
+    "stopfailure": "stop-failure",
+    "stop-failure": "stop-failure",
+    "interrupt": "interrupt",
+    "sessionheartbeat": "session-heartbeat",
+    "session-heartbeat": "session-heartbeat",
+    "subagentstop": "subagent-stop",
+    "subagent-stop": "subagent-stop",
+    # Gemini CLI spellings (#82).
+    "beforeagent": "user-prompt-submit",
+    "before-agent": "user-prompt-submit",
+    "afteragent": "stop",
+    "after-agent": "stop",
+    "beforetool": "pre-tool-use",
+    "before-tool": "pre-tool-use",
+    "aftertool": "post-tool-use",
+    "after-tool": "post-tool-use",
+    "precompress": "pre-compact",
+    "pre-compress": "pre-compact",
+    # Hermes Agent shell-hook spellings (#82).
+    "pre-tool-call": "pre-tool-use",
+    "post-tool-call": "post-tool-use",
+    "on-session-start": "session-start",
+    "on-session-end": "session-end",
+    "pre-llm-call": "user-prompt-submit",
 }
+
+# Event -> which host field carries the human-readable evidence for it (#82).
+# The receiver used to know only tool_input/tool_response, so every non-tool event
+# arrived as an empty row and the pipeline had nothing but shell echoes to work with.
+_PROMPT_FIELDS = ("prompt", "submitted_prompt", "user_message")
+_ASSISTANT_FIELDS = ("last_assistant_message", "prompt_response", "response", "final_response")
+_HOST_META_FIELDS = ("transcript_path", "model", "permission_mode", "client_type", "source",
+                     "reason", "trigger", "error_type", "error_message", "agent_type", "agent_id",
+                     "stop_hook_active", "turn_id", "session_title", "profile", "platform",
+                     "uptime_ms", "token_count", "estimated_token_count", "custom_instructions")
+DEFAULT_MAX_META = 2000
 
 
 def normalize_event(value: Any) -> str:
@@ -124,6 +163,9 @@ class Observation:
     created_at: str
     source: str
     event: str
+    host_meta: dict[str, Any] = field(default_factory=dict)
+    worktree: str = ""
+    project_source: str = ""
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "Observation":
@@ -135,42 +177,102 @@ class Observation:
         created_at = _bounded_text(payload.get("created_at"), 80).strip()
         if not created_at:
             created_at = datetime.now(timezone.utc).isoformat()
-        tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-        tool_response = payload.get("tool_response")
-        tool = payload.get("tool") or payload.get("tool_name") or payload.get("name")
-        files = payload.get("files")
+        event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
+        event = event or payload.get("hook_event_name")
+        event_name = normalize_event(event)
+
+        # Hermes shell hooks wrap event-specific kwargs in "extra" (#82).
+        extra = payload.get("extra") if isinstance(payload.get("extra"), dict) else {}
+        merged = {**extra, **{k: v for k, v in payload.items() if k != "extra"}}
+
+        tool_input = merged.get("tool_input") if isinstance(merged.get("tool_input"), dict) else {}
+        tool_response = merged.get("tool_response")
+        tool = merged.get("tool") or merged.get("tool_name") or merged.get("name")
+        files = merged.get("files")
         if not files:
             file_path = tool_input.get("file_path") or tool_input.get("path")
             files = [file_path] if file_path else []
-        input_summary = payload.get("input_summary")
+        input_summary = merged.get("input_summary")
+        output_summary = merged.get("output_summary")
+
+        # Non-tool lifecycle events carry their evidence in event-specific fields.
+        # Preserve the user's own words and the assistant's completed answer; they
+        # are the only categorizable evidence most sessions produce (#82).
+        prompt_text = next((merged[key] for key in _PROMPT_FIELDS
+                            if isinstance(merged.get(key), str) and merged[key].strip()), None)
+        assistant_text = next((merged[key] for key in _ASSISTANT_FIELDS
+                               if isinstance(merged.get(key), str) and merged[key].strip()), None)
+        if input_summary is None and prompt_text is not None:
+            input_summary = prompt_text
+            tool = tool or "prompt"
+        if output_summary is None and assistant_text is not None:
+            output_summary = assistant_text
+            tool = tool or "assistant"
         if input_summary is None and tool_input:
             input_summary = json.dumps(tool_input, ensure_ascii=False, sort_keys=True)
-        output_summary = payload.get("output_summary")
         if output_summary is None and tool_response is not None:
             output_summary = (json.dumps(tool_response, ensure_ascii=False, sort_keys=True)
                               if isinstance(tool_response, (dict, list)) else str(tool_response))
-        event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
-        event = event or payload.get("hook_event_name")
+        if input_summary is None:
+            # session-start/source, session-end/reason, compaction/trigger, failure type.
+            marker = next((merged[key] for key in ("source", "reason", "trigger", "error_type")
+                           if isinstance(merged.get(key), str) and merged[key].strip()), None)
+            if marker is not None and event_name not in {"pre-tool-use", "post-tool-use"}:
+                input_summary = f"{event_name}: {marker}"
+                if isinstance(merged.get("error_message"), str) and merged["error_message"].strip():
+                    input_summary += f" - {merged['error_message']}"
+        if not tool:
+            tool = {"session-start": "session", "session-end": "session", "stop": "assistant",
+                    "stop-failure": "session", "interrupt": "session", "pre-compact": "session",
+                    "post-compaction": "session", "session-heartbeat": "session",
+                    "user-prompt-submit": "prompt"}.get(event_name)
+
         raw_files = [_bounded_text(item, 500) for item in (files or [])[:DEFAULT_MAX_FILES]
                      if item is not None]
         files = _bounded_files(raw_files)
         excluded_paths = [path for path in raw_files if _sensitive_path(path)]
+
+        host_meta: dict[str, Any] = {}
+        for key in _HOST_META_FIELDS:
+            value = merged.get(key)
+            if value is None or isinstance(value, (dict, list)):
+                continue
+            if isinstance(value, str):
+                if not value.strip():
+                    continue
+                value = _sanitize_text(value, excluded_paths)[:500]
+            host_meta[key] = value
+        if len(json.dumps(host_meta, ensure_ascii=False)) > DEFAULT_MAX_META:
+            host_meta = {k: host_meta[k] for k in ("transcript_path", "model", "source", "reason",
+                                                    "trigger", "error_type") if k in host_meta}
+
+        cwd = _bounded_text(merged.get("cwd"), 1000).strip()
+        explicit_project = _bounded_text(merged.get("project"), 200).strip()
+        identity = resolve_project_cached(
+            cwd or None, vault=os.environ.get("AI_MEMORY_VAULT") or None,
+            explicit=explicit_project or None,
+        )
         return cls(
             observation_id=_bounded_text(
-                payload.get("observation_id") or payload.get("event_id") or payload.get("hook_event_id"),
+                merged.get("observation_id") or merged.get("event_id") or merged.get("hook_event_id"),
                 100,
             ).strip() or uuid.uuid4().hex,
             session_id=session_id,
-            project=_bounded_text(payload.get("project"), 200).strip(),
-            cwd=_bounded_text(payload.get("cwd"), 1000).strip(),
+            project=identity.project if identity.project != UNSCOPED else "",
+            cwd=cwd,
             tool=_bounded_text(tool, 100).strip() or "unknown",
             files=files,
             input_summary=_sanitize_text(input_summary, excluded_paths),
             output_summary=_sanitize_text(output_summary, excluded_paths),
-            git_commit=_bounded_text(payload.get("git_commit"), 200).strip(),
+            git_commit=_bounded_text(merged.get("git_commit"), 200).strip(),
             created_at=created_at,
-            source=_bounded_text(payload.get("source") or payload.get("client"), 100).strip() or "generic-hook",
-            event=normalize_event(event),
+            source=normalize_client(merged.get("source_client") or merged.get("client")
+                                    or merged.get("client_type") or merged.get("writer"))
+                   or "generic-hook",
+            event=event_name,
+            host_meta=host_meta,
+            worktree=_bounded_text(identity.worktree, 1000),
+            project_source=identity.source,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -187,6 +289,9 @@ class Observation:
             "created_at": self.created_at,
             "source": self.source,
             "event": self.event,
+            "host_meta": dict(self.host_meta),
+            "worktree": self.worktree,
+            "project_source": self.project_source,
         }
 
 
@@ -241,7 +346,16 @@ class ObservationBuffer:
             self.conn.execute("ALTER TABLE observations ADD COLUMN lease_expires_at TEXT")
         if "next_attempt_at" not in columns:
             self.conn.execute("ALTER TABLE observations ADD COLUMN next_attempt_at TEXT")
+        # #82/#84: host-supplied metadata and resolved project identity. Additive
+        # only; rows written by older receivers read back with empty defaults.
+        if "host_meta_json" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN host_meta_json TEXT NOT NULL DEFAULT '{}'")
+        if "worktree" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN worktree TEXT NOT NULL DEFAULT ''")
+        if "project_source" not in columns:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN project_source TEXT NOT NULL DEFAULT ''")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_event ON observations(event, created_at)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_observations_project ON observations(project, created_at)")
         self.conn.commit()
 
     def prune_expired(self, *, now: datetime | None = None, include_pending: bool = False) -> int:
@@ -269,8 +383,9 @@ class ObservationBuffer:
             cursor = self.conn.execute(
                 """INSERT OR IGNORE INTO observations
                 (observation_id, session_id, project, cwd, tool, files_json,
-                 input_summary, output_summary, git_commit, created_at, source, event)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 input_summary, output_summary, git_commit, created_at, source, event,
+                 host_meta_json, worktree, project_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     observation.observation_id,
                     observation.session_id,
@@ -284,14 +399,16 @@ class ObservationBuffer:
                     observation.created_at,
                     observation.source,
                     observation.event,
+                    json.dumps(observation.host_meta, ensure_ascii=False, sort_keys=True),
+                    observation.worktree,
+                    observation.project_source,
                 ),
             )
         row = self.conn.execute(
             "SELECT * FROM observations WHERE observation_id=?", (observation.observation_id,)
         ).fetchone()
         assert row is not None
-        result = dict(row)
-        result["files"] = json.loads(result.pop("files_json"))
+        result = self._row(row)
         result["duplicate"] = cursor.rowcount == 0
         return result
 
@@ -420,7 +537,56 @@ class ObservationBuffer:
     def _row(self, row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
         result["files"] = json.loads(result.pop("files_json"))
+        raw_meta = result.pop("host_meta_json", None)
+        try:
+            meta = json.loads(raw_meta) if raw_meta else {}
+        except (TypeError, json.JSONDecodeError):
+            meta = {}
+        result["host_meta"] = meta if isinstance(meta, dict) else {}
+        result.setdefault("worktree", "")
+        result.setdefault("project_source", "")
         return result
+
+    def sessions_for_project(self, project: str, *, statuses: Iterable[str] | None = None,
+                             limit: int = 100) -> list[str]:
+        """Session IDs whose evidence belongs to ``project`` (#84)."""
+        params: list[Any] = [project]
+        where = "project=?"
+        if statuses:
+            values = list(statuses)
+            where += " AND status IN (" + ",".join("?" for _ in values) + ")"
+            params.extend(values)
+        params.append(max(1, min(int(limit), 1000)))
+        rows = self.conn.execute(
+            f"SELECT session_id, MAX(created_at) AS latest FROM observations WHERE {where} "
+            "GROUP BY session_id ORDER BY latest DESC LIMIT ?",
+            params,
+        ).fetchall()
+        return [str(row[0]) for row in rows]
+
+
+_CLIENT_ALIASES = {
+    "claude": "claude", "claude-code": "claude", "claude_code": "claude", "anthropic": "claude",
+    "codex": "codex", "codex-cli": "codex", "openai": "codex",
+    "gemini": "gemini", "gemini-cli": "gemini", "google": "gemini",
+    "qwen": "qwen", "qwen-code": "qwen", "qwen_code": "qwen",
+    "kimi": "kimi", "kimi-code": "kimi", "kimi_code_cli": "kimi", "kimi-cli": "kimi",
+    "hermes": "hermes", "hermes-agent": "hermes",
+    "cursor": "cursor", "chatgpt": "chatgpt", "user": "user", "other": "other",
+}
+
+
+def normalize_client(value: Any) -> str:
+    """Map a host's self-description or the installer's --client to a writer name."""
+    raw = "" if value is None else str(value).strip().lower().replace(" ", "-")
+    if not raw:
+        return ""
+    if raw in _CLIENT_ALIASES:
+        return _CLIENT_ALIASES[raw]
+    for key, writer in _CLIENT_ALIASES.items():
+        if raw.startswith(key):
+            return writer
+    return raw[:100]
 
 
 def _payloads_from_stdin(value: Any) -> list[dict[str, Any]]:
@@ -434,14 +600,31 @@ def _payloads_from_stdin(value: Any) -> list[dict[str, Any]]:
 
 
 def hook_main(argv: list[str] | None = None) -> int:
-    """Receive one generic hook payload and never block the host tool."""
-    del argv
+    """Receive one generic hook payload and never block the host tool.
+
+    ``--client <name>`` is set by the installer so every row carries the producing
+    client even when the host payload has no self-identification (Claude Code and
+    Codex send none; Kimi sends ``client_type``; Hermes sends ``profile``) (#82).
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--client", default=os.environ.get("AI_MEMORY_HOOK_CLIENT", ""))
+    parser.add_argument("--vault", default=None)
+    try:
+        args, _unknown = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
+    except SystemExit:  # argparse must never take the host down with it
+        args = argparse.Namespace(client="", vault=None)
+    client = normalize_client(args.client)
     transcript = None
     transcript_error = None
     try:
+        if args.vault:
+            os.environ.setdefault("AI_MEMORY_VAULT", str(args.vault))
         bootstrap_environment(os.environ.get("AI_MEMORY_VAULT"))  # never blocks; best-effort only.
         raw = sys.stdin.read()
         payloads = _payloads_from_stdin(json.loads(raw))
+        if client:
+            for payload in payloads:
+                payload.setdefault("client", client)
         buffer = ObservationBuffer()
         try:
             if os.environ.get("MEMORY_TRANSCRIPT_ENABLED", "").strip().lower() in {
