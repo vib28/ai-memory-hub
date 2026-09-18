@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,7 +24,14 @@ from .utils import atomic_write
 
 
 FINAL_EVENTS = {"session-end"}
+# A quota/rate-limit cut-off or an explicit interrupt is the end of what this host
+# will contribute; it is *not* evidence the work finished, so it finalizes as
+# provisional (#87). The next client's start packet states the reason verbatim.
+CUTOFF_EVENTS = {"stop-failure", "interrupt"}
 TURN_EVENTS = {"stop", "post-tool-use-failure", "pre-compact", "post-compaction"}
+# Heartbeats carry no evidence of their own; they only prove the session was still
+# alive, which refreshes the idle clock (#87).
+HEARTBEAT_EVENTS = {"session-heartbeat"}
 
 
 def _parse_time(value: str | None, fallback: datetime) -> datetime:
@@ -174,11 +182,27 @@ class SessionWorker:
         events = {str(row.get("event", "")) for row in rows}
         if events & FINAL_EVENTS:
             return "finalization", "accepted", "final", True
-        tokens = sum(estimated_tokens(row) for row in rows)
+        if events & CUTOFF_EVENTS:
+            # The host stopped abruptly (rate limit, API error, user interrupt). Close
+            # this host's contribution as a provisional final so the work group stays
+            # continuable by another client, and never claim completion (#87).
+            return "cutoff", "provisional", "final", False
+        evidence_rows = [row for row in rows if str(row.get("event", "")) not in HEARTBEAT_EVENTS]
+        if not evidence_rows:
+            # Heartbeats alone never produce a checkpoint; they are consumed silently
+            # once the session goes idle (the idle path below marks them completed via
+            # the caller's normal flow because rows still includes them).
+            newest = _parse_time(rows[-1].get("created_at"), now)
+            if now - newest >= timedelta(seconds=self.config.idle_seconds):
+                return "idle", "provisional", "checkpoint", False
+            return None
+        tokens = sum(estimated_tokens(row) for row in evidence_rows)
         if tokens >= self.config.token_budget:
             return "token-budget", "accepted", "checkpoint", False
         if events & TURN_EVENTS:
-            state = "provisional" if events & {"stop", "pre-compact", "post-compaction"} else "accepted"
+            # Compaction is a deliberate summarization point chosen by the host; the
+            # evidence before it is complete for its span, so it is accepted (#87).
+            state = "provisional" if events & {"stop"} else "accepted"
             return "turn", state, "checkpoint", False
         # Idle measures time since the most RECENT activity and is checked first: with
         # the shipped defaults (flush_seconds=60 < idle_seconds=300), the oldest pending
@@ -191,7 +215,7 @@ class SessionWorker:
         newest = _parse_time(rows[-1].get("created_at"), now)
         if now - newest >= timedelta(seconds=self.config.idle_seconds):
             return "idle", "provisional", "checkpoint", False
-        oldest = _parse_time(rows[0].get("created_at"), now)
+        oldest = _parse_time(evidence_rows[0].get("created_at"), now)
         if now - oldest >= timedelta(seconds=self.config.flush_seconds):
             return "time", "accepted", "checkpoint", False
         return None
@@ -206,16 +230,31 @@ class SessionWorker:
                 return index
         return min(len(rows), self.config.batch_limit)
 
-    def run_once(self, *, now: datetime | None = None) -> dict[str, Any]:
+    def run_once(self, *, now: datetime | None = None, session_ids: list[str] | None = None,
+                 deadline_seconds: float | None = None, force: bool = False,
+                 project: str | None = None) -> dict[str, Any]:
+        """Run one consolidation pass.
+
+        ``session_ids`` restricts the pass to those sessions (the detached
+        post-event child spawned by the hook receiver names exactly one, #83).
+        ``project`` restricts it to sessions whose evidence resolved to that
+        project (the SessionStart catch-up pass, #83).  ``force`` consolidates
+        every due session immediately as an ``accepted`` checkpoint even when no
+        time/token/event trigger has fired yet -- used when the host has told us
+        the session is over or the next client is about to start.  ``deadline_seconds``
+        bounds the pass; sessions not reached are left pending and reported.
+        """
         now = now or datetime.now(timezone.utc)
+        started = time.monotonic()
         stamp = now.isoformat()
         self._write_health(status="running", last_run_at=stamp, last_error=None)
         retention_deleted = self.buffer.prune_expired(now=now)
         processed: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        skipped_for_deadline: list[str] = []
         transcript_deleted = 0
         transcript_rendered = 0
-        if self.transcript_store is not None:
+        if self.transcript_store is not None and not session_ids:
             try:
                 transcript_deleted = self.transcript_store.prune(now=now)
                 for group_id in self.transcript_store.groups():
@@ -235,9 +274,19 @@ class SessionWorker:
                     transcript_rendered += 1
             except Exception as exc:
                 errors.append({"session_id": "transcript", "reason": str(exc)})
-        for session_id in self.buffer.pending_sessions():
+        candidates = list(session_ids) if session_ids else self.buffer.pending_sessions()
+        if project is not None:
+            scoped = set(self.buffer.sessions_for_project(
+                project, statuses={"pending", "failed", "processing"}))
+            candidates = [sid for sid in candidates if sid in scoped]
+        for session_id in candidates:
+            if deadline_seconds is not None and time.monotonic() - started >= deadline_seconds:
+                skipped_for_deadline.append(session_id)
+                continue
             rows = self._due_rows(session_id, now)
             trigger = self._trigger(rows, now)
+            if not trigger and force and rows:
+                trigger = ("forced", "accepted", "checkpoint", False)
             if not trigger:
                 continue
             reason, state, entry_type, host_finalized = trigger
@@ -265,6 +314,7 @@ class SessionWorker:
             "retention_deleted": retention_deleted,
             "transcript_deleted": transcript_deleted,
             "transcript_rendered": transcript_rendered,
+            "last_run_mode": ("session" if session_ids else "project" if project else "poll"),
         }
         # A degraded run must not overwrite the last known-good timestamp with null —
         # omit the key entirely so _write_health's dict.update() leaves it untouched (#72).
@@ -274,7 +324,9 @@ class SessionWorker:
         return {"status": status, "processed": processed, "errors": errors, "backlog": backlog,
                 "retention_deleted": retention_deleted,
                 "transcript_deleted": transcript_deleted,
-                "transcript_rendered": transcript_rendered}
+                "transcript_rendered": transcript_rendered,
+                "skipped_for_deadline": skipped_for_deadline,
+                "elapsed_seconds": round(time.monotonic() - started, 3)}
 
     def run_forever(self) -> None:
         self._write_health(status="starting", started_at=datetime.now(timezone.utc).isoformat())
@@ -298,6 +350,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--idle-seconds", type=int)
     parser.add_argument("--interval-seconds", type=int)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--session", action="append", default=[],
+                        help="Consolidate only this host session (repeatable). Implies --once.")
+    parser.add_argument("--project", default=None,
+                        help="Consolidate only sessions resolved to this project. Implies --once.")
+    parser.add_argument("--force", action="store_true",
+                        help="Checkpoint due sessions now even if no trigger fired.")
+    parser.add_argument("--deadline-seconds", type=float, default=None,
+                        help="Stop the pass after this many seconds; unreached sessions stay pending.")
+    parser.add_argument("--quiet", action="store_true", help="Do not print the JSON result.")
     args = parser.parse_args(argv)
     if not args.vault:
         parser.error("Set --vault or AI_MEMORY_VAULT")
@@ -310,18 +371,65 @@ def main(argv: list[str] | None = None) -> int:
         }.items() if value is not None
     }
     config = WorkerConfig(**{**config.__dict__, **overrides})
+    once = args.once or bool(args.session) or args.project is not None
     worker = SessionWorker(config)
-    if not args.once:
+    if not once:
         signal.signal(signal.SIGINT, lambda *_: worker.stop())
         if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, lambda *_: worker.stop())
     try:
-        result = worker.run_once() if args.once else worker.run_forever()
-        if args.once and result:
-            print(json.dumps(result, ensure_ascii=False))
+        if once:
+            result = worker.run_once(session_ids=args.session or None, project=args.project,
+                                     force=args.force, deadline_seconds=args.deadline_seconds)
+            if not args.quiet:
+                print(json.dumps(result, ensure_ascii=False))
+        else:
+            worker.run_forever()
         return 0
     finally:
         worker.close()
+
+
+def spawn_detached_consolidation(session_id: str, *, vault: str | os.PathLike[str] | None = None,
+                                 buffer_path: str | os.PathLike[str] | None = None,
+                                 force: bool = True) -> dict[str, Any]:
+    """Start a fire-and-forget ``worker --session <id>`` child and return at once (#83).
+
+    Called by the hook receiver on terminal events so a checkpoint is produced
+    even when no resident worker is registered.  The child is fully detached
+    (its own process group / console) so the host's hook timeout cannot kill it
+    and it never inherits the host's stdio.  Failure to spawn is reported, never
+    raised: the receiver must stay non-blocking.
+    """
+    import subprocess
+    import sys
+
+    vault = str(vault or os.environ.get("AI_MEMORY_VAULT") or "")
+    if not vault:
+        return {"status": "skipped", "reason": "AI_MEMORY_VAULT is not set"}
+    if os.environ.get("MEMORY_INLINE_CONSOLIDATION", "").strip().lower() in {"0", "false", "off", "no"}:
+        return {"status": "skipped", "reason": "MEMORY_INLINE_CONSOLIDATION disabled"}
+    command = [sys.executable, "-m", "memory_hub.worker", "--vault", vault, "--session", session_id,
+               "--quiet"]
+    if force:
+        command.append("--force")
+    if buffer_path:
+        command.extend(["--buffer", str(buffer_path)])
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+        "close_fds": True, "env": dict(os.environ),
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)
+                                   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                                   | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        kwargs["start_new_session"] = True
+    try:
+        process = subprocess.Popen(command, **kwargs)
+    except Exception as exc:  # never block the host
+        return {"status": "failed", "reason": str(exc)}
+    return {"status": "spawned", "pid": process.pid, "session_id": session_id}
 
 
 if __name__ == "__main__":

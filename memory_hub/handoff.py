@@ -263,12 +263,68 @@ def _render_context(records: list[dict[str, Any]], *, max_chars: int, ambiguous:
     return (text[:max(0, max_chars - len(suffix[0]) - 1)] + "\n" + suffix[0])[:max_chars]
 
 
+def catch_up_pending(vault: Path | str, *, cwd: Any = None, deadline_seconds: float = 2.0,
+                     exclude_session: str | None = None) -> dict[str, Any]:
+    """Consolidate this project's still-pending sessions before reading the manifest (#83).
+
+    A host that was killed (quota, crash, closed terminal) never sent SessionEnd,
+    so its evidence is still sitting in the capture queue.  The next SessionStart
+    in the same project is the last chance to turn it into a checkpoint *before*
+    the new client asks what happened.  The pass is bounded by ``deadline_seconds``
+    so startup never blocks on a large backlog; whatever is not reached stays
+    pending and is reported to the caller as pending evidence.
+    """
+    from .capture import ObservationBuffer, default_buffer_path
+    from .project_resolver import UNSCOPED, resolve_project
+    from .worker import SessionWorker, WorkerConfig
+
+    identity = resolve_project(cwd, vault=vault)
+    project = "" if identity.project == UNSCOPED else identity.project
+    buffer_path = default_buffer_path()
+    if not buffer_path.exists():
+        return {"status": "no_buffer", "project": project or None, "processed": 0, "pending": 0}
+    buffer = ObservationBuffer(buffer_path)
+    try:
+        sessions = buffer.sessions_for_project(project, statuses={"pending", "failed"})
+        if exclude_session:
+            sessions = [sid for sid in sessions if sid != exclude_session]
+        if not sessions:
+            return {"status": "clean", "project": project or None, "processed": 0, "pending": 0}
+        config = WorkerConfig.from_env(vault, buffer_path)
+        worker = SessionWorker(config, buffer=buffer)
+        try:
+            result = worker.run_once(session_ids=sessions, force=True,
+                                     deadline_seconds=max(0.1, float(deadline_seconds)))
+        finally:
+            worker.close()
+    finally:
+        buffer.close()
+    return {
+        "status": "ok" if not result.get("errors") else "degraded",
+        "project": project or None,
+        "processed": len(result.get("processed", [])),
+        "pending": len(result.get("skipped_for_deadline", [])),
+        "errors": [e.get("reason") for e in result.get("errors", [])][:3],
+        "elapsed_seconds": result.get("elapsed_seconds"),
+    }
+
+
 def build_handoff(vault: Path | str, *, payload: dict[str, Any] | None = None,
                   client: str = "unknown", max_chars: int = DEFAULT_MAX_CHARS,
-                  now: datetime | None = None) -> dict[str, Any]:
+                  now: datetime | None = None, catch_up: bool = True,
+                  catch_up_deadline: float = 2.0) -> dict[str, Any]:
     root = Path(vault).expanduser().resolve()
     request = payload if isinstance(payload, dict) else {}
     budget = max(1, min(int(max_chars), MAX_MAX_CHARS))
+    catch_up_result = None
+    if catch_up:
+        try:
+            catch_up_result = catch_up_pending(
+                root, cwd=request.get("cwd"), deadline_seconds=catch_up_deadline,
+                exclude_session=str(request.get("session_id") or "") or None,
+            )
+        except Exception as exc:  # startup context must never depend on the catch-up
+            catch_up_result = {"status": "failed", "reason": _one_line(exc)}
     manifest, warning = _manifest(root)
     if manifest is None:
         context = (
@@ -278,7 +334,14 @@ def build_handoff(vault: Path | str, *, payload: dict[str, Any] | None = None,
         )
         return {"status": "unavailable", "client": client, "groups": [],
                 "pending_evidence": True, "packet": context, "packet_chars": len(context),
-                "packet_budget": budget, "warning": warning}
+                "packet_budget": budget, "warning": warning, "catch_up": catch_up_result}
+    if not request.get("project") and request.get("cwd"):
+        # Select groups by resolved project identity first (#84); worktree match
+        # remains as the fallback for manifests written before the resolver existed.
+        from .project_resolver import UNSCOPED, resolve_project
+        identity = resolve_project(request.get("cwd"), vault=root)
+        if identity.project != UNSCOPED:
+            request = {**request, "project": identity.project}
     selected = _select_groups(manifest, request)
     clock = now or datetime.now(timezone.utc)
     records = [_group_record(root, group_id, group, entry, clock)
@@ -289,11 +352,13 @@ def build_handoff(vault: Path | str, *, payload: dict[str, Any] | None = None,
         "client": client,
         "groups": records,
         "ambiguous": len(records) > 1,
-        "pending_evidence": any(record["pending_evidence"] for record in records),
+        "pending_evidence": any(record["pending_evidence"] for record in records)
+                            or bool(catch_up_result and catch_up_result.get("pending")),
         "packet": context,
         "packet_chars": len(context),
         "packet_budget": budget,
         "warning": None if records else "no checkpoint groups were found",
+        "catch_up": catch_up_result,
     }
 
 
@@ -305,11 +370,17 @@ def main(argv: list[str] | None = None) -> int:
     # config.json, not known until bootstrap_environment(args.vault) below --
     # resolved after parsing instead, but still before anything that can raise.
     parser.add_argument("--max-chars", type=int, default=None)
+    parser.add_argument("--no-catch-up", action="store_true",
+                        help="Skip the bounded consolidation of pending sessions before reading.")
+    parser.add_argument("--catch-up-deadline", type=float, default=None,
+                        help="Seconds allowed for the pre-read catch-up pass (default 2).")
     args = parser.parse_args(argv)
     if args.vault:
         bootstrap_environment(args.vault)
     max_chars = args.max_chars if args.max_chars is not None else int_env(
         "MEMORY_HANDOFF_MAX_CHARS", DEFAULT_MAX_CHARS, minimum=1)
+    deadline = args.catch_up_deadline if args.catch_up_deadline is not None else float(
+        os.environ.get("MEMORY_HANDOFF_CATCHUP_SECONDS", "2") or 2)
     try:
         raw = sys.stdin.read().strip()
         payload = json.loads(raw) if raw else {}
@@ -317,7 +388,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("hook input must be a JSON object")
         if not args.vault:
             raise ValueError("AI_MEMORY_VAULT or --vault is required")
-        result = build_handoff(args.vault, payload=payload, client=args.client, max_chars=max_chars)
+        result = build_handoff(args.vault, payload=payload, client=args.client, max_chars=max_chars,
+                               catch_up=not args.no_catch_up, catch_up_deadline=deadline)
     except Exception as exc:  # Startup context must never block the host client.
         context = ("<ai-memory-handoff source=local-checkpoint mode=quoted-evidence>\n"
                    f"Local handoff unavailable: {_one_line(exc)}\n</ai-memory-handoff>")

@@ -643,6 +643,7 @@ def hook_main(argv: list[str] | None = None) -> int:
                     except Exception as exc:  # A hook must never block its host.
                         result["transcript_error"] = str(exc)
                 results.append(result)
+            buffer_path = buffer.path
         finally:
             buffer.close()
             if transcript is not None:
@@ -650,7 +651,37 @@ def hook_main(argv: list[str] | None = None) -> int:
         response = {"status": "accepted", "count": len(results), "observations": results}
         if transcript_error:
             response["transcript_error"] = transcript_error
+        # #83: a terminal event means the host will not send more evidence for this
+        # session soon (or ever). Kick off a detached one-shot consolidation so a
+        # checkpoint exists without a resident worker. Returns in milliseconds; the
+        # child outlives this hook and the host's timeout budget.
+        terminal_sessions = []
+        for row in results:
+            if row.get("event") in CONSOLIDATION_EVENTS and not row.get("duplicate"):
+                if row.get("event") == "stop" and _truthy(row.get("host_meta", {}).get("stop_hook_active")):
+                    continue  # a continued turn is not a boundary
+                if row["session_id"] not in terminal_sessions:
+                    terminal_sessions.append(row["session_id"])
+        if terminal_sessions:
+            from .worker import spawn_detached_consolidation
+            response["consolidation"] = [
+                spawn_detached_consolidation(session_id, buffer_path=buffer_path)
+                for session_id in terminal_sessions
+            ]
         print(json.dumps(response))
     except Exception as exc:  # Hook failures must not block the calling AI tool.
         print(json.dumps({"status": "rejected", "count": 0, "reason": str(exc)}))
     return 0
+
+
+# Events after which the receiver spawns a detached consolidation (#83). Stop is a
+# turn boundary, not a session boundary, but it is the *only* boundary a session
+# that is later killed will ever report -- so it produces a provisional checkpoint.
+CONSOLIDATION_EVENTS = {"session-end", "stop", "stop-failure", "interrupt", "pre-compact",
+                        "post-compaction"}
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 from typing import Any, Callable, Iterable
 
@@ -61,8 +62,43 @@ def _validate_payload(data: Any, *, fallback_project: str | None = None) -> dict
     return payload
 
 
+_GIT_VERB_RE = re.compile(
+    r"\bgit\s+(?:-C\s+\S+\s+)?(?P<verb>commit|push|checkout\s+-b|switch\s+-c|merge|rebase|tag|revert|cherry-pick)\b",
+    re.I,
+)
+_TEST_RE = re.compile(
+    r"\b(?P<passed>\d+)\s+passed\b(?:.*?\b(?P<failed>\d+)\s+failed\b)?|\bTests?:\s*(?P<jest_pass>\d+)\s+passed",
+    re.I | re.S,
+)
+_FAILURE_RE = re.compile(r"\b(\d+)\s+failed\b|\berror\b|\bTraceback\b|\bFAILED\b", re.I)
+
+
+def _short(value: Any, limit: int) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _command_of(row: dict[str, Any]) -> str:
+    raw = str(row.get("input_summary", "") or "")
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+        if isinstance(data, dict):
+            return str(data.get("command") or data.get("cmd") or data.get("description") or "")
+    return raw
+
+
 def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> dict[str, Any]:
-    """Produce a conservative summary without a local model."""
+    """Produce a conservative four-section summary without a local model.
+
+    Since #82 the rows carry the user's prompts, the assistant's completed turns,
+    the host's termination reason and real file/command evidence, so the fallback
+    can state what was *asked*, what was *reported done*, which git/test evidence
+    exists and what the host said about how the session ended -- instead of the
+    old "Captured N local observations from: Bash" placeholder.  It still never
+    infers completion the evidence does not show.
+    """
     rows = [_as_observation_dict(item) for item in observations]
     if not rows:
         raise ConsolidationError("cannot consolidate an empty observation set")
@@ -72,19 +108,83 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
         for path in row.get("files", []) or []:
             if path and path not in files:
                 files.append(str(path))
-    tools = sorted({str(row.get("tool", "unknown")) for row in rows})
-    completed = [f"Captured {len(rows)} local observations from: {', '.join(tools[:8])}."]
-    investigated = [f"Observed work involving {', '.join(files[:12])}." ] if files else []
-    learned = []
-    next_steps = []
+    tools = sorted({str(row.get("tool", "unknown")) for row in rows
+                    if str(row.get("tool", "")) not in {"prompt", "assistant", "session", "unknown"}})
+
+    prompts = [_short(row.get("input_summary"), 300) for row in rows
+               if row.get("event") == "user-prompt-submit" and _short(row.get("input_summary"), 300)]
+    answers = [_short(row.get("output_summary"), 400) for row in rows
+               if row.get("event") in {"stop", "subagent-stop"} and _short(row.get("output_summary"), 400)]
+    git_actions: list[str] = []
+    test_results: list[str] = []
+    failures: list[str] = []
     for row in rows:
-        text = str(row.get("output_summary", "")).strip()
-        if text and text not in learned:
-            learned.append(text[:500])
-        if len(learned) >= 8:
-            break
+        if row.get("event") not in {"post-tool-use", "post-tool-use-failure"}:
+            continue
+        command = _command_of(row)
+        output = str(row.get("output_summary", "") or "")
+        match = _GIT_VERB_RE.search(command)
+        if match and row.get("event") == "post-tool-use":
+            verb = " ".join(match.group("verb").split()).lower()
+            git_actions.append(f"git {verb}: {_short(command, 160)}")
+        test_match = _TEST_RE.search(output)
+        if test_match:
+            passed = test_match.group("passed") or test_match.group("jest_pass")
+            failed = test_match.group("failed")
+            test_results.append(
+                f"Test run: {passed} passed" + (f", {failed} failed" if failed else "")
+                + f" ({_short(command, 80)})"
+            )
+        if row.get("event") == "post-tool-use-failure":
+            failures.append(f"{row.get('tool', 'tool')} failed: {_short(command or output, 160)}")
+    endings = [_short(row.get("input_summary"), 120) for row in rows
+               if row.get("event") in {"session-end", "stop-failure", "interrupt"}
+               and _short(row.get("input_summary"), 120)]
+
+    def dedupe(items: list[str], limit: int) -> list[str]:
+        seen: list[str] = []
+        for item in items:
+            if item and item not in seen:
+                seen.append(item)
+            if len(seen) >= limit:
+                break
+        return seen
+
+    investigated: list[str] = []
+    if prompts:
+        investigated.extend(f"User asked: {text}" for text in dedupe(prompts, 6))
+    if files:
+        investigated.append(f"Files touched: {', '.join(files[:12])}" + (" ..." if len(files) > 12 else ""))
+    learned: list[str] = []
+    learned.extend(dedupe(failures, 4))
+    learned.extend(dedupe(test_results, 4))
+    if not learned and not answers:
+        # Legacy rows (pre-#82) only have tool echoes; keep the old behaviour of
+        # surfacing a few outputs rather than an empty section.
+        for row in rows:
+            text = _short(row.get("output_summary"), 300)
+            if text and text not in learned:
+                learned.append(text)
+            if len(learned) >= 6:
+                break
+    completed: list[str] = []
+    completed.extend(f"Assistant reported: {text}" for text in dedupe(answers, 4))
+    completed.extend(dedupe(git_actions, 6))
+    if not completed:
+        completed.append(
+            f"Captured {len(rows)} local observations"
+            + (f" from: {', '.join(tools[:8])}" if tools else "") + "."
+        )
+    next_steps: list[str] = []
+    if endings:
+        next_steps.extend(f"Host session ended: {text}" for text in dedupe(endings, 2))
+    if failures and not test_results:
+        next_steps.append("Unresolved tool failures recorded above; re-check before continuing.")
+    title = "Captured session"
+    if prompts:
+        title = _short(prompts[0], 80)
     return _validate_payload({
-        "title": "Captured session",
+        "title": title,
         "project": project,
         "investigated": investigated,
         "learned": learned,
