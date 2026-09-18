@@ -31,10 +31,10 @@ In practical terms, AI Memory Hub is a local memory boundary between AI clients:
 
 The project has two related workflows. The ordinary memory workflow stores durable
 preferences, decisions, project facts and summaries. The continuity workflow captures
-bounded session evidence, creates local checkpoints, and can inject the latest accepted
-checkpoint into a supported Claude or Codex startup. Continuity is deliberately split
-into permissions so installing a hook does not silently enable unattended writes or
-external publication.
+bounded session evidence, creates local checkpoints, and injects the latest accepted
+checkpoint into supported client startups across all six hosts (Claude, Codex, Gemini,
+Qwen, Kimi and Hermes). Continuity is deliberately split into permissions so installing
+a hook does not silently enable unattended writes or external publication.
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,8 @@ flowchart LR
 - Inspect identity conflicts and possible duplicates without automatic merging.
 - Keep optional Git history for accepted vault changes.
 - Optionally retain complete supported session events as a local, human-readable
-  Obsidian transcript linked to each checkpoint/final summary.
+  Obsidian transcript linked to each checkpoint/final summary. All six hosts (Claude,
+  Codex, Gemini, Qwen, Kimi and Hermes) now support full capture and startup handoff.
 
 ## The important boundaries
 
@@ -110,7 +111,7 @@ flowchart LR
     Checkpoint --> Policy{Review or auto?}
     Policy --> Accepted[Accepted local Markdown]
     Accepted --> Handoff{Startup handoff installed?}
-    Handoff -->|yes, Claude/Codex| Context[Bounded quoted context]
+    Handoff -->|yes, all 6 hosts| Context[Bounded quoted context]
     Accepted --> Export{GitHub export approved?}
     Export -->|yes| Outbox[Sanitized retryable outbox]
 ```
@@ -123,9 +124,10 @@ flowchart LR
   model endpoint can receive the content it is asked to retrieve or process.
 - It does not silently merge similar people, projects or memories. Exact duplicates are
   handled deterministically; semantic candidates remain reviewable.
-- It does not claim startup hooks for every client. Claude Code and Codex CLI have
-  process-level handoff fixtures; other clients may have MCP/capture support without a
-  certified startup event.
+- It does not claim startup hooks for every client. All six supported clients (Claude
+  Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent) have full
+  capture and startup handoff; other stdio MCP clients may have MCP/capture support
+  without a certified startup event.
 - It does not claim live token savings from the replay report. The report is a no-paid-
   call regression harness; provider usage and live task outcomes remain the #62 gate.
 
@@ -146,7 +148,8 @@ only after reading [configuration](docs/CONFIGURATION.md), checking worker healt
 confirming that the resulting Markdown is appropriate for the vault.
 
 > [!IMPORTANT]
-> The supervised local checkpoint worker, model-free Claude/Codex startup handoff and
+> The supervised local checkpoint worker, model-free startup handoff for all six hosts
+> (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent) and
 > sanitized GitHub session outbox are available behind explicit setup. Unsupported
 > client coverage and live paired benchmark certification remain in the [continuity plan](docs/automatic-session-continuity.md);
 > hook buffering, worker summaries and publication are still opt-in.
@@ -157,16 +160,18 @@ confirming that the resulting Markdown is appropriate for the vault.
 | --- | --- | --- |
 | Shared memory | MCP tools and Markdown vault | Clients must connect to the same vault |
 | Review | Dashboard approval and proposal history | Set the MCP write mode explicitly |
-| Sessions | Four-section summaries, structured project links, checkpoint manifests, provisional/final worker entries, optional linked transcripts and sanitized export | Full transcripts are off by default and unsupported clients have no claimed startup automation |
+| Sessions | Four-section summaries, structured project links, checkpoint manifests, provisional/final worker entries, optional linked transcripts and sanitized export. All six hosts (Claude, Codex, Gemini, Qwen, Kimi, Hermes) support full capture and startup handoff. | Full transcripts are off by default |
 | Capture | Native payload mapping, managed lifecycle hook schemas, bounded leased queue and optional supervised worker | Raw transcript capture is a separate sensitive opt-in |
 | Retrieval | Keyword search, optional vectors, bounded project-scoped context and local startup handoff | Paired measurement remains open |
 | Undo | Opt-in local Git history | Not a backup of pending capture or review data |
 | Token savings | CI-safe paired replay benchmark | Live provider usage/cost and cross-tool certification remain open |
 
 The core capture, hook, queue, session-identity, context-boundary, local-worker and
-supported startup-handoff defects have regression coverage. Remaining continuity work
-is tracked in [the continuity plan](docs/automatic-session-continuity.md), especially
-continuity closeout (#61), and the paired benchmark (#62).
+supported startup-handoff defects have regression coverage. Continuity closeout
+([#61](https://github.com/vib28/ai-memory-hub/issues/61), closed) and GitHub export
+tweaks ([#64](https://github.com/vib28/ai-memory-hub/issues/64), closed) are complete.
+Remaining continuity work is tracked in [the continuity plan](docs/automatic-session-continuity.md),
+particularly the paired benchmark (#62).
 The required [two-tool benchmark](docs/session-handoff-benchmark.md) compares matched
 sessions with context passing enabled and disabled. The no-paid-call replay result is
 versioned in [handoff-replay-v1](docs/benchmark-results/handoff-replay-v1.md); it does
@@ -249,7 +254,7 @@ sequenceDiagram
     participant B as Capture buffer
     participant W as Local worker
     participant V as Vault
-    participant N as Next Claude/Codex session
+    participant N as Next session (all 6 hosts)
     C->>B: bounded lifecycle evidence
     B->>W: leased observations
     W->>V: checkpoint or final proposal
@@ -297,8 +302,10 @@ permission, **handoff** is startup context permission, and **export** is GitHub 
 
 ## Roadmap and planning
 
-[Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) prioritizes linked session
-checkpoints and automatic handoff. [Acceptance #62](https://github.com/vib28/ai-memory-hub/issues/62)
+Continuity closeout ([Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61), closed)
+prioritized linked session checkpoints and automatic handoff for all six hosts.
+GitHub export tweaks ([#64](https://github.com/vib28/ai-memory-hub/issues/64), closed) are complete.
+[Acceptance #62](https://github.com/vib28/ai-memory-hub/issues/62)
 requires matched Claude/Codex token and task-quality measurements.
 
 Use the [tracked roadmap](docs/local-memory-plan.md) for order and dependencies, and

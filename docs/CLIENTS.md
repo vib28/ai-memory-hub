@@ -124,28 +124,34 @@ instruction mechanism. Do not place credentials in prompts, the vault or GitHub.
 The helper keeps three permissions separate: `-InstallHooks`/`-RemoveHooks` capture
 provider lifecycle evidence, `-EnableSessionAuto`/`-DisableSessionAuto` controls the
 local worker, and `-InstallHandoff`/`-RemoveHandoff` controls startup context injection.
-For Claude Code and Codex CLI, capture installation covers session-start, prompt/tool/turn,
-compaction, failure and end events, while handoff installation adds `SessionStart`.
+For all six hosts (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent),
+capture installation covers session-start, prompt/tool/turn, compaction, failure and end events,
+while handoff installation adds `SessionStart` startup context injection.
 
-| Client surface | Version observed on 2026-09-09 | Startup fixture | Limitation |
+| Client surface | Version observed on 2026-09-19 | Startup fixture | Limitation |
 | --- | --- | --- | --- |
-| Claude Code CLI | 2.1.263 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| Codex CLI | 0.153.4 | `tests/test_handoff.py` validates the same documented `SessionStart` output shape | Interactive authenticated launch is not part of CI |
-| Gemini, Qwen, Kimi, Hermes, ChatGPT | Not tested for startup injection | None | Capture/MCP support does not imply a startup hook |
+| Claude Code CLI | 2.1.276 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| Codex CLI | 0.155.0 | `tests/test_handoff.py` validates the same documented `SessionStart` output shape | Interactive authenticated launch is not part of CI |
+| Gemini CLI | 0.58.0 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| Qwen Code | 0.22.0 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| Kimi Code | 2.0.1 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| Hermes Agent | (current) | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
+| ChatGPT | Not tested for startup injection | None | Capture/MCP support does not imply a startup hook (uses tunnel) |
 
 > [!WARNING]
 > Native payload mapping, mixed-handler preservation and process-level startup fixtures
-> are covered by isolated tests. The tested client versions are Claude Code 2.1.263
-> and Codex CLI 0.153.4 on this checkout. Hook delivery is still client-version
+> are covered by isolated tests. The tested client versions are Claude Code 2.1.276,
+> Codex CLI 0.155.0, Gemini CLI 0.58.0, Qwen Code 0.22.0, Kimi Code 2.0.1 and Hermes Agent
+> (current) on this checkout. Hook delivery is still client-version
 > dependent, so retain backups and verify the actual host event payload before relying
 > on unattended capture.
 
 Current capture-hook targets include Claude/Gemini/Qwen JSON settings, Kimi's marked
-TOML block and Codex's hooks.json. Startup handoff is certified only for the Claude
-Code and Codex CLI fixture schemas above; Gemini, Qwen, Kimi, Hermes and ChatGPT
-report a limitation rather than claiming startup automation. See [automatic
-continuity](automatic-session-continuity.md) for the continuity boundaries, replay
-benchmark and remaining live certification work.
+TOML block, Codex's hooks.json and Hermes Agent skills. Startup handoff is certified
+for all six hosts (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent)
+through their respective fixture schemas above. ChatGPT uses a tunnel rather than
+direct startup injection. See [automatic continuity](automatic-session-continuity.md) for
+the continuity boundaries, replay benchmark and remaining live certification work.
 
 GitHub export is not part of MCP registration. Approve it separately with
 `-EnableGitHubExport -GitHubRepo owner/name -GitHubVisibility private`; this creates

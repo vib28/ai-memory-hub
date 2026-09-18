@@ -78,9 +78,10 @@ Client lifecycle hook -> generic receiver -> observation SQLite
 ~~~
 
 > [!IMPORTANT]
-> The generic receiver recognizes normalized event names. Claude Code and Codex CLI
-> now have separate managed lifecycle capture and SessionStart handoff installers;
-> other hosts remain provider/version dependent. See
+> The generic receiver recognizes normalized event names. Claude Code, Codex CLI,
+> Gemini CLI, Qwen Code, Kimi Code and Hermes Agent now have managed lifecycle
+> capture and SessionStart handoff installers; other hosts remain
+> provider/version dependent. See
 > [the continuity design](docs/automatic-session-continuity.md). A successful
 > hook-config write is not an end-to-end capture test.
 
@@ -267,9 +268,9 @@ Ordinary proposals are not all automatically committed.
 
 [Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is the continuity
 closeout parent; follow the canonical [issue priority order](docs/issue-priority-order.md):
-local queue/context/metadata/worker, Claude/Codex startup context, sanitized GitHub
-publication and the no-paid-call replay harness are complete; live benchmark
-certification remains.
+local queue/context/metadata/worker, Claude/Codex/Gemini/Qwen/Kimi/Hermes startup
+handoff, sanitized GitHub publication and the no-paid-call replay harness are
+complete; live benchmark certification remains.
 Graph retrieval and embedding upgrades are not prerequisites.
 
 ```mermaid

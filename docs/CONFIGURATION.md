@@ -252,11 +252,12 @@ GitHub. Install it separately from capture and Windows session-auto registration
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
 ~~~
 
-The helper currently installs `SessionStart` for Claude Code 2.1.263 and Codex CLI
-0.153.4, with managed backups and a bounded `additionalContext` packet. The packet
+The helper installs a bounded context packet at startup for all six supported
+hosts — Claude Code 2.1.276, Codex CLI 0.155.0, Gemini CLI 0.58.0,
+Qwen Code 0.22.0, Kimi Code 2.0.1, and Hermes Agent (shell hooks) — with
+managed backups and a bounded `additionalContext` packet. The packet
 shows checkpoint age and a pending-evidence warning, and lists ambiguous work groups
-separately. Other clients report unsupported startup automation rather than claiming
-coverage. GitHub publication is a separate explicit permission.
+separately. GitHub publication is a separate explicit permission.
 
 ## GitHub session export
 
