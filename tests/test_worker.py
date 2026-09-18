@@ -196,3 +196,39 @@ class WorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkerHealthPathTests(unittest.TestCase):
+    """#88: health lives in the vault, never in the real home directory."""
+
+    def test_default_health_path_is_inside_the_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            from memory_hub.worker import worker_health_path
+            self.assertEqual(worker_health_path(vault), vault / ".ai-memory-hub" / "worker-health.json")
+
+    def test_explicit_env_override_still_wins(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+                "os.environ", {"MEMORY_WORKER_HEALTH": str(Path(tmp) / "custom.json")}):
+            from memory_hub.worker import worker_health_path
+            self.assertEqual(worker_health_path(Path(tmp) / "vault"), Path(tmp) / "custom.json")
+
+    def test_legacy_home_file_is_read_until_rewritten(self):
+        import json as _json
+        from memory_hub.worker import legacy_worker_health_path
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            legacy = legacy_worker_health_path(vault)
+            legacy.parent.mkdir(parents=True, exist_ok=True)
+            legacy.write_text(_json.dumps({"status": "ok", "backlog": 3}), encoding="utf-8")
+            health = read_health(vault)
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(health["health_path"], str(legacy))
+
+    def test_suite_is_isolated_from_ambient_configuration(self):
+        # conftest.py scrubs MEMORY_*/AI_MEMORY_* and redirects HOME to tmp (#88).
+        import os
+        self.assertFalse([k for k in os.environ if k.startswith(("MEMORY_", "AI_MEMORY_"))])
+        self.assertNotEqual(Path.home(), Path(os.environ.get("REAL_HOME_SENTINEL", "")))
+        self.assertTrue(str(Path.home()).startswith(tempfile.gettempdir()[:3]))

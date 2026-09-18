@@ -211,9 +211,12 @@ Check health without changing data:
 .\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once
 ~~~
 
-The one-shot result is printed to the terminal. The persistent health file defaults to
-the user-home `.ai-memory-hub/worker-health-<vault-hash>.json`; configure an explicit
-path with `MEMORY_WORKER_HEALTH` if you need a predictable location. The dashboard's
+The one-shot result is printed to the terminal. The persistent health file lives inside
+the vault at `.ai-memory-hub/worker-health.json`, next to `config.json`; configure an
+explicit path with `MEMORY_WORKER_HEALTH` if you need a different location. A vault
+upgraded from an older release is still read from the previous user-home
+`.ai-memory-hub/worker-health-<vault-hash>.json` location until the next worker pass
+rewrites it in the vault; the old files can then be deleted. The dashboard's
 worker-health endpoint is the better view when the launcher is already running.
 
 ## Optional vault history

@@ -46,15 +46,33 @@ def estimated_tokens(row: dict[str, Any]) -> int:
 
 
 def worker_health_path(vault: Path | str) -> Path:
+    """Return the worker health file for ``vault``.
+
+    The health file lives *inside the vault's* ``.ai-memory-hub`` directory, next
+    to ``config.json``, so each vault owns exactly one health record and a scratch
+    vault (tests, experiments) never litters the user's home directory (#88).
+    ``MEMORY_WORKER_HEALTH`` still overrides the location explicitly.
+    """
     configured = os.environ.get("MEMORY_WORKER_HEALTH", "").strip()
     if configured:
         return Path(configured).expanduser()
+    return Path(vault).expanduser() / ".ai-memory-hub" / "worker-health.json"
+
+
+def legacy_worker_health_path(vault: Path | str) -> Path:
+    """Pre-#88 location: one hashed file per vault under the user's home."""
     identity = hashlib.sha256(str(Path(vault).expanduser().resolve()).encode()).hexdigest()[:16]
     return Path.home() / ".ai-memory-hub" / f"worker-health-{identity}.json"
 
 
 def read_health(vault: Path | str) -> dict[str, Any]:
     path = worker_health_path(vault)
+    if not path.exists():
+        # A vault upgraded from the home-directory layout keeps reporting its last
+        # known state until the next worker pass rewrites it at the new location.
+        legacy = legacy_worker_health_path(vault)
+        if legacy.exists():
+            path = legacy
     if not path.exists():
         return {"status": "not_configured", "health_path": str(path)}
     try:
