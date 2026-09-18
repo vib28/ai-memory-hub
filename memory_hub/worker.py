@@ -127,6 +127,9 @@ class SessionWorker:
         self._owns_buffer = buffer is None
         self.transcript_store = (TranscriptStore(vault=config.vault)
                                  if transcript_enabled() else None)
+        # Per-group content-hash watermarks so a routine poll skips re-rendering a
+        # transcript whose events AND resolved target are both unchanged (#117).
+        self._transcript_watermarks: dict[str, str] = {}
         self._stop = threading.Event()
 
     def close(self) -> None:
@@ -266,19 +269,32 @@ class SessionWorker:
             try:
                 transcript_deleted = self.transcript_store.prune(now=now)
                 for group_id in self.transcript_store.groups():
-                    # A routine poll re-render must reproduce the same file with the same
-                    # summary back-links the authoritative writer set, not a degraded copy
-                    # that drops them and can land at a second, orphaned path (#68). Fall
-                    # back to the plain default when the group has no summary yet.
                     target = self.manager.session_transcript_target(group_id)
-                    if target:
-                        self.transcript_store.render(
-                            group_id, self.config.vault,
-                            project=target.get("project"), path=target.get("path"),
-                            summary_links=target.get("summary_links") or [],
-                        )
-                    else:
-                        self.transcript_store.render(group_id, self.config.vault)
+                    # Content-hash watermark (#117): the routine poll renders
+                    # deterministically from (events × target). Hash those inputs; if the
+                    # fingerprint equals the last poll's, the file was already rendered
+                    # identically — skip the write so an idle worker stops churning the
+                    # Markdown on every tick. The fingerprint covers both the resolved
+                    # target (path/project/summary_links) and the event set — event_id is
+                    # a SHA-256 of the normalized event content, so a stable event_id set
+                    # means stable rendered content. We re-hash on every poll (cheap), not
+                    # on every append, which keeps the check O(events) without per-append
+                    # bookkeeping.
+                    events = self.transcript_store.events(group_id)
+                    fingerprint = hashlib.sha256(json.dumps(
+                        {"event_ids": [e["event_id"] for e in events], "target": target},
+                        ensure_ascii=False, sort_keys=True,
+                    ).encode("utf-8")).hexdigest()
+                    if self._transcript_watermarks.get(group_id) == fingerprint:
+                        continue
+                    # Fingerprint changed since the last poll — render and record it.
+                    self.transcript_store.render(
+                        group_id, self.config.vault,
+                        project=target.get("project") if target else None,
+                        path=target.get("path") if target else None,
+                        summary_links=target.get("summary_links") or [] if target else [],
+                    )
+                    self._transcript_watermarks[group_id] = fingerprint
                     transcript_rendered += 1
             except Exception as exc:
                 errors.append({"session_id": "transcript", "reason": str(exc)})

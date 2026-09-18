@@ -117,7 +117,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
     # to have open (#6).
     launch_token: str = ""
     allowed_hosts: frozenset = frozenset()
-    operation_lock = threading.RLock()
 
     def log_message(self, format, *args):
         return
@@ -162,8 +161,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return body
 
     def do_GET(self):
-        with self.operation_lock:
-            self._get()
+        self._get()
 
     def _get(self):
         if not self._host_ok():
@@ -179,10 +177,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if u.path == '/api/instance':
+            from .dashboard_data import revision
+            return self._json({'app': 'ai-memory-hub', 'vault': revision(str(self.manager.vault.root.resolve()))})
+        if not self._origin_ok():
+            return self._json({"error": "forbidden: bad host/origin/launch token"}, 403)
         try:
-            if u.path == '/api/instance':
-                from .dashboard_data import revision
-                return self._json({'app': 'ai-memory-hub', 'vault': revision(str(self.manager.vault.root.resolve()))})
             if u.path == "/api/memories":
                 q = parse_qs(u.query).get("q", [""])[0]
                 return self._json(memory_rows_for_dashboard(self.manager, q))
@@ -210,8 +210,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, 500)
 
     def do_POST(self):
-        with self.operation_lock:
-            self._post()
+        self._post()
 
     def _post(self):
         u = urlparse(self.path)
@@ -245,14 +244,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, 500)
 
 def create_server(manager: MemoryManager, host: str | None = None, port: int | None = None):
-    """Every launch path receives an isolated token, host guard and request lock."""
+    """Every launch path receives an isolated token, host guard."""
     host = host if host is not None else default_dashboard_host()
     port = port if port is not None else default_dashboard_port()
     if host not in ('127.0.0.1', 'localhost'):
         raise ValueError('The memory dashboard only supports loopback access.')
     handler = type('LocalDashboardHandler', (DashboardHandler,), {
         'manager': manager, 'launch_token': secrets.token_urlsafe(24),
-        'operation_lock': threading.RLock(),
     })
     server = ThreadingHTTPServer((host, port), handler)
     actual_port = server.server_address[1]

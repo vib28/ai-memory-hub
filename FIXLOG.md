@@ -5,6 +5,20 @@ from the #2-#9 fixes on master. Each entry: what was wrong, what changed, where.
 
 ---
 
+## #117 — Skip transcript re-render when unchanged — 2026-09-19
+
+### #117 — Worker poll re-renders every transcript unconditionally
+`memory_hub/worker.py`: the routine poll-driven re-render iterated ALL
+transcript groups and called `render()` on every poll — even when neither
+the events nor the resolved target had changed — churning the Markdown file
+on every tick. Added a per-group content-hash watermark
+(`self._transcript_watermarks: dict[str, str]`) keyed on the SHA-256 of the
+event_id list and the resolved target (path/project/summary_links). The
+fingerprint is computed before rendering; if it matches the last poll's
+value, the render is skipped. `transcript_rendered` now only counts groups
+that actually produced a new file. No per-append bookkeeping — the hash is
+recomputed on each poll from the existing event set.
+
 ## Pipeline foundation (#82-#90, #91) — 2026-09-18
 
 ### #84 — Project resolver
