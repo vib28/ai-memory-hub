@@ -256,7 +256,7 @@ class MemoryIndex:
         fts_rows: list[dict] = []
         with self._db_lock:
             if self.has_fts:
-                tokens = [t for t in query.replace('"', ' ').split() if t]
+                tokens = [t.replace('\"', '\"\"') for t in query.split() if t]
                 if tokens:
                     safe = " OR ".join(f'"{t}"' for t in tokens[:12])
                     try:

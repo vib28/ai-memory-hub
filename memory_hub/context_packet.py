@@ -44,7 +44,7 @@ from typing import Any
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import atomic_write, file_lock, one_line, slugify
+from .utils import atomic_write, file_lock, one_line, read_json, slugify
 
 log = logging.getLogger("ai_memory_hub.context_packet")
 
@@ -110,17 +110,11 @@ def _ledger_path(vault: Path, host: str, session_id: str) -> Path:
 
 def load_ledger(vault: Path, host: str, session_id: str) -> dict[str, Any]:
     path = _ledger_path(vault, host, session_id)
-    if not path.exists():
-        return {"version": 1, "host": host, "session_id": session_id, "injected": [],
-                "start_sent": False, "updated_at": None}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"version": 1, "host": host, "session_id": session_id, "injected": [],
-                "start_sent": False, "updated_at": None}
+    default = {"version": 1, "host": host, "session_id": session_id, "injected": [],
+               "start_sent": False, "updated_at": None}
+    value = read_json(path, default=default)
     if not isinstance(value, dict) or not isinstance(value.get("injected"), list):
-        return {"version": 1, "host": host, "session_id": session_id, "injected": [],
-                "start_sent": False, "updated_at": None}
+        return default
     return value
 
 

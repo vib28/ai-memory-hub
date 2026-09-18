@@ -18,7 +18,7 @@ from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KIND
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import atomic_write, file_lock, is_truthy, normalize_text, slugify, text_hash
+from .utils import atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
                     parse_records, dump_frontmatter, ensure_metadata, SESSION_RE,
                     SESSION_ID_RE, SESSION_META_RE)
@@ -91,7 +91,7 @@ class MemoryManager:
         return self.index.rebuild(self._all_records())
 
     def _validate(self, candidate: MemoryCandidate) -> dict | None:
-        candidate.text = " ".join(candidate.text.strip().split())
+        candidate.text = one_line(candidate.text)
         candidate.kind = candidate.kind.strip().lower()
         candidate.tag = candidate.tag.strip().lower()
         candidate.writer = candidate.writer.strip().lower()
@@ -191,7 +191,7 @@ class MemoryManager:
                 value = clean[key]
                 if isinstance(value, str):
                     value = [value]
-                clean[key] = [" ".join(str(item).strip().split()) for item in value if str(item).strip()]
+                clean[key] = [one_line(item) for item in value if one_line(item)]
         clean["model"] = str(clean["model"]).strip().lower()
         clean["title"] = str(clean["title"]).strip()
         clean["project"] = str(clean["project"]).strip() if clean["project"] else None
@@ -727,10 +727,10 @@ class MemoryManager:
         if kind == "preference":
             return "Communication, workflow, research, and output preferences"
         records = self._cached_parse_records(relative)
-        texts = [" ".join(record.text.split()) for record in records
+        texts = [one_line(record.text) for record in records
                  if record.tag != "superseded" and record.text.strip()]
         if not texts and fallback.strip():
-            texts = [" ".join(fallback.split())]
+            texts = [one_line(fallback)]
         summary = "; ".join(texts) or "No active entries remain"
         if len(summary) > 220:
             def clip(value: str, limit: int) -> str:
@@ -784,7 +784,7 @@ class MemoryManager:
         security = check_text(new_text)
         if not security.safe:
             return {"status": "rejected", "reason": security.reason}
-        new_text = " ".join(new_text.strip().split())
+        new_text = one_line(new_text)
         p = self.vault.resolve(old["path"])
         from .utils import file_lock, atomic_write
         with file_lock(p):
@@ -807,6 +807,7 @@ class MemoryManager:
             body = "\n".join(lines) + "\n"
             body = ensure_metadata(body, kind=old["kind"], writer=writer)
             atomic_write(p, body)
+            self._covers_cache.pop(old["path"], None)
         rec = MemoryRecord(memory_id, old["path"], new_text, old["kind"], old["tag"],
                            subject, writer, stamp)
         self.index.upsert(rec)
@@ -843,6 +844,7 @@ class MemoryManager:
             changed = self.vault.delete_entry(old["path"], memory_id)
         if changed:
             self.index.remove(memory_id)
+            self._covers_cache.pop(old["path"], None)
             if old["kind"] == "session" and transcript_info:
                 group_id = transcript_info.get("session_group_id")
                 if group_id:
@@ -1430,6 +1432,7 @@ class MemoryManager:
                 shutil.move(str(source), str(backup))
         result["backup"] = "/" + backup.relative_to(self.vault.root).as_posix()
         result["records_to_move"] = len(lines)
+        self._covers_cache.pop("/" + target.relative_to(self.vault.root).as_posix(), None)
         self.reindex()
         return result
 
@@ -1489,6 +1492,7 @@ class MemoryManager:
                 content += section
             registry_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write(registry_path, content)
+            self._covers_cache.pop("/" + registry_path.relative_to(self.vault.root).as_posix(), None)
             # Invalidate the cached registry so the next entity_registry()
             # call re-reads the updated file (#124).
             self._entity_registry_cache = (None, {})

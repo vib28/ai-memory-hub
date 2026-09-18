@@ -19,7 +19,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .utils import clean_list, one_line, parse_iso_datetime, slugify
+from .utils import clean_list, one_line, parse_iso_datetime, read_json, slugify
 
 
 DEFAULT_MAX_CHARS = 6000
@@ -35,13 +35,10 @@ _META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
 
 def _manifest(root: Path) -> tuple[dict[str, Any] | None, str | None]:
     path = root / "sessions" / "session-manifest.json"
-    if not path.exists():
-        return None, "no committed checkpoint manifest was found"
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return None, f"checkpoint manifest is unavailable: {exc}"
+    value = read_json(path)
     if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("groups"), dict):
+        if value is None:
+            return None, "no committed checkpoint manifest was found"
         return None, "checkpoint manifest has an unsupported format"
     return value, None
 

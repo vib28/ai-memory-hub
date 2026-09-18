@@ -119,7 +119,7 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
         output = str(row.get("output_summary", "") or "")
         match = _GIT_VERB_RE.search(command)
         if match and row.get("event") == "post-tool-use":
-            verb = " ".join(match.group("verb").split()).lower()
+            verb = one_line(match.group("verb")).lower()
             git_actions.append(f"git {verb}: {one_line(command, 160)}")
         test_match = _TEST_RE.search(output)
         if test_match:

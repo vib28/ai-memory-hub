@@ -27,7 +27,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .utils import atomic_write, is_truthy
+from .utils import atomic_write, is_truthy, read_json
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +116,7 @@ def config_path(vault: Path | str) -> Path:
 
 
 def load_config_file(vault: Path | str) -> dict[str, Any]:
-    path = config_path(vault)
-    if not path.exists():
-        return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    value = read_json(config_path(vault), default={})
     return value if isinstance(value, dict) else {}
 
 

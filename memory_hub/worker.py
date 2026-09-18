@@ -23,7 +23,7 @@ from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
 from .transcript import TranscriptStore, transcript_enabled
-from .utils import atomic_write, parse_iso_datetime
+from .utils import atomic_write, parse_iso_datetime, read_json
 
 
 FINAL_EVENTS = {"session-end"}
@@ -75,14 +75,11 @@ def read_health(vault: Path | str) -> dict[str, Any]:
         legacy = legacy_worker_health_path(vault)
         if legacy.exists():
             path = legacy
-    if not path.exists():
-        return {"status": "not_configured", "health_path": str(path)}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"status": "unreadable", "health_path": str(path)}
+    default = {"status": "not_configured", "health_path": str(path)}
+    value = read_json(path, default=default)
     if not isinstance(value, dict):
         return {"status": "invalid", "health_path": str(path)}
+    value.setdefault("status", default["status"])
     value["health_path"] = str(path)
     return value
 
@@ -321,9 +318,12 @@ class SessionWorker:
                             group_id, manifest=cached_manifest)
                     else:
                         target = self.manager.session_transcript_target(group_id)
-                    events = self.transcript_store.events(group_id)
+                    # #151: compute the watermark fingerprint from a lightweight
+                    # event_ids() query FIRST; skip the expensive events() payload
+                    # fetch entirely if the hash matches the last poll's value.
+                    event_ids = self.transcript_store.event_ids(group_id)
                     fingerprint = hashlib.sha256(json.dumps(
-                        {"event_ids": [e["event_id"] for e in events], "target": target},
+                        {"event_ids": event_ids, "target": target},
                         ensure_ascii=False, sort_keys=True,
                     ).encode("utf-8")).hexdigest()
                     with self._watermarks_lock:

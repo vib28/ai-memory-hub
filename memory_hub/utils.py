@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import time
@@ -188,3 +189,30 @@ def is_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in _TRUTHY_STRINGS
+
+
+# --------------------------------------------------------------------------- JSON
+# Helpers used across the codebase to read/write JSON files atomically.
+
+def read_json(path: Path, default: Any = None, *, encoding: str = "utf-8") -> Any:
+    """Read and parse a JSON file, returning ``default`` if missing or unreadable.
+
+    Handles ``OSError`` (missing file, permission errors) and
+    ``json.JSONDecodeError`` (corrupt file) gracefully -- callers that need
+    distinct handling for "missing" vs "corrupt" should read the file directly.
+    """
+    try:
+        return json.loads(path.read_text(encoding=encoding))
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def vault_key(vault: Path | str, length: int = 16) -> str:
+    """Return a stable, collision-resistant key for a vault path.
+
+    Used to generate per-vault file names (health JSON, outbox DB, export
+    config, ...) that stay unique per vault without leaking the vault's location.
+    """
+    return hashlib.sha256(
+        str(Path(vault).expanduser().resolve()).encode("utf-8")
+    ).hexdigest()[:length]

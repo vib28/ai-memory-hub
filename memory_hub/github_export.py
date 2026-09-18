@@ -8,7 +8,6 @@ capture and startup handoff never call it synchronously.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -24,7 +23,7 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, clean_list, one_line, slugify
+from .utils import atomic_write, clean_list, one_line, read_json, slugify, vault_key
 
 
 VISIBILITIES = {"public", "private", "internal"}
@@ -43,7 +42,8 @@ class ExportError(RuntimeError):
 
 
 def _vault_key(vault: Path | str) -> str:
-    return hashlib.sha256(str(Path(vault).expanduser().resolve()).encode("utf-8")).hexdigest()[:16]
+    """Deprecated: use utils.vault_key instead. Retained for backward-compat."""
+    return vault_key(vault)
 
 
 def config_path(vault: Path | str) -> Path:
@@ -63,12 +63,8 @@ def health_path(vault: Path | str) -> Path:
 
 def load_config(vault: Path | str) -> dict[str, Any]:
     path = config_path(vault)
-    if not path.exists():
-        return {"enabled": False, "configured": False, "config_path": str(path)}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ExportError(f"GitHub export configuration is invalid: {exc}") from exc
+    default = {"enabled": False, "configured": False, "config_path": str(path)}
+    value = read_json(path, default=default)
     if not isinstance(value, dict):
         raise ExportError("GitHub export configuration must be an object")
     value["config_path"] = str(path)

@@ -37,7 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from .utils import slugify
+from .utils import read_json, slugify
 
 
 UNSCOPED = "unscoped"
@@ -160,12 +160,7 @@ def load_overrides(vault: Path | str | None) -> dict[str, str]:
     if not vault:
         return {}
     path = Path(vault).expanduser() / ".ai-memory-hub" / OVERRIDES_FILENAME
-    if not path.exists():
-        return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    value = read_json(path, default={})
     if not isinstance(value, dict):
         return {}
     return {_key(_normalize(k)): slugify(str(v)) for k, v in value.items()

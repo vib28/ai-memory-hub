@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .app_config import bootstrap_environment
+from .events import AFTER_AGENT_EVENTS, CONSOLIDATION_EVENTS, FAILURE_EVENTS, HOST_META_FIELDS, PROMPT_EVENTS, PROMPT_FIELDS, ASSISTANT_FIELDS
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import is_truthy
+from .utils import is_truthy, truncated_text
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -84,12 +85,6 @@ _EVENT_ALIASES = {
 # Event -> which host field carries the human-readable evidence for it (#82).
 # The receiver used to know only tool_input/tool_response, so every non-tool event
 # arrived as an empty row and the pipeline had nothing but shell echoes to work with.
-_PROMPT_FIELDS = ("prompt", "submitted_prompt", "user_message")
-_ASSISTANT_FIELDS = ("last_assistant_message", "prompt_response", "response", "final_response")
-_HOST_META_FIELDS = ("transcript_path", "model", "permission_mode", "client_type", "source",
-                     "reason", "trigger", "error_type", "error_message", "agent_type", "agent_id",
-                     "stop_hook_active", "turn_id", "session_title", "profile", "platform",
-                     "uptime_ms", "token_count", "estimated_token_count", "custom_instructions")
 DEFAULT_MAX_META = 2000
 
 
@@ -110,9 +105,7 @@ def default_buffer_path() -> Path:
     return Path.home() / ".ai-memory-hub" / "observations.sqlite3"
 
 
-def _bounded_text(value: Any, maximum: int = DEFAULT_MAX_TEXT) -> str:
-    text = "" if value is None else str(value)
-    return text[:maximum]
+
 
 
 def _capture_exclude_patterns() -> tuple[str, ...]:
@@ -130,7 +123,7 @@ def _sensitive_path(value: str) -> bool:
 
 
 def _sanitize_text(value: Any, excluded_paths: Iterable[str] = ()) -> str:
-    text = _bounded_text(value)
+    text = truncated_text(value, DEFAULT_MAX_TEXT)
     for pattern, _label in SECRET_PATTERNS:
         text = pattern.sub("[redacted sensitive evidence]", text)
     for path in excluded_paths:
@@ -170,7 +163,7 @@ def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _bounded_files(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
-    return [path for path in (_bounded_text(item, 500) for item in value[:DEFAULT_MAX_FILES]
+    return [path for path in (truncated_text(item, 500) for item in value[:DEFAULT_MAX_FILES]
                               if item is not None)
             if path and not _sensitive_path(path)]
 
@@ -197,10 +190,10 @@ class Observation:
     def from_payload(cls, payload: dict[str, Any]) -> "Observation":
         if not isinstance(payload, dict):
             raise ValueError("observation must be a JSON object")
-        session_id = _bounded_text(payload.get("session_id"), 200).strip()
+        session_id = truncated_text(payload.get("session_id"), 200).strip()
         if not session_id:
             raise ValueError("missing session_id")
-        created_at = _bounded_text(payload.get("created_at"), 80).strip()
+        created_at = truncated_text(payload.get("created_at"), 80).strip()
         if not created_at:
             created_at = datetime.now(timezone.utc).isoformat()
         event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
@@ -224,9 +217,9 @@ class Observation:
         # Non-tool lifecycle events carry their evidence in event-specific fields.
         # Preserve the user's own words and the assistant's completed answer; they
         # are the only categorizable evidence most sessions produce (#82).
-        prompt_text = next((merged[key] for key in _PROMPT_FIELDS
+        prompt_text = next((merged[key] for key in PROMPT_FIELDS
                             if isinstance(merged.get(key), str) and merged[key].strip()), None)
-        assistant_text = next((merged[key] for key in _ASSISTANT_FIELDS
+        assistant_text = next((merged[key] for key in ASSISTANT_FIELDS
                                if isinstance(merged.get(key), str) and merged[key].strip()), None)
         if input_summary is None and prompt_text is not None:
             input_summary = prompt_text
@@ -253,13 +246,13 @@ class Observation:
                     "post-compaction": "session", "session-heartbeat": "session",
                     "user-prompt-submit": "prompt"}.get(event_name)
 
-        raw_files = [_bounded_text(item, 500) for item in (files or [])[:DEFAULT_MAX_FILES]
+        raw_files = [truncated_text(item, 500) for item in (files or [])[:DEFAULT_MAX_FILES]
                      if item is not None]
         files = _bounded_files(raw_files)
         excluded_paths = [path for path in raw_files if _sensitive_path(path)]
 
         host_meta: dict[str, Any] = {}
-        for key in _HOST_META_FIELDS:
+        for key in HOST_META_FIELDS:
             value = merged.get(key)
             if value is None or isinstance(value, (dict, list)):
                 continue
@@ -272,32 +265,32 @@ class Observation:
             host_meta = {k: host_meta[k] for k in ("transcript_path", "model", "source", "reason",
                                                     "trigger", "error_type") if k in host_meta}
 
-        cwd = _bounded_text(merged.get("cwd"), 1000).strip()
-        explicit_project = _bounded_text(merged.get("project"), 200).strip()
+        cwd = truncated_text(merged.get("cwd"), 1000).strip()
+        explicit_project = truncated_text(merged.get("project"), 200).strip()
         identity = resolve_project_cached(
             cwd or None, vault=os.environ.get("AI_MEMORY_VAULT") or None,
             explicit=explicit_project or None,
         )
         return cls(
-            observation_id=_bounded_text(
+            observation_id=truncated_text(
                 merged.get("observation_id") or merged.get("event_id") or merged.get("hook_event_id"),
                 100,
             ).strip() or uuid.uuid4().hex,
             session_id=session_id,
             project=identity.project if identity.project != UNSCOPED else "",
             cwd=cwd,
-            tool=_bounded_text(tool, 100).strip() or "unknown",
+            tool=truncated_text(tool, 100).strip() or "unknown",
             files=files,
             input_summary=_sanitize_text(input_summary, excluded_paths),
             output_summary=_sanitize_text(output_summary, excluded_paths),
-            git_commit=_bounded_text(merged.get("git_commit"), 200).strip(),
+            git_commit=truncated_text(merged.get("git_commit"), 200).strip(),
             created_at=created_at,
             source=normalize_client(merged.get("source_client") or merged.get("client")
                                     or merged.get("client_type") or merged.get("writer"))
                    or "generic-hook",
             event=event_name,
             host_meta=host_meta,
-            worktree=_bounded_text(identity.worktree, 1000),
+            worktree=truncated_text(identity.worktree, 1000),
             project_source=identity.source,
         )
 
@@ -533,7 +526,7 @@ class ObservationBuffer:
         select_params: list[Any] = list(ids)
         if owner:
             select_params.append(owner)
-        bounded_error = _bounded_text(error, 1000) if error else None
+        bounded_error = truncated_text(error, 1000) if error else None
         with self.conn:
             # Pre-fetch attempts/status in a single SELECT; batch UPDATE via executemany.
             rows = self.conn.execute(
@@ -724,8 +717,4 @@ def hook_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-# Events after which the receiver spawns a detached consolidation (#83). Stop is a
-# turn boundary, not a session boundary, but it is the *only* boundary a session
-# that is later killed will ever report -- so it produces a provisional checkpoint.
-CONSOLIDATION_EVENTS = {"session-end", "stop", "stop-failure", "interrupt", "pre-compact",
-                        "post-compaction"}
+

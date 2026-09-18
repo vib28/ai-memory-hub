@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from .utils import atomic_write, one_line
 
 
 MANAGED_KEY = "ai_memory_hub_managed"
@@ -41,11 +42,10 @@ def _load(path: Path) -> dict[str, Any]:
     return value
 
 
-def _write(path: Path, config: dict[str, Any]) -> None:
+def _write_json(path: Path, config: dict[str, Any]) -> None:
+    """Atomic JSON write using utils.atomic_write."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    atomic_write(path, json.dumps(config, indent=2, ensure_ascii=False) + "\n")
 
 
 def _hook_list(config: dict[str, Any], event: str) -> list[Any]:
@@ -80,7 +80,7 @@ def install_hook(settings: Path | str, *, event: str, command: str, args: list[s
     else:
         hooks.append(entry)
     changed = True
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "installed" if changed else "already_installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -123,7 +123,7 @@ def install_claude_hook(settings: Path | str, *, event: str, command: str,
             star.setdefault("hooks", []).append(managed)
         else:
             groups.append({"matcher": matcher, "hooks": [managed]})
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -157,7 +157,7 @@ def uninstall_claude_hook(settings: Path | str, *, command: str | None = None) -
     if not removed:
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
     backup = _backup(path)
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
 
 
@@ -185,7 +185,7 @@ def uninstall_hook(settings: Path | str, *, command: str | None = None) -> dict[
     if not removed:
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
     backup = _backup(path)
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
 
 
@@ -234,7 +234,7 @@ def install_nested_hook(settings: Path | str, *, event: str, command: str,
             star.setdefault("hooks", []).append(entry)
         else:
             groups.append({"matcher": matcher, "hooks": [entry]})
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -272,7 +272,7 @@ def uninstall_nested_hook(settings: Path | str, *, command: str | None = None) -
     if not removed:
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
     backup = _backup(path)
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
 
 
@@ -324,7 +324,7 @@ def install_codex_hook(settings: Path | str, *, event: str, command: str,
             star.setdefault("hooks", []).append(entry)
         else:
             groups.append({"matcher": matcher, "hooks": [entry]})
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -363,7 +363,7 @@ def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any
     if not removed:
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
     backup = _backup(path)
-    _write(path, config)
+    _write_json(path, config)
     return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
 
 
@@ -408,11 +408,7 @@ def _toml_quote(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(content, encoding="utf-8")
-    os.replace(temporary, path)
+
 
 
 def install_toml_hook(settings: Path | str, *, event: str, command: str,
@@ -448,7 +444,7 @@ def install_toml_hook(settings: Path | str, *, event: str, command: str,
         if content and not content.endswith("\n\n"):
             separator += "\n"
         updated = content + separator + desired
-    _write_text(path, updated)
+    atomic_write(path, updated)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -467,7 +463,7 @@ def uninstall_toml_hook(settings: Path | str, *, command: str | None = None) -> 
     backup = _backup(path)
     for start, end in sorted(ranges, reverse=True):
         content = content[:start] + content[end:]
-    _write_text(path, content)
+    atomic_write(path, content)
     return {"status": "removed", "settings": str(path), "removed": len(ranges), "backup": backup}
 
 
@@ -538,7 +534,7 @@ def install_hermes_hook(config_yaml: Path | str, *, event: str, command: str,
     backup = _backup(path) if path.exists() else None
     if existing:
         updated = content[:existing[0].start()] + entry + content[existing[0].end():]
-        _write_text(path, updated)
+        atomic_write(path, updated)
         return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
     lines = content.splitlines(keepends=True)
@@ -547,7 +543,7 @@ def install_hermes_hook(config_yaml: Path | str, *, event: str, command: str,
         separator = "" if not content or content.endswith("\n") else "\n"
         updated = content + separator + ("\n" if content else "") + "hooks:\n" + f"  {event}:\n" + \
             "\n".join("  " + line if line.strip() else line for line in entry.splitlines()) + "\n"
-        _write_text(path, updated)
+        atomic_write(path, updated)
         return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
     # Find the end of the hooks: mapping (next top-level key or EOF).
     end = len(lines)
@@ -570,7 +566,7 @@ def install_hermes_hook(config_yaml: Path | str, *, event: str, command: str,
                 break
         block = indented_entry
     lines[insert_at:insert_at] = [block]
-    _write_text(path, "".join(lines))
+    atomic_write(path, "".join(lines))
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
@@ -591,5 +587,5 @@ def uninstall_hermes_hook(config_yaml: Path | str, *, command: str | None = None
     # Drop now-empty "  <event>:" headers and an empty "hooks:" map.
     content = re.sub(r"^  [a-z_]+:\s*\n(?=  [a-z_]+:\s*\n|(?![ \t]))", "", content, flags=re.MULTILINE)
     content = re.sub(r"^hooks:\s*\n(?![ \t])", "", content, flags=re.MULTILINE)
-    _write_text(path, content)
+    atomic_write(path, content)
     return {"status": "removed", "settings": str(path), "removed": len(matches), "backup": backup}

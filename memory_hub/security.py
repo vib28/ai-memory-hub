@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .utils import one_line
+
 @dataclass
 class SecurityResult:
     safe: bool
@@ -51,7 +53,7 @@ def check_text(text: str) -> SecurityResult:
     # Normalize once before any regex matching: collapse internal whitespace
     # and strip leading/trailing whitespace. This ensures patterns written
     # against clean input match even when callers pass verbose formatting.
-    t = " ".join(str(text or "").strip().split())
+    t = one_line(text)
     if not t:
         return SecurityResult(False, "empty memory")
     if len(t) > 1500:

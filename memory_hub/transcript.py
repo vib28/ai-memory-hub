@@ -314,6 +314,19 @@ class TranscriptStore:
         ).fetchall()
         return [self._row(row) for row in rows]
 
+    def event_ids(self, session_group_id: str) -> list[str]:
+        """Lightweight query returning only event_ids for watermark checks (#151).
+
+        Avoids the full ``events()`` payload fetch (which deserializes envelope
+        JSON and materializes every column) when all we need is the ordered
+        event-id list for a content-hash fingerprint.
+        """
+        rows = self.conn.execute(
+            "SELECT event_id FROM transcript_events WHERE session_group_id=? "
+            "ORDER BY sequence, generated_at, event_id", (session_group_id,)
+        ).fetchall()
+        return [str(row[0]) for row in rows]
+
     def groups(self) -> list[str]:
         rows = self.conn.execute(
             "SELECT DISTINCT session_group_id FROM transcript_events ORDER BY session_group_id"
