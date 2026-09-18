@@ -1,0 +1,1777 @@
+{
+  "benchmark_version": "handoff-replay-v1",
+  "generated_at": "2026-09-18T21:37:17.022013+00:00",
+  "mode": "offline-deterministic-replay",
+  "live_verification": {
+    "status": "not-run",
+    "live_pairs": null,
+    "reason": "No provider adapters or explicit paid-run authorization was supplied.",
+    "replay_pairs": 6
+  },
+  "configuration": {
+    "pairs_per_task_per_direction": 1,
+    "task_types": [
+      "feature",
+      "debugging",
+      "interrupted"
+    ],
+    "directions": [
+      "claude->codex",
+      "codex->claude"
+    ],
+    "arms": [
+      "off",
+      "on"
+    ],
+    "seed": 6201,
+    "common_tokenizer": "unicode-wordpunct-v1",
+    "provider_usage": "unavailable in replay; never treated as zero",
+    "clarification_responder": "deterministic-fixture-answer-bank",
+    "live_cost_ceiling": "not configured",
+    "real_vault": false
+  },
+  "pair_count": 6,
+  "destination_session_count": 12,
+  "pairs": [
+    {
+      "pair_id": "claude-codex-feature-01",
+      "direction": "claude->codex",
+      "task_type": "feature",
+      "repetition": 1,
+      "snapshot_id": "934df16373569f1df7b3c70c1abe695f5fd3168d8e39dea3ec7c94911b2a61bb",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    },
+    {
+      "pair_id": "claude-codex-debugging-01",
+      "direction": "claude->codex",
+      "task_type": "debugging",
+      "repetition": 1,
+      "snapshot_id": "6f913ae31ac8bb52f3104eff5dd1b02dfdff13883e5f942f5f2009c32ada98a4",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    },
+    {
+      "pair_id": "claude-codex-interrupted-01",
+      "direction": "claude->codex",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "snapshot_id": "a3f116114de65edfc0e416ad54a06fa160b06bc3b540f765e6ff33da673efabc",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    },
+    {
+      "pair_id": "codex-claude-feature-01",
+      "direction": "codex->claude",
+      "task_type": "feature",
+      "repetition": 1,
+      "snapshot_id": "4ad3166415d51dca7d747411b186d764ba9bb9c447f206e289da5fe1c77b7a9c",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    },
+    {
+      "pair_id": "codex-claude-debugging-01",
+      "direction": "codex->claude",
+      "task_type": "debugging",
+      "repetition": 1,
+      "snapshot_id": "a43839c3089064a5546cfa181ad33162148b5989422b8bef26a84ece0232714d",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    },
+    {
+      "pair_id": "codex-claude-interrupted-01",
+      "direction": "codex->claude",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "snapshot_id": "ec3bd9d40fc7a538a9f5f951d2fe00407aa64cf886c712c7310cc9eec0082b42",
+      "arm_order": [
+        "off",
+        "on"
+      ],
+      "case_count": 2
+    }
+  ],
+  "cases": [
+    {
+      "pair_id": "claude-codex-feature-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "feature",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 6202,
+      "snapshot_id": "934df16373569f1df7b3c70c1abe695f5fd3168d8e39dea3ec7c94911b2a61bb",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.1975,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 209,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 173,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 189,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 527,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "claude-codex-feature-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "feature",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 6202,
+      "snapshot_id": "934df16373569f1df7b3c70c1abe695f5fd3168d8e39dea3ec7c94911b2a61bb",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.1318,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 209,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 143,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 159,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 497,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "claude-codex-debugging-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "debugging",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 6302,
+      "snapshot_id": "6f913ae31ac8bb52f3104eff5dd1b02dfdff13883e5f942f5f2009c32ada98a4",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.1441,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 208,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 172,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 188,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 524,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "claude-codex-debugging-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "debugging",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 6302,
+      "snapshot_id": "6f913ae31ac8bb52f3104eff5dd1b02dfdff13883e5f942f5f2009c32ada98a4",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.1096,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 208,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 142,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 158,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 494,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "claude-codex-interrupted-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 6402,
+      "snapshot_id": "a3f116114de65edfc0e416ad54a06fa160b06bc3b540f765e6ff33da673efabc",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.1201,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 211,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 175,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 191,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 533,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "claude-codex-interrupted-01",
+      "direction": "claude->codex",
+      "source_tool": "claude",
+      "destination_tool": "codex",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 6402,
+      "snapshot_id": "a3f116114de65edfc0e416ad54a06fa160b06bc3b540f765e6ff33da673efabc",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.162,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 211,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 145,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 161,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 503,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-feature-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "feature",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 7202,
+      "snapshot_id": "4ad3166415d51dca7d747411b186d764ba9bb9c447f206e289da5fe1c77b7a9c",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0703,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 209,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 173,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 189,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 527,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-feature-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "feature",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 7202,
+      "snapshot_id": "4ad3166415d51dca7d747411b186d764ba9bb9c447f206e289da5fe1c77b7a9c",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0629,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 129,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 209,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 143,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 159,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 497,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-debugging-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "debugging",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 7302,
+      "snapshot_id": "a43839c3089064a5546cfa181ad33162148b5989422b8bef26a84ece0232714d",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0643,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 208,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 172,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 188,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 524,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-debugging-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "debugging",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 7302,
+      "snapshot_id": "a43839c3089064a5546cfa181ad33162148b5989422b8bef26a84ece0232714d",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0593,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 128,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 208,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 142,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 158,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 494,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-interrupted-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "arm": "off",
+      "task_seed": 7402,
+      "snapshot_id": "ec3bd9d40fc7a538a9f5f951d2fe00407aa64cf886c712c7310cc9eec0082b42",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 2,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0645,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 2,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 211,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 175,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 191,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 533,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    },
+    {
+      "pair_id": "codex-claude-interrupted-01",
+      "direction": "codex->claude",
+      "source_tool": "codex",
+      "destination_tool": "claude",
+      "task_type": "interrupted",
+      "repetition": 1,
+      "arm": "on",
+      "task_seed": 7402,
+      "snapshot_id": "ec3bd9d40fc7a538a9f5f951d2fe00407aa64cf886c712c7310cc9eec0082b42",
+      "continuation_request": "Continue the task, run the focused test, and report remaining work.",
+      "clarification_responder": "deterministic-fixture-answer-bank",
+      "clarification_rounds": 0,
+      "checkpoint_age_seconds": 121,
+      "latency_ms": 0.0604,
+      "quality": {
+        "completed": true,
+        "essential_facts_expected": 4,
+        "essential_facts_retained": 4,
+        "fact_retention_rate": 1.0,
+        "repeated_work_items": 0,
+        "failure": false
+      },
+      "usage": {
+        "source_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "destination_provider": {
+          "input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "output_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          },
+          "cached_input_tokens": {
+            "value": null,
+            "basis": "unavailable",
+            "reason": "offline replay has no provider usage API"
+          }
+        },
+        "local_model": {
+          "summarization_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          },
+          "checkpoint_generation_tokens": {
+            "value": 131,
+            "basis": "estimated-common-tokenizer"
+          }
+        },
+        "common_tokenizer": {
+          "name": "unicode-wordpunct-v1",
+          "source_stage_tokens": {
+            "value": 211,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_input_tokens": {
+            "value": 145,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_output_tokens": {
+            "value": 16,
+            "basis": "estimated-common-tokenizer"
+          },
+          "destination_stage_tokens": {
+            "value": 161,
+            "basis": "estimated-common-tokenizer"
+          },
+          "whole_workflow_tokens": {
+            "value": 503,
+            "basis": "estimated-common-tokenizer"
+          }
+        }
+      }
+    }
+  ],
+  "by_direction_and_task": {
+    "claude->codex": {
+      "feature": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 189,
+          "destination_stage_tokens_spread": {
+            "min": 189,
+            "p25": 189,
+            "median": 189,
+            "p75": 189,
+            "max": 189
+          },
+          "whole_workflow_tokens": 527,
+          "whole_workflow_tokens_spread": {
+            "min": 527,
+            "p25": 527,
+            "median": 527,
+            "p75": 527,
+            "max": 527
+          },
+          "latency_ms": {
+            "min": 0.1975,
+            "p25": 0.1975,
+            "median": 0.1975,
+            "p75": 0.1975,
+            "max": 0.1975
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 159,
+          "destination_stage_tokens_spread": {
+            "min": 159,
+            "p25": 159,
+            "median": 159,
+            "p75": 159,
+            "max": 159
+          },
+          "whole_workflow_tokens": 497,
+          "whole_workflow_tokens_spread": {
+            "min": 497,
+            "p25": 497,
+            "median": 497,
+            "p75": 497,
+            "max": 497
+          },
+          "latency_ms": {
+            "min": 0.1318,
+            "p25": 0.1318,
+            "median": 0.1318,
+            "p75": 0.1318,
+            "max": 0.1318
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.873,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.6926,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      },
+      "debugging": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 188,
+          "destination_stage_tokens_spread": {
+            "min": 188,
+            "p25": 188,
+            "median": 188,
+            "p75": 188,
+            "max": 188
+          },
+          "whole_workflow_tokens": 524,
+          "whole_workflow_tokens_spread": {
+            "min": 524,
+            "p25": 524,
+            "median": 524,
+            "p75": 524,
+            "max": 524
+          },
+          "latency_ms": {
+            "min": 0.1441,
+            "p25": 0.1441,
+            "median": 0.1441,
+            "p75": 0.1441,
+            "max": 0.1441
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 158,
+          "destination_stage_tokens_spread": {
+            "min": 158,
+            "p25": 158,
+            "median": 158,
+            "p75": 158,
+            "max": 158
+          },
+          "whole_workflow_tokens": 494,
+          "whole_workflow_tokens_spread": {
+            "min": 494,
+            "p25": 494,
+            "median": 494,
+            "p75": 494,
+            "max": 494
+          },
+          "latency_ms": {
+            "min": 0.1096,
+            "p25": 0.1096,
+            "median": 0.1096,
+            "p75": 0.1096,
+            "max": 0.1096
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.9574,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.7252,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      },
+      "interrupted": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 191,
+          "destination_stage_tokens_spread": {
+            "min": 191,
+            "p25": 191,
+            "median": 191,
+            "p75": 191,
+            "max": 191
+          },
+          "whole_workflow_tokens": 533,
+          "whole_workflow_tokens_spread": {
+            "min": 533,
+            "p25": 533,
+            "median": 533,
+            "p75": 533,
+            "max": 533
+          },
+          "latency_ms": {
+            "min": 0.1201,
+            "p25": 0.1201,
+            "median": 0.1201,
+            "p75": 0.1201,
+            "max": 0.1201
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 161,
+          "destination_stage_tokens_spread": {
+            "min": 161,
+            "p25": 161,
+            "median": 161,
+            "p75": 161,
+            "max": 161
+          },
+          "whole_workflow_tokens": 503,
+          "whole_workflow_tokens_spread": {
+            "min": 503,
+            "p25": 503,
+            "median": 503,
+            "p75": 503,
+            "max": 503
+          },
+          "latency_ms": {
+            "min": 0.162,
+            "p25": 0.162,
+            "median": 0.162,
+            "p75": 0.162,
+            "max": 0.162
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.7068,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.6285,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      }
+    },
+    "codex->claude": {
+      "feature": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 189,
+          "destination_stage_tokens_spread": {
+            "min": 189,
+            "p25": 189,
+            "median": 189,
+            "p75": 189,
+            "max": 189
+          },
+          "whole_workflow_tokens": 527,
+          "whole_workflow_tokens_spread": {
+            "min": 527,
+            "p25": 527,
+            "median": 527,
+            "p75": 527,
+            "max": 527
+          },
+          "latency_ms": {
+            "min": 0.0703,
+            "p25": 0.0703,
+            "median": 0.0703,
+            "p75": 0.0703,
+            "max": 0.0703
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 159,
+          "destination_stage_tokens_spread": {
+            "min": 159,
+            "p25": 159,
+            "median": 159,
+            "p75": 159,
+            "max": 159
+          },
+          "whole_workflow_tokens": 497,
+          "whole_workflow_tokens_spread": {
+            "min": 497,
+            "p25": 497,
+            "median": 497,
+            "p75": 497,
+            "max": 497
+          },
+          "latency_ms": {
+            "min": 0.0629,
+            "p25": 0.0629,
+            "median": 0.0629,
+            "p75": 0.0629,
+            "max": 0.0629
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.873,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.6926,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      },
+      "debugging": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 188,
+          "destination_stage_tokens_spread": {
+            "min": 188,
+            "p25": 188,
+            "median": 188,
+            "p75": 188,
+            "max": 188
+          },
+          "whole_workflow_tokens": 524,
+          "whole_workflow_tokens_spread": {
+            "min": 524,
+            "p25": 524,
+            "median": 524,
+            "p75": 524,
+            "max": 524
+          },
+          "latency_ms": {
+            "min": 0.0643,
+            "p25": 0.0643,
+            "median": 0.0643,
+            "p75": 0.0643,
+            "max": 0.0643
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 158,
+          "destination_stage_tokens_spread": {
+            "min": 158,
+            "p25": 158,
+            "median": 158,
+            "p75": 158,
+            "max": 158
+          },
+          "whole_workflow_tokens": 494,
+          "whole_workflow_tokens_spread": {
+            "min": 494,
+            "p25": 494,
+            "median": 494,
+            "p75": 494,
+            "max": 494
+          },
+          "latency_ms": {
+            "min": 0.0593,
+            "p25": 0.0593,
+            "median": 0.0593,
+            "p75": 0.0593,
+            "max": 0.0593
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.9574,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.7252,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      },
+      "interrupted": {
+        "runs": 2,
+        "off": {
+          "runs": 1,
+          "destination_stage_tokens": 191,
+          "destination_stage_tokens_spread": {
+            "min": 191,
+            "p25": 191,
+            "median": 191,
+            "p75": 191,
+            "max": 191
+          },
+          "whole_workflow_tokens": 533,
+          "whole_workflow_tokens_spread": {
+            "min": 533,
+            "p25": 533,
+            "median": 533,
+            "p75": 533,
+            "max": 533
+          },
+          "latency_ms": {
+            "min": 0.0645,
+            "p25": 0.0645,
+            "median": 0.0645,
+            "p75": 0.0645,
+            "max": 0.0645
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 2
+        },
+        "on": {
+          "runs": 1,
+          "destination_stage_tokens": 161,
+          "destination_stage_tokens_spread": {
+            "min": 161,
+            "p25": 161,
+            "median": 161,
+            "p75": 161,
+            "max": 161
+          },
+          "whole_workflow_tokens": 503,
+          "whole_workflow_tokens_spread": {
+            "min": 503,
+            "p25": 503,
+            "median": 503,
+            "p75": 503,
+            "max": 503
+          },
+          "latency_ms": {
+            "min": 0.0604,
+            "p25": 0.0604,
+            "median": 0.0604,
+            "p75": 0.0604,
+            "max": 0.0604
+          },
+          "completion_rate": 1.0,
+          "fact_retention_rate": 1.0,
+          "failure_count": 0,
+          "repeated_work_median": 0
+        },
+        "savings": {
+          "destination_stage": {
+            "absolute": 30,
+            "percent": 15.7068,
+            "status": "estimated-common-tokenizer"
+          },
+          "whole_workflow": {
+            "absolute": 30,
+            "percent": 5.6285,
+            "status": "estimated-common-tokenizer"
+          }
+        },
+        "quality_equal_or_better_on": true
+      }
+    }
+  },
+  "aggregate": {
+    "runs": 12,
+    "off": {
+      "runs": 6,
+      "destination_stage_tokens": 189.0,
+      "destination_stage_tokens_spread": {
+        "min": 188,
+        "p25": 188.25,
+        "median": 189.0,
+        "p75": 190.5,
+        "max": 191
+      },
+      "whole_workflow_tokens": 527.0,
+      "whole_workflow_tokens_spread": {
+        "min": 524,
+        "p25": 524.75,
+        "median": 527.0,
+        "p75": 531.5,
+        "max": 533
+      },
+      "latency_ms": {
+        "min": 0.0643,
+        "p25": 0.06595000000000001,
+        "median": 0.0952,
+        "p75": 0.1381,
+        "max": 0.1975
+      },
+      "completion_rate": 1.0,
+      "fact_retention_rate": 1.0,
+      "failure_count": 0,
+      "repeated_work_median": 2.0
+    },
+    "on": {
+      "runs": 6,
+      "destination_stage_tokens": 159.0,
+      "destination_stage_tokens_spread": {
+        "min": 158,
+        "p25": 158.25,
+        "median": 159.0,
+        "p75": 160.5,
+        "max": 161
+      },
+      "whole_workflow_tokens": 497.0,
+      "whole_workflow_tokens_spread": {
+        "min": 494,
+        "p25": 494.75,
+        "median": 497.0,
+        "p75": 501.5,
+        "max": 503
+      },
+      "latency_ms": {
+        "min": 0.0593,
+        "p25": 0.061024999999999996,
+        "median": 0.08625,
+        "p75": 0.12625,
+        "max": 0.162
+      },
+      "completion_rate": 1.0,
+      "fact_retention_rate": 1.0,
+      "failure_count": 0,
+      "repeated_work_median": 0.0
+    },
+    "savings": {
+      "destination_stage": {
+        "absolute": 30.0,
+        "percent": 15.873,
+        "status": "estimated-common-tokenizer"
+      },
+      "whole_workflow": {
+        "absolute": 30.0,
+        "percent": 5.6926,
+        "status": "estimated-common-tokenizer"
+      }
+    },
+    "quality_equal_or_better_on": true
+  },
+  "uncertainty": {
+    "provider_usage": "Unavailable in replay; no provider billing or cache claim is made.",
+    "common_tokenizer": "Text-volume estimate only; it is not interchangeable with provider tokenizers.",
+    "latency": "Wall-clock replay latency varies with local process scheduling and is reported per case with spread.",
+    "quality": "Deterministic fixture scoring; not evidence of live model behavior."
+  },
+  "gate": {
+    "status": "open",
+    "reason": "Replay evidence is complete for regression purposes, but live two-tool usage and outcome certification are unavailable.",
+    "positive_median_savings_demonstrated": false,
+    "claimable_universal_saving_percentage": false
+  }
+}

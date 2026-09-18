@@ -46,7 +46,7 @@ def _extract_json_text(payload: dict[str, Any]) -> str:
     except Exception as exc:
         raise ExtractionError(f"unexpected chat-completions response: {payload}") from exc
 
-def extract_candidates(transcript: str) -> list[dict]:
+def extract_from_transcript(transcript: str) -> list[dict]:
     base_url = os.environ.get("MEMORY_LLM_BASE_URL", "").rstrip("/")
     model = os.environ.get("MEMORY_LLM_MODEL", "").strip()
     api_key = os.environ.get("MEMORY_LLM_API_KEY", "")

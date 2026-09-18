@@ -9,6 +9,7 @@ import urllib.request
 from typing import Any, Callable, Iterable
 
 from .capture import Observation
+from .utils import clean_list, one_line
 
 
 class ConsolidationError(RuntimeError):
@@ -38,22 +39,16 @@ def _prompt(observations: Iterable[Observation | dict[str, Any]]) -> str:
     return json.dumps({"observations": rows}, ensure_ascii=False)
 
 
-def _clean_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip()[:1000] for item in value if str(item).strip()][:30]
-
-
 def _validate_payload(data: Any, *, fallback_project: str | None = None) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConsolidationError("model response must be a JSON object")
     payload = {
         "title": str(data.get("title", "Session summary")).strip()[:200] or "Session summary",
         "project": data.get("project") or fallback_project,
-        "investigated": _clean_list(data.get("investigated")),
-        "learned": _clean_list(data.get("learned")),
-        "completed": _clean_list(data.get("completed")),
-        "next_steps": _clean_list(data.get("next_steps")),
+        "investigated": clean_list(data.get("investigated")),
+        "learned": clean_list(data.get("learned")),
+        "completed": clean_list(data.get("completed")),
+        "next_steps": clean_list(data.get("next_steps")),
     }
     if not any(payload[key] for key in ("investigated", "learned", "completed", "next_steps")):
         raise ConsolidationError("model returned an empty session")
@@ -73,8 +68,7 @@ _TEST_RE = re.compile(
 _FAILURE_RE = re.compile(r"\b(\d+)\s+failed\b|\berror\b|\bTraceback\b|\bFAILED\b", re.I)
 
 
-def _short(value: Any, limit: int) -> str:
-    return " ".join(str(value or "").split())[:limit]
+
 
 
 def _command_of(row: dict[str, Any]) -> str:
@@ -111,10 +105,10 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
     tools = sorted({str(row.get("tool", "unknown")) for row in rows
                     if str(row.get("tool", "")) not in {"prompt", "assistant", "session", "unknown"}})
 
-    prompts = [_short(row.get("input_summary"), 300) for row in rows
-               if row.get("event") == "user-prompt-submit" and _short(row.get("input_summary"), 300)]
-    answers = [_short(row.get("output_summary"), 400) for row in rows
-               if row.get("event") in {"stop", "subagent-stop"} and _short(row.get("output_summary"), 400)]
+    prompts = [one_line(row.get("input_summary"), 300) for row in rows
+               if row.get("event") == "user-prompt-submit" and one_line(row.get("input_summary"), 300)]
+    answers = [one_line(row.get("output_summary"), 400) for row in rows
+               if row.get("event") in {"stop", "subagent-stop"} and one_line(row.get("output_summary"), 400)]
     git_actions: list[str] = []
     test_results: list[str] = []
     failures: list[str] = []
@@ -126,20 +120,20 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
         match = _GIT_VERB_RE.search(command)
         if match and row.get("event") == "post-tool-use":
             verb = " ".join(match.group("verb").split()).lower()
-            git_actions.append(f"git {verb}: {_short(command, 160)}")
+            git_actions.append(f"git {verb}: {one_line(command, 160)}")
         test_match = _TEST_RE.search(output)
         if test_match:
             passed = test_match.group("passed") or test_match.group("jest_pass")
             failed = test_match.group("failed")
             test_results.append(
                 f"Test run: {passed} passed" + (f", {failed} failed" if failed else "")
-                + f" ({_short(command, 80)})"
+                + f" ({one_line(command, 80)})"
             )
         if row.get("event") == "post-tool-use-failure":
-            failures.append(f"{row.get('tool', 'tool')} failed: {_short(command or output, 160)}")
-    endings = [_short(row.get("input_summary"), 120) for row in rows
+            failures.append(f"{row.get('tool', 'tool')} failed: {one_line(command or output, 160)}")
+    endings = [one_line(row.get("input_summary"), 120) for row in rows
                if row.get("event") in {"session-end", "stop-failure", "interrupt"}
-               and _short(row.get("input_summary"), 120)]
+               and one_line(row.get("input_summary"), 120)]
 
     def dedupe(items: list[str], limit: int) -> list[str]:
         seen: list[str] = []
@@ -162,7 +156,7 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
         # Legacy rows (pre-#82) only have tool echoes; keep the old behaviour of
         # surfacing a few outputs rather than an empty section.
         for row in rows:
-            text = _short(row.get("output_summary"), 300)
+            text = one_line(row.get("output_summary"), 300)
             if text and text not in learned:
                 learned.append(text)
             if len(learned) >= 6:
@@ -182,7 +176,7 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
         next_steps.append("Unresolved tool failures recorded above; re-check before continuing.")
     title = "Captured session"
     if prompts:
-        title = _short(prompts[0], 80)
+        title = one_line(prompts[0], 80)
     return _validate_payload({
         "title": title,
         "project": project,

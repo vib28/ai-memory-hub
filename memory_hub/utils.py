@@ -144,6 +144,35 @@ def parse_iso_datetime(value: Any, fallback: datetime | None = None) -> datetime
 _TRUTHY_STRINGS = frozenset({"1", "true", "yes", "on"})
 
 
+def truncated_text(value: Any, maximum: int = 500) -> str:
+    """Truncate ``value`` to ``maximum`` chars after stripping."""
+    return str(value).strip()[:maximum] if value is not None else ""
+
+
+def clean_list(value: Any, *, limit: int = 30, truncate: int = 1000,
+                transform: Any = None) -> list[str]:
+    """Coerce ``value`` to a cleaned, capped list of strings.
+
+    - Non-list inputs return ``[]``.
+    - Each item is transformed (via ``transform`` if given, else
+      ``str(item).strip()[:truncate]``); blank results are dropped.
+    - Result is capped at ``limit`` entries.
+    """
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value:
+        if transform is not None:
+            text = transform(item)
+        else:
+            text = str(item).strip()[:truncate]
+        if text:
+            result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def one_line(value: Any, limit: int = 1000) -> str:
     """Coerce any value to a single-line string, replacing null bytes,
     collapsing internal whitespace, and truncating to ``limit`` chars."""

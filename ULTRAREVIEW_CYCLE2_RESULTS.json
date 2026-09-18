@@ -1,0 +1,101 @@
+{
+  "findings": [
+    {
+      "file": "memory_hub/manager.py",
+      "line": "690-712",
+      "problem": "_covers_for_path calls parse_records (re-reads and re-parses the entire .md file from disk) on every propose/edit/forget to compute the MEMORY.md index covers text. propose() invokes this at line 637 for every new memory — O(file_size) per write, O(N*batch) for a vault with N existing entries. Hot-path bloat on the primary write path.",
+      "fix": "Cache the covers string per (path, kind) keyed on file mtime/size; invalidate on write. Alternatively, maintain a running summary column in the SQLite index updated incrementally, so the covers string is computed from already-indexed rows rather than re-reading the Markdown file.",
+      "confidence": "HIGH",
+      "risk": "Low — invalidation must fire on every write to path; a stale cache would leave the index summary slightly behind, which is cosmetic only."
+    },
+    {
+      "file": "memory_hub/context_packet.py",
+      "line": "267",
+      "problem": "build_packet (called on every hook invocation — a hot path) uses resolve_project (uncached, does I/O: reads projects.json, walks parents for .git, checks package markers). capture.py uses resolve_project_cached at line 277; context_packet should match. Every session-start and turn hook pays the uncached cost.",
+      "fix": "Replace resolve_project with resolve_project_cached at line 267, matching capture.py:277.",
+      "confidence": "HIGH",
+      "risk": "Low — resolve_project_cached is already used elsewhere; the LRU cache is keyed on (cwd, vault, explicit) and invalidated via clear_cache()."
+    },
+    {
+      "file": "memory_hub/dashboard.py",
+      "line": "93-98",
+      "problem": "memory_rows_for_dashboard calls manager.index.all_rows() three times in sequence (lines 93, 97, 98). Each call is a full SELECT * FROM memories ORDER BY path,date,memory_id — three full result sets for a single API response. Scales linearly with vault size for every dashboard refresh.",
+      "fix": "Fetch all_rows() once into a local variable and reuse: rows = list(manager.index.all_rows()). Compute newest dict, then reversed list, then org data from that single fetch.",
+      "confidence": "HIGH",
+      "risk": "None — pure deduplication."
+    },
+    {
+      "file": "memory_hub/manager.py",
+      "line": "379-384",
+      "problem": "_complete_checkpoint_links holds the manifest lock, then loops over entries calling update_session_metadata for each matching entry (line 383). Each update_session_metadata acquires the file lock, reads the file, rewrites it (atomic_write), and releases. For a group with E entries, one checkpoint append pays E+1 file writes. N+1 file-write pattern inside a checkpoint append.",
+      "fix": "Batch the metadata updates: collect the set of (path, memory_id, entry) tuples that need updating, then acquire each file's lock once per file and apply all pending updates to that file in a single read-modify-write cycle.",
+      "confidence": "HIGH",
+      "risk": "Low — same logical writes, just coalesced. Must preserve ordering so final state is identical."
+    },
+    {
+      "file": "memory_hub/capture.py",
+      "line": "534-561",
+      "problem": "mark_status loops over observation_ids issuing one UPDATE per ID (no executemany, no WHERE IN). Each iteration also does a SELECT to read current attempts/status. For a batch of N observations this is 2N SQL round-trips. N+1 pattern on the consolidation hot path.",
+      "fix": "Use executemany with a single UPDATE ... WHERE observation_id IN (...) and pre-fetch attempts/status in one SELECT observation_id, attempts, status FROM observations WHERE observation_id IN (...).",
+      "confidence": "HIGH",
+      "risk": "Low — semantics are identical; just fewer round-trips."
+    },
+    {
+      "file": "memory_hub/manager.py",
+      "line": "644-668",
+      "problem": "approve() for session proposals calls propose_session(payload['data'], write_mode='auto') at line 651, then calls set_pending_status at line 654. If propose_session succeeds (session written to vault + index) but set_pending_status raises (e.g. DB error), the proposal stays 'pending' in the queue. A subsequent approve() re-writes the same session — silent duplicate. No transaction wraps the two writes.",
+      "fix": "Wrap the propose_session + set_pending_status pair in a single try/except that, on failure after the session was written, calls set_pending_status(proposal_id, 'approved') in a fallback so the proposal is at least marked processed. Or record a compensating action. Acceptable because the session write is idempotent (exact-hash dedup in propose_session catches the retry).",
+      "confidence": "MEDIUM",
+      "risk": "Low — exact-hash dedup in propose_session already prevents duplicate session files; the worst case is a spurious 'pending' row in the review queue."
+    },
+    {
+      "file": "memory_hub/manager.py",
+      "line": "959-960",
+      "problem": "entity_registry() calls load_entity_aliases which reads and parses entity-aliases.md from disk on every call. conflicts() calls it twice (lines 963, 990), and memory_rows_for_dashboard calls it once per dashboard refresh. No caching despite the file being small and changing only on explicit user edit.",
+      "fix": "Cache the registry keyed on the file's (mtime, size); invalidate when entity_alias_link writes the file. Use functools.lru_cache or a module-level cache dict cleared by entity_alias_link.",
+      "confidence": "HIGH",
+      "risk": "Low — cache invalidation on write is straightforward; reads dominate heavily."
+    },
+    {
+      "file": "memory_hub/context_packet.py",
+      "line": "354-370",
+      "problem": "_read_index_rows opens a brand-new SQLite connection (file: URI with mode=ro) on every packet build. build_packet is called on every hook invocation (every session-start and every user-prompt-submit). Opening/closing a connection per hook adds latency and file-descriptor churn under load.",
+      "fix": "Accept an optional pre-existing connection or pass the MemoryIndex's existing connection (self.conn, which is already open with row_factory=sqlite3.Row). Add a read-only helper on MemoryIndex that reuses the existing connection: index_rows() that does SELECT ... FROM memories.",
+      "confidence": "MEDIUM",
+      "risk": "Low — the existing connection is already WAL-mode and thread-safe for reads; just avoid closing it in finally."
+    },
+    {
+      "file": "memory_hub/worker.py",
+      "line": "271-297",
+      "problem": "The transcript re-render loop in run_once calls self.manager.session_transcript_target(group_id) for every group on every poll. session_transcript_target calls _load_session_manifest which reads and parses session-manifest.json from disk each time. For a vault with G groups, that's G manifest reads per poll interval. Should cache and invalidate only when a new checkpoint is written.",
+      "fix": "Cache the parsed manifest in SessionWorker keyed on the manifest file's mtime; invalidate the cache after any checkpoint append in this run_once pass. Use the cached manifest for both the transcript_target lookups and the watermark check.",
+      "confidence": "HIGH",
+      "risk": "Low — manifest only changes during a checkpoint append, which is handled by invalidating the cache."
+    },
+    {
+      "file": "memory_hub/vault.py",
+      "line": "307",
+      "problem": "append_entry does `if line not in current` — a linear scan of the entire file content (split into lines) under the file lock. For files with thousands of lines, this is O(n) under lock, blocking other writers. The check guards against duplicates but pays the cost every time.",
+      "fix": "Index existing memory IDs in the file at read time (extract from <!-- mem:... --> comments) into a set for O(1) membership check. Build the set during the read, then check `memory_id not in existing_ids`.",
+      "confidence": "HIGH",
+      "risk": "Low — the same regex (ENTRY_RE) is already used to parse the file; just extract IDs into a set."
+    },
+    {
+      "file": "memory_hub/manager.py",
+      "line": "1010",
+      "problem": "audit() calls _all_records() which re-reads and re-parses every .md file in the vault from disk. For vaults with many files (projects + sessions + topics + people), this is O(total_files × entries_per_file) on every audit/dashboard refresh. _all_records is also called by reindex, project_audit, and subject_audit — so a single audit pass may re-parse the vault multiple times.",
+      "fix": "audit() should read from the SQLite index (already in sync with files) for the record set, and only fall back to file parsing for orphan/malformed detection. This avoids redundant disk I/O for the common healthy-vault case.",
+      "confidence": "MEDIUM",
+      "risk": "Medium — the orphan_session_blocks check still needs file reads, so the fast path must be carefully scoped to not miss genuine inconsistencies."
+    },
+    {
+      "file": "memory_hub/dashboard_data.py",
+      "line": "58",
+      "problem": "detail() calls metadata(manager) which reads dashboard-metadata.md, searches for a JSON fence, and parses it into a dict on every single memory detail request. For a dashboard showing N memories, that's N identical file reads. No caching.",
+      "fix": "Cache the parsed metadata keyed on file mtime; invalidate on save_metadata. The metadata file only changes via the dashboard UI, so a per-request cache with mtime-check is sufficient.",
+      "confidence": "HIGH",
+      "risk": "Low — mtime check is cheap; invalidation is straightforward on save."
+    }
+  ],
+  "summary": "Efficiency pass found 12 findings across the codebase. Top hot-path issues: (1) _covers_for_path re-parses entire .md files on every write (manager.py:690); (2) context_packet.py uses uncached resolve_project on every hook call (line 267); (3) dashboard fetches all_rows 3x per refresh; (4) _complete_checkpoint_links writes N files for N entries in a group; (5) capture.mark_status does 2N SQL round-trips per batch; (6) entity_registry re-reads disk on every call; (7) worker re-reads manifest per group per poll; (8) _all_records re-parses vault on every audit. All have straightforward fixes with low regression risk."
+}

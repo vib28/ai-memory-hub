@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify
+from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify, truncated_text
 
 
 DEFAULT_TRANSCRIPT_RETENTION_DAYS = 0
@@ -75,8 +75,7 @@ def transcript_path_for(session_group_id: str, project: str | None = None) -> st
     return f"/transcripts/{group}.md"
 
 
-def _text(value: Any, maximum: int = 500) -> str:
-    return str(value).strip()[:maximum] if value is not None else ""
+# --- deleted: _text(); use utils.truncated_text ---
 
 
 def _timestamp(value: Any, *, fallback: datetime | None = None) -> str:
@@ -88,7 +87,7 @@ def _timestamp(value: Any, *, fallback: datetime | None = None) -> str:
 
 
 def _normalize_author(value: Any, object_type: str) -> str:
-    raw = _text(value, 40).lower().replace("_", "-")
+    raw = truncated_text(value, 40).lower().replace("_"  , "-")
     if raw in {"assistant", "ai", "model", "agent", "codex", "claude"}:
         return "agent"
     if raw in {"human", "user", "operator", "person"}:
@@ -197,10 +196,10 @@ class TranscriptStore:
     def _normalize(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("transcript event must be a JSON object")
-        host_session_id = _text(payload.get("session_id") or payload.get("host_session_id"), 200)
+        host_session_id = truncated_text(payload.get("session_id") or payload.get("host_session_id"), 200)
         if not host_session_id:
             raise ValueError("missing session_id")
-        group = _text(payload.get("session_group_id"), 200) or transcript_group_id(host_session_id)
+        group = truncated_text(payload.get("session_group_id"), 200) or transcript_group_id(host_session_id)
         object_type = _normalize_object_type(payload)
         source_sequence = payload.get("sequence")
         try:
@@ -214,7 +213,7 @@ class TranscriptStore:
         generated_at_source = "provider" if generated_supplied else "capture"
         captured_at = _timestamp(payload.get("captured_at"))
         kind, raw = _raw_payload(payload)
-        explicit_id = _text(payload.get("event_id") or payload.get("id") or
+        explicit_id = truncated_text(payload.get("event_id") or payload.get("id") or
                              payload.get("observation_id") or payload.get("hook_event_id"), 200)
         author_value = payload.get("author") or payload.get("speaker") or payload.get("role")
         if not author_value and (payload.get("tool_name") or payload.get("tool_input")
@@ -226,10 +225,10 @@ class TranscriptStore:
             "source_sequence": source_sequence,
             "author": _normalize_author(author_value, object_type),
             "object_type": object_type,
-            "client": _text(payload.get("client") or payload.get("source"), 100) or None,
-            "model": _text(payload.get("model"), 200) or None,
-            "project": _text(payload.get("project"), 200) or None,
-            "topic": _text(payload.get("topic"), 200) or None,
+            "client": truncated_text(payload.get("client") or payload.get("source"), 100) or None,
+            "model": truncated_text(payload.get("model"), 200) or None,
+            "project": truncated_text(payload.get("project"), 200) or None,
+            "topic": truncated_text(payload.get("topic"), 200) or None,
             "payload_kind": kind,
             "payload_text": raw,
             # Do not include an auto-generated timestamp in the fallback seed.

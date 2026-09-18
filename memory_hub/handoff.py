@@ -19,7 +19,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .utils import one_line, parse_iso_datetime, slugify
+from .utils import clean_list, one_line, parse_iso_datetime, slugify
 
 
 DEFAULT_MAX_CHARS = 6000
@@ -30,10 +30,7 @@ _META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
 
 
 
-def _items(value: Any, *, limit: int = 30) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [one_line(item) for item in value if one_line(item)][:limit]
+# --- deleted: _items() helper moved to utils.clean_list with transform ---
 
 
 def _manifest(root: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -175,7 +172,8 @@ def _group_record(root: Path, group_id: str, group: dict[str, Any], entry: dict[
     age = max(0, int((now - parse_iso_datetime(stamp, now)).total_seconds()))
     entry_type = str(entry.get("entry_type") or metadata.get("entry_type") or "checkpoint")
     state = str(entry.get("state") or metadata.get("state") or "accepted")
-    changed_files = _items(entry.get("changed_files") or metadata.get("changed_files"), limit=100)
+    changed_files = clean_list(entry.get("changed_files") or metadata.get("changed_files"),
+                               limit=100, transform=one_line)
     pending = state != "accepted" or entry_type != "final" or not block
     return {
         "session_group_id": group_id,
@@ -193,11 +191,11 @@ def _group_record(root: Path, group_id: str, group: dict[str, Any], entry: dict[
             if pending else None
         ),
         "goal": one_line(block.get("title") or group.get("project") or entry.get("project") or "Unspecified task", 300),
-        "decisions": _items(block.get("learned"), limit=30),
+        "decisions": clean_list(block.get("learned"), limit=30, transform=one_line),
         "changed_files": changed_files,
-        "verified_results": _items(block.get("completed"), limit=30),
-        "next_action": _items(block.get("next_steps"), limit=30),
-        "evidence": _items(block.get("investigated"), limit=30),
+        "verified_results": clean_list(block.get("completed"), limit=30, transform=one_line),
+        "next_action": clean_list(block.get("next_steps"), limit=30, transform=one_line),
+        "evidence": clean_list(block.get("investigated"), limit=30, transform=one_line),
     }
 
 

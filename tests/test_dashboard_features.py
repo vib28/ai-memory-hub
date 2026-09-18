@@ -3,6 +3,7 @@ import json
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 from pathlib import Path
@@ -149,11 +150,16 @@ class DashboardFeatureTests(unittest.TestCase):
         self.assertIn('matchesDate(r,date)', HTML)
 
     def test_dashboard_recency_uses_the_full_canonical_project_group(self):
-        with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
+        with patch("memory_hub.manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 5, 14, 30, 0, tzinfo=timezone.utc)
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             older = self.manager.propose(MemoryCandidate(
                 text="Vintageonly project note.", kind="project", tag="stated",
                 subject="widget-app", writer="chatgpt", entity_id="widget-app",
             ))["memory"]
+        with patch("memory_hub.manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 5, 14, 30, 1, tzinfo=timezone.utc)
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             newer = self.manager.propose(MemoryCandidate(
                 text="Newer project note.", kind="project", tag="stated",
                 subject="widget-app-ui", writer="chatgpt", entity_id="widget-app",
@@ -171,11 +177,16 @@ class DashboardFeatureTests(unittest.TestCase):
         shares /preferences.md), so grouping must resolve through the
         entity-aliases.md registry -- proving the point the project test above
         makes, for the shared-file case entity_alias_link exists for."""
-        with patch("memory_hub.manager.now_stamp", side_effect=["2026-09-05T14:30:00", "2026-09-05T14:30:01"]):
+        with patch("memory_hub.manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 5, 14, 30, 0, tzinfo=timezone.utc)
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             older = self.manager.propose(MemoryCandidate(
                 text="Ask before making destructive changes.", kind="preference",
                 tag="preference", subject="git-safety", writer="claude",
             ))["memory"]
+        with patch("memory_hub.manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 5, 14, 30, 1, tzinfo=timezone.utc)
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             newer = self.manager.propose(MemoryCandidate(
                 text="Confirm before any destructive git operation.", kind="preference",
                 tag="preference", subject="git-safety-checks", writer="codex",

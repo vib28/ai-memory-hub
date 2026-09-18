@@ -61,8 +61,8 @@ def _noun_slug(span: str, fallback: str) -> str:
     return slugify("-".join(tokens[:6]) or fallback)
 
 
-def extract_candidates(observations: list[dict[str, Any]], *, project: str | None = None,
-                       writer: str = "other") -> list[MemoryCandidate]:
+def extract_memory_candidates(observations: list[dict[str, Any]], *, project: str | None = None,
+                              writer: str = "other") -> list[MemoryCandidate]:
     """Return typed candidates with ``evidence_ids`` on each (``provenance``)."""
     rows = [dict(row) for row in observations if isinstance(row, dict)]
     project = (project or "").strip() or None
@@ -170,6 +170,6 @@ def apply_from_observations(manager: Any, observations: list[dict[str, Any]], *,
     project = project or next((str(row.get("project") or "") for row in observations if row.get("project")), None)
     return apply_candidates(
         manager,
-        extract_candidates(observations, project=project, writer=writer),
+        extract_memory_candidates(observations, project=project, writer=writer),
         write_mode=write_mode,
     )

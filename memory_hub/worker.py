@@ -133,6 +133,7 @@ class SessionWorker:
         # Per-group content-hash watermarks so a routine poll skips re-rendering a
         # transcript whose events AND resolved target are both unchanged (#117).
         self._transcript_watermarks: dict[str, str] = {}
+        self._watermarks_lock = threading.Lock()
         # Manifest cache keyed on mtime (#126): the routine transcript re-render
         # loop calls session_transcript_target(group_id) for every group on every
         # poll; that method re-reads and re-parses session-manifest.json from disk
@@ -325,15 +326,17 @@ class SessionWorker:
                         {"event_ids": [e["event_id"] for e in events], "target": target},
                         ensure_ascii=False, sort_keys=True,
                     ).encode("utf-8")).hexdigest()
-                    if self._transcript_watermarks.get(group_id) == fingerprint:
-                        continue
+                    with self._watermarks_lock:
+                        if self._transcript_watermarks.get(group_id) == fingerprint:
+                            continue
                     self.transcript_store.render(
                         group_id, self.config.vault,
                         project=target.get("project") if target else None,
                         path=target.get("path") if target else None,
                         summary_links=target.get("summary_links") or [] if target else [],
                     )
-                    self._transcript_watermarks[group_id] = fingerprint
+                    with self._watermarks_lock:
+                        self._transcript_watermarks[group_id] = fingerprint
                     transcript_rendered += 1
                 except Exception as exc:
                     logger.exception("Transcript processing failed for group %s", group_id)

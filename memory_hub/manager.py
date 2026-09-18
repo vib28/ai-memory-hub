@@ -6,7 +6,7 @@ import uuid
 import json
 import shutil
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -20,7 +20,7 @@ from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
 from .utils import atomic_write, file_lock, is_truthy, normalize_text, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
-                    parse_records, dump_frontmatter, ensure_metadata, now_stamp, SESSION_RE,
+                    parse_records, dump_frontmatter, ensure_metadata, SESSION_RE,
                     SESSION_ID_RE, SESSION_META_RE)
 
 # Kinds that route every subject into one shared file, so there is no
@@ -182,7 +182,7 @@ class MemoryManager:
             raise ValueError("missing session fields: " + ", ".join(missing))
         clean = {key: data[key] for key in required}
         clean["project"] = data.get("project")
-        clean["date"] = data.get("date") or now_stamp()
+        clean["date"] = data.get("date") or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
         for key in required:
             if key in {"model", "title"}:
                 if not str(clean[key]).strip():
@@ -388,11 +388,21 @@ class MemoryManager:
             current["final_url"] = current_url
         group["revision"] = int(group.get("revision", 0)) + 1
         self._write_session_manifest(manifest)
-        for entry in entries:
+        # Batch: collect entries needing update, then write once per path
+        entries_to_update = [
+            entry for entry in entries
             if (entry.get("memory_id") == current.get("memory_id")
                     or entry.get("checkpoint_id") == current.get("previous_id")
-                    or entry.get("final_id") == current.get("checkpoint_id")):
-                self.vault.update_session_metadata(entry["path"], entry["memory_id"], entry)
+                    or entry.get("final_id") == current.get("checkpoint_id"))
+        ]
+        # Deduplicate by path to minimize file writes
+        seen_paths: set[str] = set()
+        for entry in entries_to_update:
+            path_key = (entry["path"], entry["memory_id"])
+            if path_key in seen_paths:
+                continue
+            seen_paths.add(path_key)
+            self.vault.update_session_metadata(entry["path"], entry["memory_id"], entry)
 
     def session_transcript_target(self, session_group_id: str, *, manifest: dict | None = None) -> dict[str, Any] | None:
         """Resolve a session group's transcript path, project, and summary back-links
@@ -641,7 +651,7 @@ class MemoryManager:
             self._mark_superseded(old)
 
         memory_id = uuid.uuid4().hex[:12]
-        stamp = now_stamp()
+        stamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
         line = (
             f"- [{candidate.tag}] {candidate.text} "
             f"<!-- mem:{memory_id} source:{candidate.writer} subject:{candidate.subject} date:{stamp} -->"
@@ -667,12 +677,12 @@ class MemoryManager:
                 result = self.propose_session(payload["data"], write_mode="auto")
                 # The session is written in both cases; only its cross-link differs (#22).
                 stored = result["status"] in {"stored", "stored_without_project_link"}
-                self.index.set_pending_status(proposal_id, "approved" if stored else result["status"])
+                self._safe_set_status(proposal_id, "approved" if stored else result["status"])
                 return result
             if payload.get("type") == "pattern":
                 result = self.propose_pattern_match(payload["pattern_id"], payload["project_fact_text"],
                     payload["preference_rule_text"], payload["subject"], write_mode="auto", writer=payload["writer"])
-                self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
+                self._safe_set_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
                 return result
         candidate = MemoryCandidate(
             text=row["text"], kind=row["kind"], tag=row["tag"], subject=row["subject"],
@@ -680,8 +690,16 @@ class MemoryManager:
             entity_id=row.get("entity_id"),
         )
         result = self.propose(candidate)
-        self.index.set_pending_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
+        self._safe_set_status(proposal_id, "approved" if result["status"] == "stored" else result["status"])
         return result
+
+    def _safe_set_status(self, proposal_id: str, status: str) -> None:
+        """Set pending status with compensating action on failure."""
+        try:
+            self.index.set_pending_status(proposal_id, status)
+        except Exception:
+            # Compensating action: mark as failed so it can be retried
+            self.index.set_pending_status(proposal_id, "failed")
 
     def reject(self, proposal_id: str, note: str = "") -> dict:
         row = self.index.pending_by_id(proposal_id)
@@ -773,7 +791,7 @@ class MemoryManager:
             content = p.read_text(encoding="utf-8")
             lines = content.splitlines()
             changed = False
-            stamp = now_stamp()
+            stamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
             subject = slugify(old["subject"])
             for i, line in enumerate(lines):
                 m = ENTRY_RE.match(line)
@@ -1186,28 +1204,15 @@ class MemoryManager:
             "similarity": round(dice, 4),
         }
 
-    def subject_audit(self, kinds: list[str] | None = None) -> dict:
-        """Read-only report of exact duplicates and subject-variant candidates across
-        memory kinds (#34).
-
-        Generalizes project_audit()'s exact-hash and possible-split detection to every
-        kind, reusing the same text_hash/normalize_text identity the write path already
-        uses (#3's TRUE_DUPLICATE_THRESHOLD path) so a finding here is exactly what
-        propose() would reject as a duplicate had it been offered as a fresh write.
-
-        This command only reads. It never edits Markdown, changes a tag, touches the
-        index, or writes to the review queue -- see project_link() for the reviewed,
-        reversible merge path once a finding here has been looked at.
-        """
-        target_kinds = sorted(set(kinds) & ALLOWED_KINDS) if kinds else sorted(ALLOWED_KINDS)
-        records = [r for r in self._all_records() if r.kind in target_kinds and r.tag != "superseded"]
-        registry = self.entity_registry()
-
+    def _subject_audit_exact_duplicates(self, records):
+        """Detect exact-hash duplicate groups from records."""
         by_kind_hash: dict[tuple[str, str], list[dict]] = {}
         for record in records:
             by_kind_hash.setdefault((record.kind, text_hash(record.text)), []).append(record.to_dict())
-        exact_duplicate_groups = [rows for rows in by_kind_hash.values() if len(rows) > 1]
+        return [rows for rows in by_kind_hash.values() if len(rows) > 1]
 
+    def _subject_audit_subject_variants(self, records, registry):
+        """Detect subject-variant candidates (prefix-split subjects)."""
         by_kind_subject: dict[str, set[str]] = {}
         for record in records:
             if record.kind == "session":
@@ -1223,20 +1228,19 @@ class MemoryManager:
                         continue
                     if kind in SHARED_FILE_KINDS and registry.get(kind, {}).get(left) is not None \
                             and resolve_subject(registry, kind, left) == resolve_subject(registry, kind, right):
-                        # A reviewer already confirmed this pair via entity_alias_link():
-                        # report it as resolved, not as an open candidate.
                         linked_entities.append({
                             "kind": kind, "subjects": [left, right],
                             "entity_id": resolve_subject(registry, kind, left),
                         })
                     else:
                         subject_variant_candidates.append({"kind": kind, "subjects": [left, right]})
+        return subject_variant_candidates, linked_entities
 
+    def _subject_audit_lexical(self, records):
+        """Detect lexical-overlap candidates among singleton-kind records."""
         lexical_candidates = []
         by_kind_records: dict[str, list[MemoryRecord]] = {}
         for record in records:
-            # Only singleton facts use this lexical tier. Cumulative logs have
-            # intentional historical overlap and keep their existing audit paths.
             if record.kind in SINGLETON_KINDS:
                 by_kind_records.setdefault(record.kind, []).append(record)
         for kind, kind_records in sorted(by_kind_records.items()):
@@ -1247,10 +1251,6 @@ class MemoryManager:
             document_frequency = Counter(
                 token for tokens in tokens_by_id.values() for token in tokens
             )
-            # A small corpus cannot reliably identify common vocabulary. Once
-            # there are four or more records, omit only tokens present in more
-            # than 75% of this kind's corpus; this adapts to the user's own
-            # terminology without maintaining a language-specific list.
             max_common_documents = (
                 max(1, int(len(kind_records) * 0.75)) if len(kind_records) >= 4 else len(kind_records)
             )
@@ -1270,9 +1270,11 @@ class MemoryManager:
             key=lambda item: (item["similarity"], item["token_overlap"], item["memory_ids"]),
             reverse=True,
         )
+        return lexical_candidates
 
+    def _subject_audit_file_splits(self, target_kinds):
+        """Detect possible file splits (prefix-overlapping stems) per kind."""
         possible_file_splits = []
-        alias_collisions = []
         for kind in target_kinds:
             directory = self._SUBJECT_SPRAWL_DIRS.get(kind)
             if not directory:
@@ -1288,10 +1290,18 @@ class MemoryManager:
                             "kind": kind,
                             "paths": [f"/{directory}/{left}.md", f"/{directory}/{right}.md"],
                         })
-            # Two files under the same kind whose id/aliases overlap is an
-            # inconsistency worth surfacing on its own (e.g. a hand edit that
-            # duplicated an id) -- generalizes project_audit()'s alias_collisions
-            # to every FILE_PER_ENTITY_KINDS kind, not just project (#35).
+        return possible_file_splits
+
+    def _subject_audit_alias_collisions(self, target_kinds):
+        """Detect alias collisions (overlapping identity/alias names) per kind."""
+        alias_collisions = []
+        for kind in target_kinds:
+            directory = self._SUBJECT_SPRAWL_DIRS.get(kind)
+            if not directory:
+                continue
+            base = self.vault.root / directory
+            if not base.exists():
+                continue
             identity_paths: dict[str, list[str]] = {}
             for path in base.glob("*.md"):
                 meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
@@ -1306,7 +1316,30 @@ class MemoryManager:
             for alias, paths in sorted(identity_paths.items()):
                 if len(set(paths)) > 1:
                     alias_collisions.append({"kind": kind, "alias": alias, "paths": sorted(set(paths))})
+        return alias_collisions
 
+    def subject_audit(self, kinds: list[str] | None = None) -> dict:
+        """Read-only report of exact duplicates and subject-variant candidates across
+        memory kinds (#34).
+
+        Generalizes project_audit()'s exact-hash and possible-split detection to every
+        kind, reusing the same text_hash/normalize_text identity the write path already
+        uses (#3's TRUE_DUPLICATE_THRESHOLD path) so a finding here is exactly what
+        propose() would reject as a duplicate had it been offered as a fresh write.
+
+        This command only reads. It never edits Markdown, changes a tag, touches the
+        index, or writes to the review queue -- see project_link() for the reviewed,
+        reversible merge path once a finding here has been looked at.
+        """
+        target_kinds = sorted(set(kinds) & ALLOWED_KINDS) if kinds else sorted(ALLOWED_KINDS)
+        records = [r for r in self._all_records() if r.kind in target_kinds and r.tag != "superseded"]
+        registry = self.entity_registry()
+
+        exact_duplicate_groups = self._subject_audit_exact_duplicates(records)
+        subject_variant_candidates, linked_entities = self._subject_audit_subject_variants(records, registry)
+        lexical_candidates = self._subject_audit_lexical(records)
+        possible_file_splits = self._subject_audit_file_splits(target_kinds)
+        alias_collisions = self._subject_audit_alias_collisions(target_kinds)
         semantic_candidates = []
         for kind in target_kinds:
             semantic_candidates.extend(self.index.semantic_candidates(kind))

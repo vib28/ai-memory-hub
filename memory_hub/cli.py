@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .extractor import extract_candidates
+from .extractor import extract_from_transcript
 from .github_export import configure, run_once
 from .history import commit_vault_change, history_status, initialize_history
 from .hooks import (

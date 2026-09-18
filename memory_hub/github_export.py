@@ -24,7 +24,7 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, one_line, slugify
+from .utils import atomic_write, clean_list, one_line, slugify
 
 
 VISIBILITIES = {"public", "private", "internal"}
@@ -38,12 +38,8 @@ class ExportError(RuntimeError):
     pass
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
-def _stamp(value: datetime | None = None) -> str:
-    return (value or _now()).isoformat()
 
 
 def _vault_key(vault: Path | str) -> str:
@@ -99,17 +95,14 @@ def configure(vault: Path | str, *, repo: str | None = None, visibility: str | N
         "approved": bool(enabled),
         "repo": repo,
         "visibility": visibility,
-        "approved_at": _stamp(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
     return {**value, "config_path": str(path)}
 
 
-def _items(value: Any, limit: int = 30) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [one_line(item) for item in value if one_line(item)][:limit]
+# --- deleted: _items() helper moved to utils.clean_list ---
 
 
 def _safe_text(value: Any, limit: int = 1000) -> str:
@@ -168,11 +161,11 @@ def build_export_payloads(vault: Path | str, group_id: str | None = None) -> lis
                 "source_client": _safe_text(raw_group.get("source_client") or entry.get("source_client") or "unknown", 100),
                 "title": _safe_text(block.get("title") or "Session checkpoint", 300),
                 "date": _safe_text(block.get("date"), 80),
-                "investigated": [_safe_text(item) for item in _items(block.get("investigated"))],
-                "learned": [_safe_text(item) for item in _items(block.get("learned"))],
-                "completed": [_safe_text(item) for item in _items(block.get("completed"))],
-                "next_steps": [_safe_text(item) for item in _items(block.get("next_steps"))],
-                "changed_files": [_safe_path(item) for item in _items(entry.get("changed_files") or metadata.get("changed_files"), 100)],
+                "investigated": [_safe_text(item) for item in clean_list(block.get("investigated"), limit=30, transform=one_line)],
+                "learned": [_safe_text(item) for item in clean_list(block.get("learned"), limit=30, transform=one_line)],
+                "completed": [_safe_text(item) for item in clean_list(block.get("completed"), limit=30, transform=one_line)],
+                "next_steps": [_safe_text(item) for item in clean_list(block.get("next_steps"), limit=30, transform=one_line)],
+                "changed_files": [_safe_path(item) for item in clean_list(entry.get("changed_files") or metadata.get("changed_files"), limit=100, transform=one_line)],
                 "previous_marker": _marker(current_group_id, entry["previous_id"]) if entry.get("previous_id") else None,
                 "next_marker": _marker(current_group_id, entry["next_id"]) if entry.get("next_id") else None,
                 "final_marker": _marker(current_group_id, entry["final_id"]) if entry.get("final_id") else None,
@@ -273,7 +266,7 @@ class ExportOutbox:
         self.conn.close()
 
     def enqueue(self, payload: dict[str, Any]) -> dict[str, Any]:
-        stamp = _stamp()
+        stamp = datetime.now(timezone.utc).isoformat()
         with self.conn:
             self.conn.execute(
                 """INSERT OR IGNORE INTO exports
@@ -285,7 +278,7 @@ class ExportOutbox:
         return dict(row)
 
     def due_groups(self, now: datetime | None = None) -> list[str]:
-        stamp = _stamp(now)
+        stamp = now.isoformat() if now else datetime.now(timezone.utc).isoformat()
         rows = self.conn.execute(
             """SELECT DISTINCT session_group_id FROM exports
                WHERE status IN ('pending','failed') AND (next_attempt_at IS NULL OR next_attempt_at<=?)
@@ -294,9 +287,9 @@ class ExportOutbox:
         return [str(row[0]) for row in rows]
 
     def claim_group(self, group_id: str, *, owner: str, now: datetime | None = None) -> list[dict[str, Any]]:
-        clock = now or _now()
-        stamp = _stamp(clock)
-        lease = _stamp(clock + timedelta(minutes=5))
+        clock = now or datetime.now(timezone.utc)
+        stamp = clock.isoformat()
+        lease = (clock + timedelta(minutes=5)).isoformat()
         with self.conn:
             self.conn.execute(
                 "UPDATE exports SET status='pending', lease_owner=NULL, lease_expires_at=NULL "
@@ -336,25 +329,26 @@ class ExportOutbox:
         with self.conn:
             self.conn.execute(
                 "UPDATE exports SET remote_issue_number=?,remote_comment_id=?,remote_comment_url=?,updated_at=? WHERE marker=?",
-                (issue_number, comment_id, comment_url, _stamp(), marker),
+                (issue_number, comment_id, comment_url, datetime.now(timezone.utc).isoformat(), marker),
             )
 
     def mark_sent(self, markers: list[str]) -> None:
         with self.conn:
             self.conn.executemany(
                 "UPDATE exports SET status='sent',lease_owner=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=? WHERE marker=?",
-                [(_stamp(), marker) for marker in markers],
+                [(datetime.now(timezone.utc).isoformat(), marker) for marker in markers],
             )
 
     def mark_failed(self, markers: list[str], error: str) -> None:
         rows = self.conn.execute("SELECT marker,attempts FROM exports WHERE marker IN (%s)" % ",".join("?" for _ in markers), markers).fetchall() if markers else []
-        stamp = _now()
+        stamp_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        stamp = stamp_dt.isoformat(timespec="seconds")
         with self.conn:
             for row in rows:
                 delay = min(MAX_RETRY_SECONDS, 2 ** min(int(row["attempts"]), 8))
                 self.conn.execute(
                     "UPDATE exports SET status='failed',lease_owner=NULL,lease_expires_at=NULL,last_error=?,next_attempt_at=?,updated_at=? WHERE marker=?",
-                    (one_line(error, 1000), _stamp(stamp + timedelta(seconds=delay)), _stamp(stamp), row["marker"]),
+                    (one_line(error, 1000), (stamp_dt + timedelta(seconds=delay)).isoformat(), stamp, row["marker"]),
                 )
 
     def health(self) -> dict[str, Any]:
@@ -538,7 +532,7 @@ class GitHubPublisher:
 def write_health(vault: Path | str, value: dict[str, Any]) -> None:
     path = health_path(vault)
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(path, json.dumps({**value, "updated_at": _stamp(), "health_path": str(path)}, indent=2) + "\n")
+    atomic_write(path, json.dumps({**value, "updated_at": datetime.now(timezone.utc).isoformat(), "health_path": str(path)}, indent=2) + "\n")
 
 
 def run_once(vault: Path | str, group_id: str | None = None) -> dict[str, Any]:

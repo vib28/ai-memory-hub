@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Optional
 
 ALLOWED_KINDS = {"profile", "preference", "person", "project", "topic", "decision", "session"}
@@ -23,6 +23,7 @@ class MemoryCandidate:
     target_path: Optional[str] = None
     supersedes_id: Optional[str] = None
     entity_id: Optional[str] = None
+    evidence_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

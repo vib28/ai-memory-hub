@@ -301,14 +301,15 @@ def build_packet(vault: Path | str, *, mode: str, host: str, payload: dict[str, 
         ledger["start_sent"] = True
     else:
         # Turn mode: only what is new for this session, or related to this prompt.
+        if not ledger.get("start_sent"):
+            # No start packet was delivered (host without SessionStart, e.g. Kimi
+            # resume) -- treat the first turn as start. Compute turn-mode rows
+            # only after this check so _project_rows is not called twice.
+            return build_packet(root, mode="start", host=host, payload=request,
+                                max_chars=max_chars or DEFAULT_START_CHARS, now=now, record=record)
         new_project = [row for row in _project_rows(index_rows, project) if row["memory_id"] not in already]
         related = [row for row in _related_rows(index_rows, prompt, project=project)
                    if row["memory_id"] not in already]
-        if not ledger.get("start_sent"):
-            # No start packet was delivered (host without SessionStart, e.g. Kimi
-            # resume) -- treat the first turn as start.
-            return build_packet(root, mode="start", host=host, payload=request,
-                                max_chars=max_chars or DEFAULT_START_CHARS, now=now, record=record)
         if new_project:
             body.append(f"## New in project {project}")
             body.extend(_fact_line(row) for row in new_project[:8])

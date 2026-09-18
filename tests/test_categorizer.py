@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memory_hub.categorizer import apply_from_observations, extract_candidates
+from memory_hub.categorizer import apply_from_observations, extract_memory_candidates
 from memory_hub.manager import MemoryManager
 from memory_hub.project_resolver import clear_cache
 
@@ -91,14 +91,14 @@ class CategorizerTests(unittest.TestCase):
         for key in list(os.environ):
             if key.startswith("MEMORY_LLM"):
                 os.environ.pop(key)
-        candidates = extract_candidates(LABELED[0]["rows"], project="widget-app", writer="claude")
+        candidates = extract_memory_candidates(LABELED[0]["rows"], project="widget-app", writer="claude")
         self.assertTrue(candidates)
         self.assertEqual(candidates[0].kind, "preference")
 
     def test_precision_on_labeled_fixture_set(self):
         true_pos = false_pos = false_neg = 0
         for session in LABELED:
-            kinds = {(c.kind, c.tag) for c in extract_candidates(
+            kinds = {(c.kind, c.tag) for c in extract_memory_candidates(
                 session["rows"], project="widget-app", writer="claude")}
             gold = session["gold"]
             true_pos += len(kinds & gold)
@@ -114,7 +114,7 @@ class CategorizerTests(unittest.TestCase):
     def test_secrets_never_pass(self):
         rows = [_row(observation_id="sec", event="user-prompt-submit", tool="prompt",
                      prompt="always store the api_key=sk-abcdefghijklmnopqrstuvwxyz123456")]
-        candidates = extract_candidates(rows, project="widget-app", writer="claude")
+        candidates = extract_memory_candidates(rows, project="widget-app", writer="claude")
         self.assertEqual(candidates, [])
 
     def test_evidence_ids_and_idempotent_queue(self):

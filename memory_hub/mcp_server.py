@@ -14,6 +14,46 @@ from .capture import ObservationBuffer, default_buffer_path
 from .session_capture import consolidate_buffered_session
 from .history import commit_vault_change
 from .utils import is_truthy
+from dataclasses import dataclass, field, asdict
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SessionCheckpoint:
+    """Canonical session write payload for MCP tool callers.
+
+    Bundles every field that session_write accepts into one typed object,
+    making it easy to construct, validate, and serialize without passing
+    twenty kwargs around.
+    """
+    title: str = ""
+    investigated: list[str] = field(default_factory=list)
+    learned: list[str] = field(default_factory=list)
+    completed: list[str] = field(default_factory=list)
+    next_steps: list[str] = field(default_factory=list)
+    project: str | None = None
+    date: str | None = None
+    session_group_id: str | None = None
+    host_session_id: str | None = None
+    host_session_finalized: bool = False
+    checkpoint_id: str | None = None
+    sequence: int | None = None
+    entry_type: str | None = None
+    previous_id: str | None = None
+    final_id: str | None = None
+    source_client: str | None = None
+    worktree: str | None = None
+    evidence_start: str | None = None
+    evidence_end: str | None = None
+    token_count: int | None = None
+    token_basis: str | None = None
+    session_tags: list[str] | None = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
 
 # ---------------------------------------------------------------------------
 # Module-level constants (no side effects to compute).

@@ -109,7 +109,8 @@ def test_shared_server_security_metadata_and_reopen(manager):
         assert request("GET", "/", headers={"Host": "attacker.invalid"})[0] == 403
         assert running_instance(manager.vault.root, port)
         assert not running_instance(manager.vault.root / "different", port)
-        health_status, health_body = request("GET", "/api/worker-health")
+        health_status, health_body = request("GET", "/api/worker-health",
+                                              headers={"X-Launch-Token": server.RequestHandlerClass.launch_token})
         assert health_status == 200
         assert json.loads(health_body)["status"] in {"not_configured", "ok", "stopped", "degraded"}
         with patch("memory_hub.app.MemoryManager") as constructor, patch("memory_hub.app.webbrowser.open") as opened:
@@ -124,7 +125,7 @@ def test_shared_server_security_metadata_and_reopen(manager):
         assert request("POST", path, body, headers)[0] == 200
         assert request("POST", path, body, headers)[0] == 409
         assert request("POST", path, "[]", headers)[0] == 400
-        assert request("GET", "/api/memory/missing")[0] == 404
+        assert request("GET", "/api/memory/missing", headers=headers)[0] == 404
         assert request("POST", path, "", headers | {"Content-Length": "70000"})[0] == 400
     finally:
         server.shutdown()
@@ -147,7 +148,7 @@ def test_config_api_reads_writes_and_validates(manager):
         connection.close()
         return response.status, value
     try:
-        status, body = request("GET", "/api/config")
+        status, body = request("GET", "/api/config", headers={"X-Launch-Token": token})
         assert status == 200
         payload = json.loads(body)
         settings = {row["key"]: row for row in payload["settings"]}

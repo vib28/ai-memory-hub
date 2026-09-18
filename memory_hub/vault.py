@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -76,10 +76,6 @@ def session_embedding_chunks(path: Path, memory_id: str) -> list[tuple[str, str]
 def today() -> str:
     return date.today().isoformat()
 
-def now_stamp() -> str:
-    """Full local timestamp for new/edited entries. Older entries on disk keep their
-    date-only stamp untouched — ENTRY_RE accepts both, so nothing needs migrating."""
-    return datetime.now().isoformat(timespec="seconds")
 
 def parse_frontmatter(content: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(content)
@@ -304,7 +300,8 @@ class Vault:
                 current, kind=kind, writer=writer,
                 entity_id=entity_id or (p.stem if kind in FILE_PER_ENTITY_KINDS else None), alias=alias
             ).rstrip() + "\n"
-            if line not in current:
+            existing_lines = set(current.splitlines())
+            if line not in existing_lines:
                 if not current.endswith("\n\n"):
                     current += "\n"
                 current += line.rstrip() + "\n"
