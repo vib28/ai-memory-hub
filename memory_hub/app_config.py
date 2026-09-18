@@ -22,11 +22,14 @@ frontend form pick it up.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from .utils import atomic_write, is_truthy
+
+logger = logging.getLogger(__name__)
 
 CONFIG_FILENAME = "config.json"
 
@@ -139,9 +142,17 @@ def bootstrap_environment(vault: Path | str | None) -> None:
     """
     if not vault:
         return
+    path = config_path(vault)
+    if not path.exists():
+        logger.warning("vault config file not found at %s", path)
+        return
     try:
         stored = load_config_file(vault)
-    except Exception:
+    except OSError as exc:
+        logger.warning("vault config file unreadable at %s: %s", path, exc)
+        return
+    except Exception as exc:
+        logger.warning("vault config load failed at %s: %s", path, exc)
         return
     for key, value in stored.items():
         if key in os.environ:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import signal
 import threading
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from ._env import int_env as _int_env
 from .app_config import bootstrap_environment
@@ -306,32 +309,17 @@ class SessionWorker:
         if self.transcript_store is not None and not session_ids:
             try:
                 transcript_deleted = self.transcript_store.prune(now=now)
-                # Cache the parsed manifest for this pass (#126): the routine
-                # poll calls session_transcript_target for every group, which
-                # reads/parses session-manifest.json each time. Loading once and
-                # passing the cached dict to each call avoids G manifest reads
-                # per poll. The cache is invalidated after any checkpoint append
-                # so a subsequent poll picks up the fresh manifest. When the
-                # manager does not support manifest operations (e.g. a test stub
-                # that only provides session_transcript_target), fall back to
-                # the old behavior of calling without a manifest argument.
-                cached_manifest = self._cached_manifest()
-                for group_id in self.transcript_store.groups():
+            except Exception as exc:
+                logger.exception("Transcript prune failed")
+                errors.append({"session_id": "transcript", "reason": f"prune: {exc}"})
+            cached_manifest = self._cached_manifest()
+            for group_id in self.transcript_store.groups():
+                try:
                     if cached_manifest is not None:
                         target = self.manager.session_transcript_target(
                             group_id, manifest=cached_manifest)
                     else:
                         target = self.manager.session_transcript_target(group_id)
-                    # Content-hash watermark (#117): the routine poll renders
-                    # deterministically from (events × target). Hash those inputs; if the
-                    # fingerprint equals the last poll's, the file was already rendered
-                    # identically — skip the write so an idle worker stops churning the
-                    # Markdown on every tick. The fingerprint covers both the resolved
-                    # target (path/project/summary_links) and the event set — event_id is
-                    # a SHA-256 of the normalized event content, so a stable event_id set
-                    # means stable rendered content. We re-hash on every poll (cheap), not
-                    # on every append, which keeps the check O(events) without per-append
-                    # bookkeeping.
                     events = self.transcript_store.events(group_id)
                     fingerprint = hashlib.sha256(json.dumps(
                         {"event_ids": [e["event_id"] for e in events], "target": target},
@@ -339,7 +327,6 @@ class SessionWorker:
                     ).encode("utf-8")).hexdigest()
                     if self._transcript_watermarks.get(group_id) == fingerprint:
                         continue
-                    # Fingerprint changed since the last poll — render and record it.
                     self.transcript_store.render(
                         group_id, self.config.vault,
                         project=target.get("project") if target else None,
@@ -348,8 +335,9 @@ class SessionWorker:
                     )
                     self._transcript_watermarks[group_id] = fingerprint
                     transcript_rendered += 1
-            except Exception as exc:
-                errors.append({"session_id": "transcript", "reason": str(exc)})
+                except Exception as exc:
+                    logger.exception("Transcript processing failed for group %s", group_id)
+                    errors.append({"session_id": f"transcript:{group_id}", "reason": str(exc)})
         candidates = list(session_ids) if session_ids else self.buffer.pending_sessions()
         if project is not None:
             scoped = set(self.buffer.sessions_for_project(

@@ -42,7 +42,7 @@ class KimiNoisyPromptTests(unittest.TestCase):
             self._memory("m2", "Finding: git-bash mangles backslashes in PowerShell args. Fix: use forward slashes.", path="/projects/widget-app.md"),
         ]
         # A genuinely relevant prompt should still match
-        prompt = "why does git-bash break my PowerShell backslashes and how do I fix the filter?"
+        prompt = "why does git-bash break my PowerShell backslashes and how do I fix the filter decision?"
         related = _related_rows(memories, prompt, project="widget-app")
         ids = {row["memory_id"] for row in related}
         self.assertIn("m2", ids, "legitimate bash-backslash memory should match")

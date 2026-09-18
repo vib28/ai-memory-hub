@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -44,6 +45,8 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
 from .utils import atomic_write, file_lock, one_line, slugify
+
+log = logging.getLogger("ai_memory_hub.context_packet")
 
 DEFAULT_START_CHARS = 6000
 DEFAULT_TURN_CHARS = 1500
@@ -153,7 +156,7 @@ def _tokens(text: str) -> set[str]:
     # Drop short generic tokens (3-5 chars) that aren't domain-specific.
     # "run", "server", "install", "check" etc. are already in _STOPWORDS;
     # this catches variants and short verbs that slip through.
-    return {token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN or token not in _STOPWORDS}
+    return {token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN}
 
 
 def _project_rows(index_rows: list[dict[str, Any]], project: str | None) -> list[dict[str, Any]]:
@@ -431,8 +434,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(render(packet, host=args.host, event=args.event))
         if packet.get("text") and args.host != "kimi":
             sys.stdout.write("\n")
-    except Exception as exc:  # a context hook must never break the host
-        sys.stderr.write(f"ai-memory-context: {exc}\n")
+    except Exception:  # a context hook must never break the host
+        log.exception("ai-memory-context: error building packet")
         sys.stdout.write("" if args.host == "kimi" else "{}")
     return 0
 
