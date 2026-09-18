@@ -65,6 +65,12 @@ class MemoryManager:
         # and automatically invalidate the cached parse.
         self._covers_cache: dict[str, tuple[tuple[int, float], list]] = {}
 
+        # Cache for entity_registry, keyed by (st_size, st_mtime) of the
+        # entity-aliases.md file so that repeated calls (conflicts(),
+        # subject_audit(), dashboard, etc.) don't re-parse the file each time.
+        # Writes through entity_alias_link() invalidate the cache (#124).
+        self._entity_registry_cache: tuple[tuple[int, float] | None, dict[str, dict[str, str]]] = (None, {})
+
     def close(self):
         self.index.close()
 
@@ -388,7 +394,7 @@ class MemoryManager:
                     or entry.get("final_id") == current.get("checkpoint_id")):
                 self.vault.update_session_metadata(entry["path"], entry["memory_id"], entry)
 
-    def session_transcript_target(self, session_group_id: str) -> dict[str, Any] | None:
+    def session_transcript_target(self, session_group_id: str, *, manifest: dict | None = None) -> dict[str, Any] | None:
         """Resolve a session group's transcript path, project, and summary back-links
         from the session manifest — the single source of truth for what a transcript
         re-render should reproduce.
@@ -398,8 +404,12 @@ class MemoryManager:
         overwrites the authoritative one with a degraded copy that has lost its links
         or landed at a different path (#68, #70). Returns `None` when the group has no
         manifest entry yet.
+
+        If ``manifest`` is provided (e.g. a cached copy from the worker's manifest
+        cache, #126), it is used instead of re-reading the file from disk.
         """
-        manifest = self._load_session_manifest()
+        if manifest is None:
+            manifest = self._load_session_manifest()
         group = manifest.get("groups", {}).get(session_group_id)
         if not group:
             return None
@@ -982,7 +992,18 @@ class MemoryManager:
         return self.vault.read(path)
 
     def entity_registry(self) -> dict[str, dict[str, str]]:
-        return load_entity_aliases(self.vault.root / "entity-aliases.md")
+        registry_path = self.vault.root / "entity-aliases.md"
+        try:
+            st = registry_path.stat()
+            identity = (st.st_size, st.st_mtime)
+        except FileNotFoundError:
+            identity = None
+        cached_identity, cached_value = self._entity_registry_cache
+        if identity is not None and identity == cached_identity:
+            return cached_value
+        value = load_entity_aliases(registry_path)
+        self._entity_registry_cache = (identity, value)
+        return value
 
     def conflicts(self) -> list[dict]:
         registry = self.entity_registry()
@@ -1434,4 +1455,7 @@ class MemoryManager:
                 content += section
             registry_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write(registry_path, content)
+            # Invalidate the cached registry so the next entity_registry()
+            # call re-reads the updated file (#124).
+            self._entity_registry_cache = (None, {})
         return result

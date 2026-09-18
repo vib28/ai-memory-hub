@@ -93,12 +93,13 @@ def _pending_rows_for_dashboard(rows: list[dict]) -> list[dict]:
 def memory_rows_for_dashboard(manager: MemoryManager, query: str = "") -> list[dict]:
     """Return visible dashboard rows with recency calculated from the full index."""
     registry = manager.entity_registry()
+    all_rows = manager.index.all_rows()
     newest = {}
-    for row in manager.index.all_rows():
+    for row in all_rows:
         key, _ = _dashboard_group(row, registry)
         if key not in newest or (row["date"], row["memory_id"]) > (newest[key]["date"], newest[key]["memory_id"]):
             newest[key] = row
-    rows = manager.index.all_rows()[::-1]
+    rows = all_rows[::-1]
     organization = metadata(manager)
     if query:
         rows = [row for row in rows if query.casefold() in

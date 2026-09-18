@@ -130,6 +130,13 @@ class SessionWorker:
         # Per-group content-hash watermarks so a routine poll skips re-rendering a
         # transcript whose events AND resolved target are both unchanged (#117).
         self._transcript_watermarks: dict[str, str] = {}
+        # Manifest cache keyed on mtime (#126): the routine transcript re-render
+        # loop calls session_transcript_target(group_id) for every group on every
+        # poll; that method re-reads and re-parses session-manifest.json from disk
+        # each time. For a vault with G groups, that's G manifest reads per poll
+        # interval. Cache the parsed manifest and its mtime; invalidate whenever a
+        # checkpoint is appended so the next poll picks up the fresh manifest.
+        self._manifest_cache: tuple[float, dict[str, Any]] | None = None
         self._stop = threading.Event()
 
     def close(self) -> None:
@@ -139,6 +146,37 @@ class SessionWorker:
             self.manager.close()
         if self.transcript_store is not None:
             self.transcript_store.close()
+
+    def _cached_manifest(self) -> dict | None:
+        """Return the parsed session manifest, caching keyed on mtime (#126).
+
+        The routine transcript re-render loop calls
+        ``session_transcript_target(group_id)`` for every group on every poll;
+        that method reads and parses ``session-manifest.json`` from disk each
+        time. For a vault with G groups, that's G manifest reads per poll
+        interval. Cache the parsed manifest and its mtime; invalidate whenever
+        a checkpoint is appended so the next poll picks up the fresh manifest.
+
+        Returns ``None`` if the manager does not support manifest operations
+        (e.g. a test stub that only provides ``session_transcript_target``),
+        in which case the caller must not pass a manifest to
+        ``session_transcript_target`` (preserving the old behavior).
+        """
+        if not hasattr(self.manager, "_session_manifest_path"):
+            return None
+        path = self.manager._session_manifest_path()
+        if not path.exists():
+            return {"version": 1, "groups": {}}
+        mtime = path.stat().st_mtime
+        if self._manifest_cache is not None and self._manifest_cache[0] == mtime:
+            return self._manifest_cache[1]
+        manifest = self.manager._load_session_manifest()
+        self._manifest_cache = (mtime, manifest)
+        return manifest
+
+    def _invalidate_manifest_cache(self) -> None:
+        """Invalidate the manifest cache after a checkpoint append (#126)."""
+        self._manifest_cache = None
 
     def stop(self) -> None:
         self._stop.set()
@@ -268,8 +306,22 @@ class SessionWorker:
         if self.transcript_store is not None and not session_ids:
             try:
                 transcript_deleted = self.transcript_store.prune(now=now)
+                # Cache the parsed manifest for this pass (#126): the routine
+                # poll calls session_transcript_target for every group, which
+                # reads/parses session-manifest.json each time. Loading once and
+                # passing the cached dict to each call avoids G manifest reads
+                # per poll. The cache is invalidated after any checkpoint append
+                # so a subsequent poll picks up the fresh manifest. When the
+                # manager does not support manifest operations (e.g. a test stub
+                # that only provides session_transcript_target), fall back to
+                # the old behavior of calling without a manifest argument.
+                cached_manifest = self._cached_manifest()
                 for group_id in self.transcript_store.groups():
-                    target = self.manager.session_transcript_target(group_id)
+                    if cached_manifest is not None:
+                        target = self.manager.session_transcript_target(
+                            group_id, manifest=cached_manifest)
+                    else:
+                        target = self.manager.session_transcript_target(group_id)
                     # Content-hash watermark (#117): the routine poll renders
                     # deterministically from (events × target). Hash those inputs; if the
                     # fingerprint equals the last poll's, the file was already rendered
@@ -321,6 +373,11 @@ class SessionWorker:
                     batch_limit=self._batch_size(rows, reason), entry_type=entry_type,
                     state=state, host_session_finalized=host_finalized,
                 )
+                # A checkpoint append writes session-manifest.json, so the cached
+                # manifest is now stale — invalidate it (#126) so the next poll
+                # re-reads the fresh manifest for transcript_target resolution.
+                if result.get("status") in {"stored", "stored_without_project_link"}:
+                    self._invalidate_manifest_cache()
                 result["trigger"] = reason
                 try:
                     from .categorizer import apply_from_observations

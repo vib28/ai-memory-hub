@@ -529,36 +529,44 @@ class ObservationBuffer:
         ids = list(observation_ids)
         if not ids:
             return 0
+        owner_clause = " AND claim_token=?" if owner else ""
+        select_params: list[Any] = list(ids)
+        if owner:
+            select_params.append(owner)
+        bounded_error = _bounded_text(error, 1000) if error else None
         with self.conn:
-            updated = 0
-            for observation_id in ids:
-                row = self.conn.execute(
-                    f"SELECT attempts, status FROM observations WHERE observation_id=?"
-                    f"{(' AND claim_token=?' if owner else '')}",
-                    (observation_id, owner) if owner else (observation_id,),
-                ).fetchone()
-                if row is None:
-                    continue
-                attempts = int(row[0]) + 1
+            # Pre-fetch attempts/status in a single SELECT; batch UPDATE via executemany.
+            rows = self.conn.execute(
+                f"""SELECT observation_id, attempts, status FROM observations
+                    WHERE observation_id IN ({",".join("?" for _ in ids)}){owner_clause}""",
+                select_params,
+            ).fetchall()
+            if not rows:
+                return 0
+            now = datetime.now(timezone.utc)
+            update_params: list[tuple] = []
+            for row in rows:
+                attempts = int(row[1]) + 1
                 retry_at = None
                 if status == "failed":
                     # The first retry is immediate; later failures back off up to
                     # five minutes without hiding the row from inspection.
-                    delay = 0 if row[1] != "failed" else min(
+                    delay = 0 if row[2] != "failed" else min(
                         MAX_RETRY_DELAY_SECONDS, 2 ** min(attempts, 8)
                     )
-                    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
-                cursor = self.conn.execute(
-                    f"""UPDATE observations SET status=?, attempts=attempts+1,
-                       last_error=?, claim_token=NULL, lease_expires_at=?, next_attempt_at=?
-                       WHERE observation_id=?{(' AND claim_token=?' if owner else '')}""",
-                    ((status, _bounded_text(error, 1000) if error else None, None, retry_at,
-                      observation_id, owner)
-                     if owner else (status, _bounded_text(error, 1000) if error else None, None,
-                                    retry_at, observation_id)),
-                )
-                updated += cursor.rowcount
-        return updated
+                    retry_at = (now + timedelta(seconds=delay)).isoformat()
+                if owner:
+                    update_params.append((status, attempts, bounded_error, None, retry_at,
+                                          row[0], owner))
+                else:
+                    update_params.append((status, attempts, bounded_error, None, retry_at, row[0]))
+            cursor = self.conn.executemany(
+                f"""UPDATE observations SET status=?, attempts=?,
+                    last_error=?, claim_token=NULL, lease_expires_at=?, next_attempt_at=?
+                    WHERE observation_id=?{owner_clause}""",
+                update_params,
+            )
+            return cursor.rowcount
 
     def _row(self, row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
