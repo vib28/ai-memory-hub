@@ -54,8 +54,44 @@ _STOPWORDS = {
     "please", "make", "just", "like", "about", "then", "them", "they", "will", "should", "could",
     "would", "there", "their", "here", "also", "some", "more", "than", "very", "does", "done",
     "need", "want", "using", "use", "add", "fix", "can", "you", "are", "not", "but", "all", "any",
+    "run", "running", "runs", "ran", "install", "installing", "installed", "installation",
+    "check", "checking", "checked", "checks", "start", "started", "starting", "starts",
+    "server", "servers", "client", "clients", "system", "systems", "setup", "setups",
+    "configure", "configuring", "configured", "configuration",
+    "get", "getting", "got", "gets", "got",
+    "let", "lets", "letting", "lets",
+    "know", "knowing", "known", "knows",
+    "like", "likely", "unlike", "likes",
+    "look", "looking", "looked", "looks",
+    "find", "finding", "found", "finds",
+    "tell", "telling", "told", "tells",
+    "give", "giving", "given", "gives", "gave",
+    "help", "helping", "helped", "helps",
+    "show", "showing", "shown", "shows", "showed",
+    "work", "working", "worked", "works",
+    "call", "calling", "called", "calls",
+    "try", "trying", "tried", "tries",
+    "keep", "keeping", "kept", "keeps",
+    "let", "want", "wanting", "wanted", "wants",
+    "thing", "things", "something", "anything", "nothing",
+    "way", "ways", "part", "parts",
+    "good", "great", "well", "better", "best",
+    "new", "old", "first", "last", "next",
+    "one", "two", "three", "four", "five",
+    "much", "many", "several", "few",
+    "may", "might", "must",
+    "still", "already", "even", "ever", "never",
+    "back", "now", "today", "always",
+    "really", "actually", "probably", "certainly",
+    "quite", "rather", "enough", "almost",
 }
+
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9_\-\.]{2,}")
+
+# A token shorter than this is treated as a stopword-lite: it counts toward overlap
+# only when paired with a longer content token. This prevents generic 3-4 char
+# verbs from matching unrelated memories.
+_MIN_CONTENT_TOKEN_LEN = 6
 
 
 # --------------------------------------------------------------------------- ledger
@@ -113,7 +149,11 @@ def prune_ledgers(vault: Path, *, max_age_days: int = 14) -> int:
 # ------------------------------------------------------------------- selection
 
 def _tokens(text: str) -> set[str]:
-    return {token for token in _WORD_RE.findall(text.lower()) if token not in _STOPWORDS}
+    raw = {token for token in _WORD_RE.findall(text.lower()) if token not in _STOPWORDS}
+    # Drop short generic tokens (3-5 chars) that aren't domain-specific.
+    # "run", "server", "install", "check" etc. are already in _STOPWORDS;
+    # this catches variants and short verbs that slip through.
+    return {token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN or token not in _STOPWORDS}
 
 
 def _one_line(value: Any, limit: int) -> str:
@@ -141,9 +181,15 @@ def _global_rows(index_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _related_rows(index_rows: list[dict[str, Any]], prompt: str, *, project: str | None,
                   limit: int = 6) -> list[dict[str, Any]]:
-    """Lexical overlap between the prompt and non-session memories (no model needed)."""
+    """Lexical overlap between the prompt and non-session memories (no model needed).
+
+    Only matches on content tokens (>= _MIN_CONTENT_TOKEN_LEN) — short generic
+    verbs are filtered out to prevent unrelated memories from being injected
+    when the prompt is noisy (e.g. Kimi's full reasoning trace contains
+    "run", "install", "check", "start" etc. which match every memory).
+    """
     query = _tokens(prompt)
-    if len(query) < 2:
+    if len(query) < 1:
         return []
     project_slug = slugify(project) if project else None
     scored: list[tuple[float, dict[str, Any]]] = []
@@ -159,7 +205,12 @@ def _related_rows(index_rows: list[dict[str, Any]], prompt: str, *, project: str
         overlap = query & _tokens(f"{row.get('subject', '')} {row.get('text', '')}")
         if len(overlap) < 2:
             continue
-        score = len(overlap) / (len(query) ** 0.5)
+        # Score normalized by query length — prevents long memories from dominating
+        # just because they contain more tokens. A memory with 3 overlapping tokens
+        # from a 5-token query is more relevant than 3/50.
+        score = len(overlap) / max(1, len(query) ** 0.5)
+        if score < 0.3:
+            continue
         scored.append((score, row))
     scored.sort(key=lambda item: (item[0], str(item[1].get("date", ""))), reverse=True)
     return [row for _score, row in scored[:limit]]
