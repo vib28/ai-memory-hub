@@ -336,64 +336,101 @@ function Get-LegacyKimiSettingsPath {
     return Join-Path $kimiHome "config.toml"
 }
 function Get-CodexSettingsPath { return Join-Path $HOME ".codex\hooks.json" }
-function Install-ClaudeHook {
-    Install-CaptureHooks -Client "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) -Events @(
-        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
-}
-function Remove-ClaudeHook { Remove-CaptureHooks -Client "Claude Code" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) }
-function Install-ClaudeHandoff {
-    Install-ContextHooks -HostName "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
-}
-function Remove-ClaudeHandoff { Remove-ContextHooks -HostName "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) }
-function Install-CodexHook {
-    Install-CaptureHooks -Client "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) -Events @(
-        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "PreCompact", "PostCompact", "Stop", "Interrupt", "SessionEnd")
-}
-function Remove-CodexHook { Remove-CaptureHooks -Client "Codex CLI" -Format "codex" -SettingsPath (Get-CodexSettingsPath) }
-function Install-CodexHandoff {
-    Install-ContextHooks -HostName "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit" -ContextLimit 3000
-}
-function Remove-CodexHandoff { Remove-ContextHooks -HostName "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) }
 
-function Install-GeminiHooks {
-    Install-CaptureHooks -Client "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) -Events @(
-        "SessionStart", "SessionEnd", "BeforeTool", "AfterTool", "AfterAgent", "PreCompress")
-}
-function Remove-GeminiHooks { Remove-CaptureHooks -Client "Gemini CLI" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) }
-function Install-GeminiHandoff {
-    Install-ContextHooks -HostName "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) -StartEvent "SessionStart" -TurnEvent "BeforeAgent"
-}
-function Remove-GeminiHandoff { Remove-ContextHooks -HostName "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) }
-
-function Install-QwenHooks {
-    Install-CaptureHooks -Client "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) -Events @(
-        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "Stop", "StopFailure", "PreCompact", "PostCompact")
-}
-function Remove-QwenHooks { Remove-CaptureHooks -Client "Qwen Code" -Format "nested" -SettingsPath (Get-QwenSettingsPath) }
-function Install-QwenHandoff {
-    Install-ContextHooks -HostName "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
-}
-function Remove-QwenHandoff { Remove-ContextHooks -HostName "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) }
-
-function Install-KimiHooks {
-    Install-CaptureHooks -Client "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) -Events @(
-        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "Stop", "StopFailure", "Interrupt", "PreCompact", "PostCompact", "SessionHeartbeat")
-}
-function Remove-KimiHooks {
-    Remove-CaptureHooks -Client "Kimi Code" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath)
-    $legacy = Get-LegacyKimiSettingsPath
-    if (Test-Path $legacy) {
-        Invoke-HubHookUninstall -Format "kimi-toml" -SettingsPath $legacy -Command (Get-HookCommandPath) -Label "Kimi Code legacy ~/.kimi capture removal"
+# ====================================================================
+# Client registry: each entry declares per-client hook configuration.
+# This replaces the copy-pasted per-client install/remove functions.
+# ====================================================================
+$clients = @{
+    claude = @{
+        Label         = "Claude Code"
+        Format        = "claude"
+        GetSettings   = { Get-ClaudeSettingsPath }
+        Events        = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
+        StartEvent    = "SessionStart"
+        TurnEvent     = "UserPromptSubmit"
+        ContextLimit  = 0
+    }
+    gemini = @{
+        Label         = "Gemini CLI"
+        Format        = "nested"
+        GetSettings   = { Get-GeminiSettingsPath }
+        Events        = @("SessionStart", "SessionEnd", "BeforeTool", "AfterTool", "AfterAgent", "PreCompress")
+        StartEvent    = "SessionStart"
+        TurnEvent     = "BeforeAgent"
+        ContextLimit  = 0
+    }
+    qwen = @{
+        Label         = "Qwen Code"
+        Format        = "nested"
+        GetSettings   = { Get-QwenSettingsPath }
+        Events        = @("SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "PreCompact", "PostCompact")
+        StartEvent    = "SessionStart"
+        TurnEvent     = "UserPromptSubmit"
+        ContextLimit  = 0
+    }
+    kimi = @{
+        Label         = "Kimi Code"
+        Format        = "kimi-toml"
+        GetSettings   = { Get-KimiSettingsPath }
+        Events        = @("SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "Interrupt", "PreCompact", "PostCompact", "SessionHeartbeat")
+        StartEvent    = "SessionStart"
+        TurnEvent     = "UserPromptSubmit"
+        ContextLimit  = 0
+        HasLegacy     = $true
+        LegacyLabel   = "Kimi Code legacy ~/.kimi capture removal"
+        LegacySettings = { Get-LegacyKimiSettingsPath }
+    }
+    codex = @{
+        Label         = "Codex CLI"
+        Format        = "codex"
+        GetSettings   = { Get-CodexSettingsPath }
+        Events        = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PreCompact", "PostCompact", "Stop", "Interrupt", "SessionEnd")
+        StartEvent    = "SessionStart"
+        TurnEvent     = "UserPromptSubmit"
+        ContextLimit  = 3000
     }
 }
-function Install-KimiHandoff {
-    Install-ContextHooks -HostName "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
+
+# Generic install function: installs capture hooks for a client defined in $clients.
+function Install-ClientHook {
+    param([string]$ClientKey)
+    $cfg = $clients[$ClientKey]
+    $settingsPath = & $cfg.GetSettings
+    Install-CaptureHooks -Client $ClientKey -Format $cfg.Format -SettingsPath $settingsPath -Events $cfg.Events
 }
-function Remove-KimiHandoff { Remove-ContextHooks -HostName "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) }
+
+# Generic remove function: removes capture hooks for a client defined in $clients.
+function Remove-ClientHook {
+    param([string]$ClientKey)
+    $cfg = $clients[$ClientKey]
+    $settingsPath = & $cfg.GetSettings
+    # Use the display label from the config (e.g., "Claude Code" not "claude")
+    Remove-CaptureHooks -Client $cfg.Label -Format $cfg.Format -SettingsPath $settingsPath
+    # Handle legacy settings if the client defines them
+    if ($cfg.HasLegacy) {
+        $legacy = & $cfg.LegacySettings
+        if (Test-Path $legacy) {
+            Invoke-HubHookUninstall -Format $cfg.Format -SettingsPath $legacy -Command (Get-HookCommandPath) -Label $cfg.LegacyLabel
+        }
+    }
+}
+
+# Generic handoff install
+function Install-ClientHandoff {
+    param([string]$ClientKey)
+    $cfg = $clients[$ClientKey]
+    $settingsPath = & $cfg.GetSettings
+    Install-ContextHooks -HostName $ClientKey -Format $cfg.Format -SettingsPath $settingsPath -StartEvent $cfg.StartEvent -TurnEvent $cfg.TurnEvent -ContextLimit $cfg.ContextLimit
+}
+
+# Generic handoff remove
+function Remove-ClientHandoff {
+    param([string]$ClientKey)
+    $cfg = $clients[$ClientKey]
+    $settingsPath = & $cfg.GetSettings
+    Remove-ContextHooks -HostName $ClientKey -Format $cfg.Format -SettingsPath $settingsPath
+}
 
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
@@ -435,10 +472,10 @@ if ($claudeLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.claude\CLAUDE.md" "claude.md"
             $results.Add("[connected] Claude Code")
-            if ($InstallHooks) { Install-ClaudeHook }
-            if ($RemoveHooks) { Remove-ClaudeHook }
-            if ($InstallHandoff) { Install-ClaudeHandoff }
-            if ($RemoveHandoff) { Remove-ClaudeHandoff }
+            if ($InstallHooks) { Install-ClientHook "claude" }
+            if ($RemoveHooks) { Remove-ClientHook "claude" }
+            if ($InstallHandoff) { Install-ClientHandoff "claude" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "claude" }
         }
         else {
             $results.Add("[failed]    Claude Code (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -448,10 +485,10 @@ if ($claudeLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.claude\CLAUDE.md" "claude.md"
             $results.Add("[connected] Claude Code")
-            if ($InstallHooks) { Install-ClaudeHook }
-            if ($RemoveHooks) { Remove-ClaudeHook }
-            if ($InstallHandoff) { Install-ClaudeHandoff }
-            if ($RemoveHandoff) { Remove-ClaudeHandoff }
+            if ($InstallHooks) { Install-ClientHook "claude" }
+            if ($RemoveHooks) { Remove-ClientHook "claude" }
+            if ($InstallHandoff) { Install-ClientHandoff "claude" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "claude" }
         }
         else {
             $results.Add("[failed]    Claude Code ($($_.Exception.Message))")
@@ -480,10 +517,10 @@ if ($geminiLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
-            if ($InstallHooks) { Install-GeminiHooks }
-            if ($RemoveHooks) { Remove-GeminiHooks }
-            if ($InstallHandoff) { Install-GeminiHandoff }
-            if ($RemoveHandoff) { Remove-GeminiHandoff }
+            if ($InstallHooks) { Install-ClientHook "gemini" }
+            if ($RemoveHooks) { Remove-ClientHook "gemini" }
+            if ($InstallHandoff) { Install-ClientHandoff "gemini" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "gemini" }
         }
         else {
             $results.Add("[failed]    Gemini CLI (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -493,10 +530,10 @@ if ($geminiLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
-            if ($InstallHooks) { Install-GeminiHooks }
-            if ($RemoveHooks) { Remove-GeminiHooks }
-            if ($InstallHandoff) { Install-GeminiHandoff }
-            if ($RemoveHandoff) { Remove-GeminiHandoff }
+            if ($InstallHooks) { Install-ClientHook "gemini" }
+            if ($RemoveHooks) { Remove-ClientHook "gemini" }
+            if ($InstallHandoff) { Install-ClientHandoff "gemini" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "gemini" }
         }
         else {
             $results.Add("[failed]    Gemini CLI ($($_.Exception.Message))")
@@ -521,10 +558,10 @@ if ($qwenLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
             $results.Add("[connected] Qwen Code")
-            if ($InstallHooks) { Install-QwenHooks }
-            if ($RemoveHooks) { Remove-QwenHooks }
-            if ($InstallHandoff) { Install-QwenHandoff }
-            if ($RemoveHandoff) { Remove-QwenHandoff }
+            if ($InstallHooks) { Install-ClientHook "qwen" }
+            if ($RemoveHooks) { Remove-ClientHook "qwen" }
+            if ($InstallHandoff) { Install-ClientHandoff "qwen" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "qwen" }
         }
         else {
             $results.Add("[failed]    Qwen Code (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -534,10 +571,10 @@ if ($qwenLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
             $results.Add("[connected] Qwen Code")
-            if ($InstallHooks) { Install-QwenHooks }
-            if ($RemoveHooks) { Remove-QwenHooks }
-            if ($InstallHandoff) { Install-QwenHandoff }
-            if ($RemoveHandoff) { Remove-QwenHandoff }
+            if ($InstallHooks) { Install-ClientHook "qwen" }
+            if ($RemoveHooks) { Remove-ClientHook "qwen" }
+            if ($InstallHandoff) { Install-ClientHandoff "qwen" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "qwen" }
         }
         else {
             $results.Add("[failed]    Qwen Code ($($_.Exception.Message))")
@@ -562,10 +599,10 @@ if ($codexExe) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.codex\AGENTS.md" "codex.md"
             $results.Add("[connected] Codex CLI")
-            if ($InstallHooks) { Install-CodexHook }
-            if ($RemoveHooks) { Remove-CodexHook }
-            if ($InstallHandoff) { Install-CodexHandoff }
-            if ($RemoveHandoff) { Remove-CodexHandoff }
+            if ($InstallHooks) { Install-ClientHook "codex" }
+            if ($RemoveHooks) { Remove-ClientHook "codex" }
+            if ($InstallHandoff) { Install-ClientHandoff "codex" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "codex" }
         }
         else {
             $results.Add("[failed]    Codex CLI (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -575,10 +612,10 @@ if ($codexExe) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.codex\AGENTS.md" "codex.md"
             $results.Add("[connected] Codex CLI")
-            if ($InstallHooks) { Install-CodexHook }
-            if ($RemoveHooks) { Remove-CodexHook }
-            if ($InstallHandoff) { Install-CodexHandoff }
-            if ($RemoveHandoff) { Remove-CodexHandoff }
+            if ($InstallHooks) { Install-ClientHook "codex" }
+            if ($RemoveHooks) { Remove-ClientHook "codex" }
+            if ($InstallHandoff) { Install-ClientHandoff "codex" }
+            if ($RemoveHandoff) { Remove-ClientHandoff "codex" }
         }
         else {
             $results.Add("[failed]    Codex CLI ($($_.Exception.Message))")
@@ -635,10 +672,10 @@ if (Get-Command kimi -ErrorAction SilentlyContinue) {
 
         Install-Instructions (Join-Path $kimiHome "AGENTS.md") "kimi.md"
         $results.Add("[connected] Kimi Code")
-        if ($InstallHooks) { Install-KimiHooks }
-        if ($RemoveHooks) { Remove-KimiHooks }
-        if ($InstallHandoff) { Install-KimiHandoff }
-        if ($RemoveHandoff) { Remove-KimiHandoff }
+        if ($InstallHooks) { Install-ClientHook "kimi" }
+        if ($RemoveHooks) { Remove-ClientHook "kimi" }
+        if ($InstallHandoff) { Install-ClientHandoff "kimi" }
+        if ($RemoveHandoff) { Remove-ClientHandoff "kimi" }
     }
     catch {
         $results.Add("[failed]    Kimi Code ($($_.Exception.Message))")
@@ -701,6 +738,8 @@ if ($hermesLauncher) {
             $results.Add("[failed]    Hermes Agent (skill source missing: $skillSource)")
         }
 
+        # Hermes hooks are special: they use a different capture format and
+        # handoff pattern that doesn't fit the generic registry.
         if ($InstallHooks) {
             Install-CaptureHooks -Client "hermes" -Format "hermes-yaml" -SettingsPath $hermesConfig -Events @("post_tool_call", "on_session_end")
         }

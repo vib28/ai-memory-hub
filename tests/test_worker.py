@@ -193,6 +193,20 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(health["backlog"], 0)
         self.assertEqual(json.loads(self.health.read_text(encoding="utf-8"))["status"], "ok")
 
+    def test_health_not_rewritten_when_unchanged(self):
+        """#108: identical health payloads must not trigger a redundant file write."""
+        with patch.dict("os.environ", {"MEMORY_WORKER_HEALTH": str(self.health)}):
+            worker = self.worker(FakeManager())
+            try:
+                # No observations — both runs produce the same terminal payload.
+                worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
+                first_mtime = self.health.stat().st_mtime_ns
+                worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
+                second_mtime = self.health.stat().st_mtime_ns
+            finally:
+                worker.close()
+        self.assertEqual(first_mtime, second_mtime)
+
 
 if __name__ == "__main__":
     unittest.main()

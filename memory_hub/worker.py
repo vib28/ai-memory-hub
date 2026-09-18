@@ -152,8 +152,25 @@ class SessionWorker:
             "transcript_enabled": self.transcript_store is not None,
         }
         path = worker_health_path(self.config.vault)
+        payload = json.dumps(current, ensure_ascii=False, indent=2) + "\n"
+        # Only write if the payload actually changed — avoid rewriting the same
+        # health JSON on every poll when status/backlog are stable (#108). The
+        # "running" marker is ephemeral; skip writing it when the terminal state
+        # on disk hasn't changed, so idle workers don't churn the file.
+        is_terminal = current.get("status") != "running"
+        last_terminal = getattr(self, "_last_terminal_health_payload", None)
+        if is_terminal:
+            if last_terminal == payload:
+                return current
+            self._last_terminal_health_payload = payload
+        elif last_terminal is not None:
+            try:
+                if path.exists() and path.read_text(encoding="utf-8") == last_terminal:
+                    return current
+            except OSError:
+                pass
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(path, json.dumps(current, ensure_ascii=False, indent=2) + "\n")
+        atomic_write(path, payload)
         return current
 
     def _due_rows(self, session_id: str, now: datetime) -> list[dict[str, Any]]:

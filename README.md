@@ -60,6 +60,13 @@ flowchart LR
 - Optionally retain complete supported session events as a local, human-readable
   Obsidian transcript linked to each checkpoint/final summary. All six hosts (Claude,
   Codex, Gemini, Qwen, Kimi and Hermes) now support full capture and startup handoff.
+- Resolve project identity deterministically from cwd, `.git` root, worktree pointer or
+  in-tree `.ai-memory-project` marker via the project resolver (#84).
+- Categorize evidence into preferences, decisions, git actions and project facts without
+  a model call via the deterministic categorizer (#85).
+- Inject bounded, quoted-evidence context packets at SessionStart and per-turn for all
+  six hosts via the context packet builder (#86).
+- Run `worker --session <id>` to process a single captured session on demand.
 
 ## The important boundaries
 
@@ -223,12 +230,14 @@ workers, startup injection or GitHub publication.
 
 ## Connect your AI tools
 
-The Windows connection script has setup paths for Claude Code, Codex CLI, Gemini CLI,
-Qwen Code, Kimi Code and Hermes Agent. Other stdio MCP clients can be configured manually.
-ChatGPT has a separate optional tunnel helper.
+The Windows connection script has setup paths for Claude Code (2.1.276), Codex CLI (0.155.0),
+Gemini CLI (0.58.0), Qwen Code (0.22.0), Kimi Code (2.0.1) and Hermes Agent. Other stdio MCP
+clients can be configured manually. ChatGPT has a separate optional tunnel helper.
 
 Connection support is not proof that every client version supports automatic hooks.
 See [client setup and limitations](docs/CLIENTS.md) for what the scripts actually configure.
+Tested versions are validated in `tests/test_handoff.py` against documented `SessionStart`
+JSON shapes.
 
 ## How it works
 

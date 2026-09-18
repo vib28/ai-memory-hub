@@ -1,205 +1,204 @@
-# Fix log
+# Fix log — 2026-09-19
 
-Each entry: what was wrong, what changed, where.
-
----
-
-# 2026-09-06 — Dashboard review-queue card legibility (branch `enhancements/roadmap`)
-
-## #38 — Enhancement: render structured session/pattern payloads on review-queue cards
-Noticed live: a pending `session_write` proposal rendered as one dense, run-on paragraph
-in the dashboard's review queue, because the card only ever showed the flattened `text`
-field every proposal has — never the structured `payload` a session (four sections) or
-pattern (two halves) proposal also carries. `_pending_rows_for_dashboard()` now parses
-`payload` into a real object for the `/api/pending` response; the card renders labeled
-sections for `session`/`pattern` payloads and falls through to the original flat
-paragraph for every other kind, including every proposal that predates this change
-(which has no payload at all). Verified live: queued a real `session_write` against the
-actual running server and confirmed the parsed structure survives to the API response.
-Tests: `tests/test_dashboard_features.py` (5 new: structured session, structured
-pattern, ordinary-proposal backward compatibility, and malformed/missing payload never
-raising). Suite: 127 → 131.
+Fixes applied across the `enhancements/auto-context-pipeline` branch, continuing
+from the #2-#9 fixes on master. Each entry: what was wrong, what changed, where.
 
 ---
 
-# 2026-09-06 — Tier 3 safety gate, patterns, and entity identity (branch `enhancements/roadmap`)
+## Pipeline foundation (#82-#90, #91) — 2026-09-18
 
-Ten issues, closing out tiers 3–4 and most of tier 5. Suite: 63 → 127 passing.
+### #84 — Project resolver
+`memory_hub/project_resolver.py`: turns a hook's `cwd` into one stable project
+slug via vault override map -> `.ai-memory-project` pin -> nearest `.git`
+(linked worktrees collapse onto the main repository) -> package marker -> leaf
+name, with home/system/drive-root reserved as "unscoped". No git subprocess,
+no network. 265-line module with 117-line test suite.
 
-## #32 — Enhancement: normalize resilient lifecycle events without an HTTP hook dependency
-Reused the useful lifecycle-hook patterns from an external reference project (stable
-event names, fail-open behavior, bounded delivery, retry awareness) inside the existing
-local SQLite receiver, without adopting its HTTP server architecture or enabling prompt
-capture implicitly. Additive SQLite migration for buffers created by earlier versions.
+### #82 — Capture evidence
+`memory_hub/capture.py`: preserves what hosts actually send — user prompt,
+assistant final message, SessionStart source, SessionEnd reason, compaction
+trigger, StopFailure error type, plus `transcript_path`/`model`/
+`permission_mode`/`client_type` in a bounded `host_meta` column. Gemini and
+Hermes event spellings normalize onto canonical events. Checkpoints route under
+the evidence's client and carry the resolver's worktree. Verified against a
+copy of the live 1,257-row buffer.
 
-## #16, #28, #18 — Pattern-linked memories: config, boundary fix, and historical backfill
-`scripts/backfill_patterns.py` previously drove `MemoryManager` in-process and called the
-private `_patterns()`, bypassing the configured write mode (#21's boundary) and lacking
-`--dry-run`. Rewired to submit through the public MCP tool (`memory_hub.mcp_server.
-memory_propose`) and read patterns through `memory_hub/patterns.py`'s supported loader.
-`tests/test_mcp_server.py::McpBoundaryTests` now asserts no exemption for this script.
-Tests: `tests/test_patterns.py`, `tests/test_backfill_patterns.py`.
+### #83/#87 — Detached worker
+`memory_hub/worker.py` `run_once()`: hook receiver now spawns a detached
+one-shot `worker --session <id> --force` child on session-end/stop events and
+returns in milliseconds; the child outlives the host's hook timeout and writes
+the checkpoint + manifest. StopFailure/Interrupt finalize as provisional final
+so work stays continuable; heartbeats only refresh the idle clock. 314-line
+process-level fixture covers hook -> detached worker -> manifest -> handoff
+with no mocks between stages.
 
-## #33 — Bug: project memory identity allowed duplicate-looking entries across writers
-Explicit `entity_id` + `aliases` frontmatter for project files, resolved through
-`Vault._entity_slug()` (then `_project_slug()`) rather than fuzzy text matching. Added
-`project_audit()` (read-only: exact duplicates, alias collisions, possible name splits)
-and `project_link()` (explicit, reversible merge with a `.merged-<timestamp>` backup).
-Tests: `tests/test_manager.py` project-identity and audit cases.
+### #86 — Context injection
+`memory_hub/context_packet.py` + `memory_hub/hooks.py`: context packets (start
++ turn) render the stdout contract each host documents. `connect-ai-tools
+-InstallHandoff` wires all six hosts; `-InstallHooks` installs the full
+lifecycle capture set and defaults session-auto on. 394-line context packet
+module with 274-line test suite.
 
-## #37 — Bug: project writes without entity_id could silently merge through prefix fallback
-`_project_slug()`'s legacy hyphen-prefix fallback (kept for backward compatibility when
-#33 landed) still let `widget-app-ui` route into an existing `widget-app.md` file with no
-`entity_id` supplied and no confirmation. Removed the fallback entirely: a write that
-omits `entity_id` now always gets its own subject-based file, never a fuzzy-matched
-existing one. `project_audit()`/`subject_audit()` report the relationship for explicit
-review instead.
+### #85 — Categorizer
+`memory_hub/categorizer.py`: worker runs a model-free categorizer after each
+checkpoint; candidates carry `evidence_ids` in `pending.provenance` and the
+review queue displays them. 175-line module with 144-line test suite.
 
-## #29 — Enhancement: vault history as undo, plus hook install and uninstall
-Part 1 (opt-in vault Git history, `history-init`/`history-status`/`history-commit`) and
-the generic `memory_hub/hooks.py` layer (`install_hook`/`uninstall_hook`, timestamped
-backups, managed-entry-only removal) were already implemented, but nothing called them —
-`connect-ai-tools.ps1` exposed only `-VaultPath`/`-WriteMode`. Added `-InstallHooks`/
-`-RemoveHooks`, targeting Claude Code's `settings.json` (resolved from
-`$CLAUDE_CONFIG_DIR`, falling back to `~/.claude`) and pointing the hook command at the
-venv's own `ai-memory-hook.exe` rather than trusting `PATH`. Verified live against a temp
-`settings.json`: fresh install, idempotent repeat, removal preserving an unrelated
-existing hook, safe no-op on a second removal, and a backup on each mutating write.
+### #89 — MCP cwd parity
+`memory_hub/mcp_server.py`: `memory_context` accepts `cwd` and returns the same
+packet the hooks inject, closing the divergence between MCP and hook paths.
 
-## #36 — Bug: rejected session_write/propose_pattern_match lost their reason
-Both raised a plain `ValueError` on rejection. The MCP SDK (`mcp` 2.x) treats any
-exception that is not `ToolError`/`ResourceError`/`MCPError` as a crash and wraps it in
-`UnexpectedToolError`, discarding the original message — the caller saw only
-`Error executing tool <name>`. Confirmed live (a too-long `session_write` payload lost its
-"memory is too long" reason entirely) and against the SDK source
-(`mcp/server/mcpserver/tools/base.py`). Fixed by raising `ToolError` instead, the SDK's
-"anticipated failure" channel, whose message survives the same wrapping. Also documented
-the 1500-character combined-section cap in `client-prompts/generic.md` (undiscoverable
-before except by hitting it), synced to all eight client files.
-Tests: `tests/test_mcp_server.py`, asserting through the real `mcp.call_tool()` boundary
-rather than the bare function, since that is where the bug actually lived.
+### #90 — Docs: pipeline is automatic
+Docs no longer say capture stops short of unattended operation. All six hosts
+(Claude, Codex, Gemini, Qwen, Kimi, Hermes) documented with full capture +
+startup handoff.
 
-## #34 — Enhancement: generalize memory audit to detect subject sprawl across all kinds
-`project_audit()` only ever looked at `kind == "project"` (one hardcoded filter). Added
-`subject_audit(kinds=None)`, generalizing exact-duplicate detection (partitioned by
-`(kind, hash)`, so identical text under different kinds is correctly not a duplicate of
-itself) and subject-variant/file-split candidates to every kind, with `session` excluded
-from the variant checks (its subjects are per-instance, not entity names). Run live
-against the author's real vault (49 records): found the already-known project split plus
-a previously invisible preference-kind variant.
-Tests: `tests/test_manager.py::SubjectAuditTests` (9 new).
+### #88 — Test isolation / worker health leak
+`tests/conftest.py`: scrubs `MEMORY_*`/`AI_MEMORY_*` env vars and redirects
+`HOME` per test, fixing config-precedence test failures and stopping ~190
+`worker-health-<hash>.json` files from landing in the developer's real
+`~/.ai-memory-hub`. `worker_health_path` now defaults to
+`<vault>/.ai-memory-hub/worker-health.json`.
 
-## #35 — Enhancement: extend entity identity to preferences/topics, group in dashboard
-Two different mechanisms. `topic`/`decision`/`person` already routed one file per subject
-like `project`; widened the same frontmatter gate and `_entity_slug()` routing to cover
-them (mechanical, low-risk, reusing #33's tested code path). `preference`/`profile` route
-every subject into *one* file across all subjects, so the same frontmatter mechanism
-would have given the whole file one entity id shared across unrelated concerns — built a
-separate registry instead, `entity-aliases.md` (`memory_hub/entities.py`), consulted by
-`conflicts()`/`resolve_conflict()` and new `entity_alias_link()` (preview/apply, never
-merges or deletes an entry). Dashboard grouping moved server-side into
-`dashboard._dashboard_group()`, resolving preference/profile subjects through the same
-registry; verified live against a disposable copy of the author's real vault (server
-started, `GET /api/memories` returned all 49 rows with the new grouping fields).
-Caught and fixed one bug pre-ship: the registry's own seed documentation embedded its
-format example as a literal heading, which the (deliberately Markdown-fencing-naive)
-parser would have read as live data on every new vault.
-Tests: `tests/test_entities.py`, `tests/test_manager.py::FileEntityIdentityTests` and
-`::EntityAliasLinkTests` (24 new total), one new dashboard grouping test; one stale
-literal-string dashboard test updated rather than reverted.
+### #91 — Priority order recorded
+`docs/issue-priority-order.md`: #91 and children (#82-#90) lead the order;
+#61/#62 follow because the benchmark cannot measure a pipeline that does not
+run.
 
 ---
 
-# 2026-09-06 — Tiers 0–2 (branch `enhancements/roadmap`)
+## Security & efficiency fixes (ultrareview) — 2026-09-19
 
-Nine issues, in the tier order recorded in roadmap #13. Five of them (#22–#25,
-#28) came out of a code review of this branch and were reproduced before being
-filed. Suite: 37 → 63 passing, 1 expected failure.
+### #92 — CRITICAL: worker forwarded all env to child subprocesses
+`memory_hub/worker.py`: detached consolidation children now receive only an
+allowlisted set (`AI_MEMORY_VAULT`, `MEMORY_WRITER`, `MEMORY_WRITE_MODE`, `PATH`,
+`HOME`, `USERPROFILE`) instead of the full `os.environ`.
 
-## #26 — Decision: session routing was writer-major, which hook capture would not survive
-`memory_hub/vault.py` `canonical_path()`: takes a keyword-only `project` and
-returns `/sessions/<project>/<model>.md` when one is named; sessions naming no
-project stay at `/sessions/<model>.md`. Hook capture is per-working-directory,
-so the old layout would have grown one unbounded file per agent spanning every
-project. Project slugs reuse `_merge_into_existing_project()` so sessions and
-`/projects/` cannot disagree on naming.
-`scripts/migrate_session_routing.py`: relocates existing blocks, keyed on each
-block's `**Project:**` link. `--dry-run`, idempotent, preserves IDs and
-frontmatter, skips ID-less blocks (#24).
-Tests: `tests/test_sessions.py::SessionRoutingMigrationTests` (6),
-`test_session_without_project_stays_writer_major`,
-`test_sessions_for_two_projects_are_separate_files`.
+### #94 — CRITICAL: capture persisted secrets to the buffer DB
+`memory_hub/capture.py`: new `_sanitize_payload()` redacts sensitive fields
+BEFORE any SQLite write. `hook_main()` sanitizes payloads before both buffer
+append and transcript append. 68 new regression tests.
 
-## #20 — Bug: memory_forget could not delete session summaries
-`memory_hub/vault.py`: added `delete_session_block()`, which finds the `##`
-block carrying `<!-- session:<id> -->` and rebuilds the file from its parsed
-frontmatter plus surviving blocks. `manager.forget()` dispatches on record
-kind. Previously it always called `delete_entry()`, whose `ENTRY_RE` line scan
-cannot match a heading block, so every session deletion returned
-`not_found_in_file` while the block stayed in the vault.
-Tests: `tests/test_sessions.py` — deletion, sibling/frontmatter survival,
-missing ID, and non-session deletion still working.
+### #96/#98/#104/#106 — HIGH priority dedup/perf
+`memory_hub/context_packet.py`: caches index rows by vault mtime, uses
+`resolve_project_cached`, pre-computes token sets per row to avoid O(N) regex
+passes per prompt. `worker.py`: single aggregate query instead of N+1 for
+backlog. `utils.py`: extracted `one_line`, `is_truthy`, `parse_iso_datetime`
+as single-source helpers, removing duplicated definitions across 3+ files.
+342 tests pass.
 
-## #24 — Bug: session blocks that lost their ID marker were invisible, and audit called the vault healthy
-`memory_hub/vault.py`: added `orphan_session_blocks()`. `manager.audit()` runs
-it over files whose frontmatter `type` is `session`, reports them under
-`orphan_session_blocks`, and counts them in `healthy`. `parse_records()` skips
-such blocks, and `audit()` previously only checked index-vs-file drift and
-malformed `- [` lines, so an orphan matched neither side of the reconciliation.
-Tests: `test_audit_reports_session_block_without_id_marker`,
-`test_audit_healthy_for_intact_session_file`.
-
-## #25 — Bug: identical session summaries were stored twice
-`memory_hub/manager.py`: added `_duplicate_session()`, checked before both the
-review-mode enqueue and the auto-mode write. `propose_session()` never called
-any duplicate detection at all. Keyed on **writer + title + body hash**, not on
-date: `session_write` stamps `now` when a client omits `session_date`, so a
-retry after a transport timeout carries a different date than the call it
-repeats, and a date-inclusive key would miss exactly the case this exists for.
-Tests: `test_identical_session_resubmission_is_a_duplicate`,
-`test_retry_without_explicit_date_is_still_a_duplicate`,
-`test_distinct_sessions_with_same_title_are_both_stored`.
-
-## #22 — Bug: session project cross-links were dropped silently
-`memory_hub/manager.py` `propose_session()`: when the linked project write
-returns `possible_update` — a near-match that writes nothing — the result is
-now `stored_without_project_link`, carrying `project_link_supersedes` and a
-hint pointing at `supersede()`. Previously the session's own `stored` status
-was returned regardless, so cross-links vanished with no signal. `approve()`
-was updated in the same change: it keyed on the literal string `"stored"`, so
-an approved session with a dropped cross-link would otherwise have been left
-in the queue under the new status.
-Tests: `test_dropped_project_cross_link_is_reported`,
-`test_successful_cross_link_still_reports_stored`.
-
-## #23 — Bug: pattern dual-write was not atomic and its rejection was swallowed
-`memory_hub/manager.py` `propose_pattern_match()`: both candidates are built
-and validated before either is written, so a half that cannot be stored stops
-the pair before anything is committed. Rejections propagate `reason` (formerly
-dropped, leaving `reason: None`) and add `half` naming the failing side.
-`memory_hub/mcp_server.py`: the tool raises `ValueError` on rejection, matching
-`session_write`'s contract since #12.
-Tests: `tests/test_patterns.py` (3 new), `tests/test_mcp_server.py` (2 new).
-
-## #19 / #21 / #12 — write mode, the client boundary, and validation
-Behavior was already correct; what was missing was proof and documentation.
-`ARCHITECTURE.md` (new) records the public-MCP-tool boundary with a tool →
-internal-method table, the write-mode policy, the six write outcomes, pattern
-atomicity, session routing, and the rejected HTTP/Node capture draft (#30).
-`tests/test_mcp_server.py::McpBoundaryTests` parses client scripts with `ast`
-and asserts none imports `memory_hub.manager`. It is marked
-`@unittest.expectedFailure` for the one known violation,
-`scripts/backfill_patterns.py` (#28, tier 4) — when that is fixed the test
-flips to unexpected success and forces the marker's removal.
-Tests: `test_review_mode_writes_nothing_to_the_vault`,
-`test_auto_and_review_modes_differ_on_identical_input`.
+### Kimi context filtering
+`memory_hub/context_packet.py`: expanded `_STOPWORDS` to cover common verbs,
+added `_MIN_CONTENT_TOKEN_LEN` filter (short tokens excluded unless paired
+with longer content), and added a score floor (0.3) so Kimi-style full-trace
+prompts no longer match embedding/business memories. Regression tests verify
+legitimate prompts still match relevant memories.
 
 ---
 
-# Fix log — 2026-09-05
+## 15-defect remediation (#67-#81) — 2026-09-09
+
+Report-the-truth defects (a call claimed success without the side effect):
+
+- **#67** `hooks.py`: Codex hook uninstall never removed a handler alone in its
+  group, though `install_codex_hook` always creates exactly that shape.
+- **#69** `mcp_server.py`: `session_consolidate` raised `AttributeError` on any
+  project-less session with vault history enabled.
+- **#72** `worker.py`: a degraded run erased the previously recorded
+  `last_success_at`, making "failing for a minute" indistinguishable from
+  "never succeeded".
+- **#75** `handoff.py`/`github_export.py`: malformed `MEMORY_*` integer env var
+  crashed argparse construction outside the graceful-degradation try block.
+  Promoted the existing safe helper into shared `memory_hub/_env.py`.
+
+Transcript path/link unification (#68, #70):
+
+- `manager.py`: added `MemoryManager.session_transcript_target()` as the single
+  resolver for a group's transcript path/project/summary-links, read from the
+  session manifest. `worker.py` and `session_capture.py` now call it,
+  eliminating silent summary back-link stripping every 15 seconds.
+
+Transcript store (#66, #76, #77):
+
+- `transcript.py`: `delete_group` now enumerates the group's distinct projects
+  before deleting rows and removes every candidate path, not only the unscoped
+  default.
+- Added `generated_at_source` column and inline "not supplied by provider"
+  marker in rendered Markdown.
+
+Worker idle trigger (#71):
+
+- `worker.py`: idle now checked before flush and measured from the newest
+  pending row, not the oldest. With shipped defaults (`flush_seconds=60 <
+  idle_seconds=300`) the old ordering meant idle could never fire —
+  `MEMORY_WORKER_IDLE_SECONDS` was dead configuration.
+
+GitHub exporter (#73, #74):
+
+- `github_export.py`: `find_issue`/`list_comments` now page through every result
+  via `gh api --paginate --slurp`. `ExportOutbox.claim_group` returns only the
+  rows it just locked instead of the whole group, eliminating unbounded per-poll
+  write cost.
+
+Index (#78, #79):
+
+- `index.py`: `_embed_record` now computes new vectors before deleting the old
+  ones, so a transient outage leaves a record's existing vectors in place.
+  Takes `manage_transaction`, threaded through from `upsert(commit=...)`, so
+  `rebuild()`'s per-record embed step no longer opens its own nested
+  `with self.conn` and commits the caller's outer transaction early.
+
+Vault (#80):
+
+- `vault.py`: `update_session_metadata` and `delete_session_block` now preserve
+  content above the first `## ` session heading instead of dropping it on
+  rewrite — `_complete_checkpoint_links` calls `update_session_metadata` on
+  every checkpoint, so this was routine data loss.
+
+Dashboard/config hardcoding (#81):
+
+- `dashboard.py`: added `MEMORY_DASHBOARD_PORT`/`MEMORY_DASHBOARD_HOST` as the
+  single source of the port/host default, used by `app.py`, `dashboard.py` and
+  all three `*.ps1` launchers instead of six independently hardcoded `8765`s.
+- `connect-ai-tools.ps1`: `Get-GeminiSettingsPath`/`Get-QwenSettingsPath` now
+  honor `GEMINI_CONFIG_DIR`/`QWEN_CONFIG_DIR`, matching the existing
+  `KIMI_CONFIG_DIR` pattern.
+
+36 new regression tests, one per fix. 252 tests pass (up from 216).
+
+---
+
+## Config file settings & dashboard redesign — 2026-09-09
+
+### Config-file settings (`memory_hub/app_config.py`)
+Replaces a broken WinForms configuration script (TabControl never rendered a
+tab strip) with configuration folded into the browser dashboard, backed by a
+real JSON config file. `SETTINGS_SCHEMA` is the single source of truth for
+every setting's key, group, type, default, min/max or options — both the
+dashboard API and frontend form render from it. `bootstrap_environment(vault)`
+seeds `os.environ` from `<vault>/.ai-memory-hub/config.json` using `setdefault`
+semantics: explicit env vars always win. `effective_config()` reports each
+setting's current value and whether it came from file, env, or built-in
+default. `save_settings()` validates against the schema and merges into the
+existing file.
+
+### Dashboard Settings pane
+New Settings view renders grouped cards from the schema with per-field source
+badge (DEFAULT/ENV/FILE). Only fields the user actually edits get submitted on
+save, so a field showing an env-sourced value never gets silently baked into
+the file. `app.css` rewritten with a single `--accent` token, distinct serif
+reading-pane typography, and WCAG-verified contrast across all four palettes
+(light/dark/colorblind-light/colorblind-dark).
+
+269 tests pass (up from 252; 17 new in `tests/test_app_config.py` and
+`tests/test_dashboard_redesign.py`). Verified live in a real Chrome tab.
+
+---
+
+# Fix log — 2026-09-05 (master)
 
 Fixes for all 8 open issues at github.com/vib28/ai-memory-hub/issues, applied
-most-to-least important.
+most-to-least important. Each entry: what was wrong, what changed, where.
 
 ## #2 — SECURITY: target_path let any client write into AI_INSTRUCTIONS.md / MEMORY.md
 `memory_hub/vault.py`: added `RESERVED_FILENAMES = {"memory.md", "ai_instructions.md"}`.

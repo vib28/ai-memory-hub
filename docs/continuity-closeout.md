@@ -18,8 +18,8 @@ flowchart LR
 ## Where
 
 The completed path is the client lifecycle → durable capture queue → linked local
-checkpoint → supervised worker → bounded Claude/Codex startup packet → optional
-sanitized GitHub outbox path.
+checkpoint → supervised worker → bounded startup packet for all six hosts (Claude, Codex,
+Gemini, Qwen, Kimi, Hermes) → optional sanitized GitHub outbox path.
 
 ## Why
 
@@ -47,8 +47,9 @@ outcome certification with the same matched Claude/Codex task.
   tested and documented.
 - [x] Three checkpoint batches and a final share the four-section template, stable IDs,
   manifest links, tags and owned export markers.
-- [x] Claude/Codex startup fixtures restore task state, decisions, changed files,
-  verified results and next action without an explicit memory call.
+- [x] Startup fixtures for all six hosts (Claude, Codex, Gemini, Qwen, Kimi, Hermes)
+  restore task state, decisions, changed files, verified results and next action without
+  an explicit memory call.
 - [x] Interrupt, crash, retry, long-session and concurrent-worker safeguards preserve
   accepted evidence or leave it retryable without duplicate batches.
 - [x] Unsupported client/version limitations are named rather than inferred away.
