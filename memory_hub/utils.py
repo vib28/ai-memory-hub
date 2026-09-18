@@ -5,7 +5,9 @@ import os
 import re
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 def slugify(value: str) -> str:
     value = value.strip().lower()
@@ -119,3 +121,41 @@ def atomic_write(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def parse_iso_datetime(value: Any, fallback: datetime | None = None) -> datetime | None:
+    """Parse an ISO-8601 datetime string, normalizing ``Z`` suffixes and
+    assigning UTC when no offset is present.
+
+    Returns ``fallback`` (or ``None`` if not given) when ``value`` is falsy or
+    unparseable.
+    """
+    if not value:
+        return fallback
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return fallback
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+_TRUTHY_STRINGS = frozenset({"1", "true", "yes", "on"})
+
+
+def one_line(value: Any, limit: int = 1000) -> str:
+    """Coerce any value to a single-line string, replacing null bytes,
+    collapsing internal whitespace, and truncating to ``limit`` chars."""
+    return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
+
+
+def is_truthy(value: Any) -> bool:
+    """Return True for ``value`` that reads as an affirmative flag.
+
+    A ``bool`` is returned as-is; any other value is stringified, stripped,
+    lowercased, and matched against ``{"1", "true", "yes", "on"}``.
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in _TRUTHY_STRINGS

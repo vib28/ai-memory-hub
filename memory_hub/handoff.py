@@ -19,7 +19,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .utils import slugify
+from .utils import one_line, parse_iso_datetime, slugify
 
 
 DEFAULT_MAX_CHARS = 6000
@@ -28,24 +28,12 @@ _SECTION_RE = re.compile(r"^### (?P<name>[^\r\n]+)\s*$", re.MULTILINE)
 _META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
 
 
-def _timestamp(value: Any, fallback: datetime) -> datetime:
-    if not value:
-        return fallback
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return fallback
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def _one_line(value: Any, limit: int = 500) -> str:
-    return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
 
 
 def _items(value: Any, *, limit: int = 30) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [_one_line(item) for item in value if _one_line(item)][:limit]
+    return [one_line(item) for item in value if one_line(item)][:limit]
 
 
 def _manifest(root: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -87,7 +75,7 @@ def _worktree_matches(worktree: Any, cwd: Any) -> bool:
 
 
 def _group_project(group: dict[str, Any], entry: dict[str, Any]) -> str:
-    return _one_line(group.get("project") or entry.get("project"), 200)
+    return one_line(group.get("project") or entry.get("project"), 200)
 
 
 def _select_groups(manifest: dict[str, Any], payload: dict[str, Any]) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
@@ -106,13 +94,13 @@ def _select_groups(manifest: dict[str, Any], payload: dict[str, Any]) -> list[tu
     if not candidates:
         return []
 
-    requested_group = _one_line(payload.get("session_group_id"), 200)
+    requested_group = one_line(payload.get("session_group_id"), 200)
     if requested_group:
         selected = [item for item in candidates if item[0] == requested_group]
         if selected:
             return selected
 
-    requested_project = _one_line(payload.get("project"), 200)
+    requested_project = one_line(payload.get("project"), 200)
     requested_cwd = payload.get("cwd")
     matches = [item for item in candidates if (
         (requested_project and slugify(_group_project(item[1], item[2])) == slugify(requested_project))
@@ -160,14 +148,14 @@ def _read_block(root: Path, entry: dict[str, Any]) -> tuple[dict[str, Any], str 
     }.items():
         found = re.search(pattern, body, re.MULTILINE)
         if found:
-            result[field] = _one_line(found.group(1), 300)
+            result[field] = one_line(found.group(1), 300)
     sections = list(_SECTION_RE.finditer(body))
     for index, section in enumerate(sections):
         end = sections[index + 1].start() if index + 1 < len(sections) else len(body)
         name = section.group("name").strip().casefold().replace(" ", "_")
         result[name] = [
-            _one_line(line[2:]) for line in body[section.end():end].splitlines()
-            if line.startswith("- ") and _one_line(line[2:])
+            one_line(line[2:]) for line in body[section.end():end].splitlines()
+            if line.startswith("- ") and one_line(line[2:])
         ]
     meta = _META_RE.search(body)
     if meta:
@@ -184,17 +172,17 @@ def _group_record(root: Path, group_id: str, group: dict[str, Any], entry: dict[
     block, _body = _read_block(root, entry)
     metadata = block.get("metadata") if isinstance(block.get("metadata"), dict) else {}
     stamp = entry.get("evidence_end") or metadata.get("evidence_end") or block.get("date")
-    age = max(0, int((now - _timestamp(stamp, now)).total_seconds()))
+    age = max(0, int((now - parse_iso_datetime(stamp, now)).total_seconds()))
     entry_type = str(entry.get("entry_type") or metadata.get("entry_type") or "checkpoint")
     state = str(entry.get("state") or metadata.get("state") or "accepted")
     changed_files = _items(entry.get("changed_files") or metadata.get("changed_files"), limit=100)
     pending = state != "accepted" or entry_type != "final" or not block
     return {
         "session_group_id": group_id,
-        "source_client": _one_line(group.get("source_client") or entry.get("source_client") or "unknown", 100),
+        "source_client": one_line(group.get("source_client") or entry.get("source_client") or "unknown", 100),
         "project": _group_project(group, entry) or None,
-        "worktree": _one_line(group.get("worktree") or entry.get("worktree"), 1000) or None,
-        "checkpoint_id": _one_line(entry.get("checkpoint_id"), 200),
+        "worktree": one_line(group.get("worktree") or entry.get("worktree"), 1000) or None,
+        "checkpoint_id": one_line(entry.get("checkpoint_id"), 200),
         "sequence": int(entry.get("sequence", 0) or 0),
         "entry_type": entry_type,
         "state": state,
@@ -204,7 +192,7 @@ def _group_record(root: Path, group_id: str, group: dict[str, Any], entry: dict[
             "This is the latest committed checkpoint, not a confirmed final rollup."
             if pending else None
         ),
-        "goal": _one_line(block.get("title") or group.get("project") or entry.get("project") or "Unspecified task", 300),
+        "goal": one_line(block.get("title") or group.get("project") or entry.get("project") or "Unspecified task", 300),
         "decisions": _items(block.get("learned"), limit=30),
         "changed_files": changed_files,
         "verified_results": _items(block.get("completed"), limit=30),
@@ -218,14 +206,14 @@ def _render_group(record: dict[str, Any], *, item_limit: int, item_chars: int) -
         f"Group: {record['session_group_id']} (source={record['source_client']}, project={record['project'] or 'none'})",
         f"Checkpoint: {record['checkpoint_id']} sequence={record['sequence']} age_seconds={record['checkpoint_age_seconds']}",
         f"Evidence state: {record['state']} / {record['entry_type']}",
-        f"Goal: {_one_line(record['goal'], item_chars)}",
+        f"Goal: {one_line(record['goal'], item_chars)}",
     ]
     for label, key in (("Decisions", "decisions"), ("Changed files", "changed_files"),
                        ("Verified results", "verified_results"), ("Next action", "next_action"),
                        ("Evidence", "evidence")):
         values = record[key][:item_limit]
         lines.append(f"{label}:")
-        lines.extend(f"- {_one_line(value, item_chars)}" for value in values) if values else lines.append("- (none recorded)")
+        lines.extend(f"- {one_line(value, item_chars)}" for value in values) if values else lines.append("- (none recorded)")
     if record["pending_evidence_warning"]:
         lines.append(f"Pending-evidence warning: {record['pending_evidence_warning']}")
     return lines
@@ -324,7 +312,7 @@ def build_handoff(vault: Path | str, *, payload: dict[str, Any] | None = None,
                 exclude_session=str(request.get("session_id") or "") or None,
             )
         except Exception as exc:  # startup context must never depend on the catch-up
-            catch_up_result = {"status": "failed", "reason": _one_line(exc)}
+            catch_up_result = {"status": "failed", "reason": one_line(exc)}
     manifest, warning = _manifest(root)
     if manifest is None:
         context = (
@@ -392,11 +380,11 @@ def main(argv: list[str] | None = None) -> int:
                                catch_up=not args.no_catch_up, catch_up_deadline=deadline)
     except Exception as exc:  # Startup context must never block the host client.
         context = ("<ai-memory-handoff source=local-checkpoint mode=quoted-evidence>\n"
-                   f"Local handoff unavailable: {_one_line(exc)}\n</ai-memory-handoff>")
+                   f"Local handoff unavailable: {one_line(exc)}\n</ai-memory-handoff>")
         result = {"status": "unavailable", "client": args.client, "groups": [],
                   "pending_evidence": True, "packet": context, "packet_chars": len(context),
                   "packet_budget": max(1, min(max_chars, MAX_MAX_CHARS)),
-                  "warning": _one_line(exc)}
+                  "warning": one_line(exc)}
     result["hookSpecificOutput"] = {
         "hookEventName": "SessionStart",
         "additionalContext": result["packet"],

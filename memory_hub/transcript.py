@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .utils import atomic_write, file_lock, slugify
+from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify
 
 
 DEFAULT_TRANSCRIPT_RETENTION_DAYS = 0
@@ -28,7 +28,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
     if value is None:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return is_truthy(value)
 
 
 def transcript_enabled() -> bool:
@@ -80,16 +80,11 @@ def _text(value: Any, maximum: int = 500) -> str:
 
 
 def _timestamp(value: Any, *, fallback: datetime | None = None) -> str:
-    if value:
-        raw = str(value).strip()
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            return parsed.isoformat()
-        except ValueError:
-            return raw
-    return (fallback or datetime.now(timezone.utc)).isoformat()
+    parsed = parse_iso_datetime(value, fallback=None)
+    if parsed is not None:
+        return parsed.isoformat()
+    raw = str(value).strip() if value else ""
+    return raw or (fallback or datetime.now(timezone.utc)).isoformat()
 
 
 def _normalize_author(value: Any, object_type: str) -> str:

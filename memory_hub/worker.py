@@ -20,7 +20,7 @@ from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
 from .transcript import TranscriptStore, transcript_enabled
-from .utils import atomic_write
+from .utils import atomic_write, parse_iso_datetime
 
 
 FINAL_EVENTS = {"session-end"}
@@ -33,15 +33,6 @@ TURN_EVENTS = {"stop", "post-tool-use-failure", "pre-compact", "post-compaction"
 # alive, which refreshes the idle clock (#87).
 HEARTBEAT_EVENTS = {"session-heartbeat"}
 
-
-def _parse_time(value: str | None, fallback: datetime) -> datetime:
-    if not value:
-        return fallback
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return fallback
 
 
 def estimated_tokens(row: dict[str, Any]) -> int:
@@ -173,7 +164,7 @@ class SessionWorker:
         return [
             row for row in rows
             if not row.get("next_attempt_at")
-            or _parse_time(row["next_attempt_at"], now) <= now
+            or parse_iso_datetime(row["next_attempt_at"], now) <= now
         ]
 
     def _trigger(self, rows: list[dict[str, Any]], now: datetime) -> tuple[str, str, str, bool] | None:
@@ -192,7 +183,7 @@ class SessionWorker:
             # Heartbeats alone never produce a checkpoint; they are consumed silently
             # once the session goes idle (the idle path below marks them completed via
             # the caller's normal flow because rows still includes them).
-            newest = _parse_time(rows[-1].get("created_at"), now)
+            newest = parse_iso_datetime(rows[-1].get("created_at"), now)
             if now - newest >= timedelta(seconds=self.config.idle_seconds):
                 return "idle", "provisional", "checkpoint", False
             return None
@@ -212,10 +203,10 @@ class SessionWorker:
         # worker was down or otherwise missed a long stretch of polls — which is exactly
         # when a provisional/incomplete close is the more honest result than a routine
         # "accepted" checkpoint.
-        newest = _parse_time(rows[-1].get("created_at"), now)
+        newest = parse_iso_datetime(rows[-1].get("created_at"), now)
         if now - newest >= timedelta(seconds=self.config.idle_seconds):
             return "idle", "provisional", "checkpoint", False
-        oldest = _parse_time(evidence_rows[0].get("created_at"), now)
+        oldest = parse_iso_datetime(evidence_rows[0].get("created_at"), now)
         if now - oldest >= timedelta(seconds=self.config.flush_seconds):
             return "time", "accepted", "checkpoint", False
         return None
@@ -311,11 +302,7 @@ class SessionWorker:
                 processed.append(result)
             except Exception as exc:  # one broken session must not stop the worker
                 errors.append({"session_id": session_id, "reason": str(exc)})
-        backlog = sum(
-            len(self.buffer.for_session(session_id, limit=self.config.batch_limit,
-                                        statuses={"pending", "failed"}))
-            for session_id in self.buffer.pending_sessions()
-        )
+        backlog = self.buffer.pending_count()
         status = "degraded" if errors else "ok"
         health_updates: dict[str, Any] = {
             "status": status, "last_run_at": stamp,

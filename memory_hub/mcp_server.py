@@ -12,12 +12,13 @@ from .models import MemoryCandidate
 from .capture import ObservationBuffer, default_buffer_path
 from .session_capture import consolidate_buffered_session
 from .history import commit_vault_change
+from .utils import is_truthy
 
 VAULT = os.environ.get("AI_MEMORY_VAULT") or str(Path.cwd() / "memory-vault")
 bootstrap_environment(VAULT)  # config.json fills gaps; an explicit env var still wins.
 WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
 WRITE_MODE = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
-HISTORY_ENABLED = os.environ.get("MEMORY_VAULT_HISTORY", "false").strip().lower() in {"1", "true", "yes", "on"}
+HISTORY_ENABLED = is_truthy(os.environ.get("MEMORY_VAULT_HISTORY", "false"))
 if WRITE_MODE not in {"auto", "review"}:
     WRITE_MODE = "auto"
 

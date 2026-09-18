@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
+from .utils import is_truthy
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -572,6 +573,20 @@ class ObservationBuffer:
         result.setdefault("project_source", "")
         return result
 
+    def pending_count(self, *, statuses: Iterable[str] | None = ("pending", "failed")) -> int:
+        """Total observations awaiting consolidation across all sessions (#98).
+
+        Single aggregate query replacing the prior N+1 pattern (one query per
+        pending session via ``for_session``) that scaled poorly with many sessions.
+        """
+        values = list(statuses) if statuses else ("pending", "failed")
+        placeholders = ",".join("?" for _ in values)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) FROM observations WHERE status IN ({placeholders})",
+            values,
+        ).fetchone()
+        return int(row[0]) if row else 0
+
     def sessions_for_project(self, project: str, *, statuses: Iterable[str] | None = None,
                              limit: int = 100) -> list[str]:
         """Session IDs whose evidence belongs to ``project`` (#84)."""
@@ -655,8 +670,7 @@ def hook_main(argv: list[str] | None = None) -> int:
         payloads = [_sanitize_payload(p) for p in payloads]
         buffer = ObservationBuffer()
         try:
-            if os.environ.get("MEMORY_TRANSCRIPT_ENABLED", "").strip().lower() in {
-                    "1", "true", "yes", "on"}:
+            if is_truthy(os.environ.get("MEMORY_TRANSCRIPT_ENABLED", "")):
                 from .transcript import TranscriptStore
                 try:
                     transcript = TranscriptStore()
@@ -686,7 +700,7 @@ def hook_main(argv: list[str] | None = None) -> int:
         terminal_sessions = []
         for row in results:
             if row.get("event") in CONSOLIDATION_EVENTS and not row.get("duplicate"):
-                if row.get("event") == "stop" and _truthy(row.get("host_meta", {}).get("stop_hook_active")):
+                if row.get("event") == "stop" and is_truthy(row.get("host_meta", {}).get("stop_hook_active")):
                     continue  # a continued turn is not a boundary
                 if row["session_id"] not in terminal_sessions:
                     terminal_sessions.append(row["session_id"])
@@ -707,9 +721,3 @@ def hook_main(argv: list[str] | None = None) -> int:
 # that is later killed will ever report -- so it produces a provisional checkpoint.
 CONSOLIDATION_EVENTS = {"session-end", "stop", "stop-failure", "interrupt", "pre-compact",
                         "post-compaction"}
-
-
-def _truthy(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}

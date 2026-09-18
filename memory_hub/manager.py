@@ -17,7 +17,7 @@ from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KIND
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import atomic_write, file_lock, normalize_text, slugify, text_hash
+from .utils import atomic_write, file_lock, is_truthy, normalize_text, slugify, text_hash
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
                     parse_records, dump_frontmatter, ensure_metadata, now_stamp, SESSION_RE,
                     SESSION_ID_RE, SESSION_META_RE)
@@ -190,7 +190,7 @@ class MemoryManager:
             clean["host_session_id"] = str(data.get("host_session_id") or "").strip()[:200] or None
             host_finalized = data.get("host_session_finalized", False)
             if isinstance(host_finalized, str):
-                host_finalized = host_finalized.strip().lower() in {"1", "true", "yes", "on"}
+                host_finalized = is_truthy(host_finalized)
             clean["host_session_finalized"] = bool(host_finalized)
             clean["checkpoint_id"] = slugify(str(checkpoint or uuid.uuid4().hex[:12]))
             entry_type = str(data.get("entry_type") or "checkpoint").strip().lower()

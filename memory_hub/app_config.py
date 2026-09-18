@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .utils import atomic_write
+from .utils import atomic_write, is_truthy
 
 CONFIG_FILENAME = "config.json"
 
@@ -193,7 +193,7 @@ def _coerce_for_display(entry: dict[str, Any], raw: Any) -> Any:
     "false" as truthy, which would render every such setting checked."""
     kind = entry["type"]
     if kind == "bool":
-        return raw if isinstance(raw, bool) else str(raw).strip().lower() in {"1", "true", "yes", "on"}
+        return is_truthy(raw)
     if kind == "int":
         try:
             return int(raw)

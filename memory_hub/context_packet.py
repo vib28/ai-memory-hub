@@ -43,7 +43,7 @@ from typing import Any
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project
-from .utils import atomic_write, file_lock, slugify
+from .utils import atomic_write, file_lock, one_line, slugify
 
 DEFAULT_START_CHARS = 6000
 DEFAULT_TURN_CHARS = 1500
@@ -156,10 +156,6 @@ def _tokens(text: str) -> set[str]:
     return {token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN or token not in _STOPWORDS}
 
 
-def _one_line(value: Any, limit: int) -> str:
-    return " ".join(str(value or "").split())[:limit]
-
-
 def _project_rows(index_rows: list[dict[str, Any]], project: str | None) -> list[dict[str, Any]]:
     if not project:
         return []
@@ -234,7 +230,7 @@ def _checkpoint_lines(vault: Path, payload: dict[str, Any], project: str | None)
             values = record.get(key) or []
             if values:
                 lines.append(f"{label}:")
-                lines.extend(f"- {_one_line(v, 240)}" for v in values[:8])
+                lines.extend(f"- {one_line(v, 240)}" for v in values[:8])
         if record.get("pending_evidence_warning"):
             lines.append(f"Warning: {record['pending_evidence_warning']}")
         lines.append("---")
@@ -249,7 +245,7 @@ def _fact_line(row: dict[str, Any]) -> str:
     prefix = {"preference": "Preference", "profile": "Profile", "project": "Project",
               "decision": "Decision", "topic": "Note", "person": "Person"}.get(kind, kind.title())
     marker = f" [{tag}]" if tag and tag not in {"stated", "preference"} else ""
-    return f"- {prefix}{marker}: {_one_line(row.get('text'), 320)}"
+    return f"- {prefix}{marker}: {one_line(row.get('text'), 320)}"
 
 
 # ---------------------------------------------------------------------- build
@@ -267,7 +263,7 @@ def build_packet(vault: Path | str, *, mode: str, host: str, payload: dict[str, 
     mode = "turn" if mode == "turn" else "start"
     budget = max(200, min(int(max_chars or (DEFAULT_START_CHARS if mode == "start" else DEFAULT_TURN_CHARS)),
                           MAX_CHARS))
-    session_id = _one_line(request.get("session_id"), 200) or "anonymous"
+    session_id = one_line(request.get("session_id"), 200) or "anonymous"
     identity = resolve_project(request.get("cwd"), vault=root, explicit=request.get("project"))
     project = None if identity.project == UNSCOPED else identity.project
     ledger = load_ledger(root, host, session_id)

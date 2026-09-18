@@ -24,7 +24,7 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, slugify
+from .utils import atomic_write, one_line, slugify
 
 
 VISIBILITIES = {"public", "private", "internal"}
@@ -106,18 +106,14 @@ def configure(vault: Path | str, *, repo: str | None = None, visibility: str | N
     return {**value, "config_path": str(path)}
 
 
-def _one_line(value: Any, limit: int = 1000) -> str:
-    return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
-
-
 def _items(value: Any, limit: int = 30) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [_one_line(item) for item in value if _one_line(item)][:limit]
+    return [one_line(item) for item in value if one_line(item)][:limit]
 
 
 def _safe_text(value: Any, limit: int = 1000) -> str:
-    text = _one_line(value, limit)
+    text = one_line(value, limit)
     text = _PRIVATE_PATH_RE.sub("[private path redacted]", text)
     for pattern, _label in SECRET_PATTERNS:
         text = pattern.sub("[redacted sensitive evidence]", text)
@@ -125,7 +121,7 @@ def _safe_text(value: Any, limit: int = 1000) -> str:
 
 
 def _safe_path(value: Any) -> str:
-    text = _one_line(value, 500).replace("\\", "/")
+    text = one_line(value, 500).replace("\\", "/")
     if not text or _PRIVATE_PATH_RE.match(text) or text.startswith("/"):
         return "[private path redacted]"
     return text
@@ -159,14 +155,14 @@ def build_export_payloads(vault: Path | str, group_id: str | None = None) -> lis
             if not block:
                 raise ExportError(f"checkpoint block is missing: {entry.get('checkpoint_id')}")
             metadata = block.get("metadata") if isinstance(block.get("metadata"), dict) else {}
-            checkpoint_id = _one_line(entry.get("checkpoint_id"), 200)
+            checkpoint_id = one_line(entry.get("checkpoint_id"), 200)
             payloads.append({
                 "marker": _marker(current_group_id, checkpoint_id),
                 "group_marker": _group_marker(current_group_id),
                 "session_group_id": current_group_id,
                 "checkpoint_id": checkpoint_id,
                 "sequence": int(entry.get("sequence", 0) or 0),
-                "entry_type": _one_line(entry.get("entry_type") or "checkpoint", 30),
+                "entry_type": one_line(entry.get("entry_type") or "checkpoint", 30),
                 "state": "accepted",
                 "project": _safe_text(raw_group.get("project") or entry.get("project"), 200) or None,
                 "source_client": _safe_text(raw_group.get("source_client") or entry.get("source_client") or "unknown", 100),
@@ -358,7 +354,7 @@ class ExportOutbox:
                 delay = min(MAX_RETRY_SECONDS, 2 ** min(int(row["attempts"]), 8))
                 self.conn.execute(
                     "UPDATE exports SET status='failed',lease_owner=NULL,lease_expires_at=NULL,last_error=?,next_attempt_at=?,updated_at=? WHERE marker=?",
-                    (_one_line(error, 1000), _stamp(stamp + timedelta(seconds=delay)), _stamp(stamp), row["marker"]),
+                    (one_line(error, 1000), _stamp(stamp + timedelta(seconds=delay)), _stamp(stamp), row["marker"]),
                 )
 
     def health(self) -> dict[str, Any]:
