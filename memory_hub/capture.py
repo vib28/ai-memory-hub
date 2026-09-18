@@ -10,7 +10,6 @@ import argparse
 import json
 import fnmatch
 import os
-import re
 import sqlite3
 import sys
 import uuid
@@ -22,7 +21,7 @@ from typing import Any, Iterable
 from .app_config import bootstrap_environment
 from .events import AFTER_AGENT_EVENTS, CONSOLIDATION_EVENTS, FAILURE_EVENTS, HOST_META_FIELDS, PROMPT_EVENTS, PROMPT_FIELDS, ASSISTANT_FIELDS
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import is_truthy, truncated_text
+from .utils import is_truthy, to_kebab, truncated_text
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -93,9 +92,8 @@ def normalize_event(value: Any) -> str:
     raw = "" if value is None else str(value).strip()
     if not raw:
         return "observation"
-    kebab = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", raw).replace("_", "-").replace(" ", "-")
-    kebab = re.sub(r"-+", "-", kebab).strip("-").lower()
-    return _EVENT_ALIASES.get(kebab, _EVENT_ALIASES.get(kebab.replace("-", ""), kebab[:80]))
+    kebab = to_kebab(raw, limit=80)
+    return _EVENT_ALIASES.get(kebab, _EVENT_ALIASES.get(kebab.replace("-", ""), kebab))
 
 
 def default_buffer_path() -> Path:

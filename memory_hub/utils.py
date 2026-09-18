@@ -22,6 +22,19 @@ def normalize_text(value: str) -> str:
     value = re.sub(r"[^\w\s]", "", value)
     return value
 
+def to_kebab(value: Any, limit: int = 80) -> str:
+    """Convert a string to kebab-case.
+
+    Inserts hyphens at camelCase boundaries, replaces underscores and spaces
+    with hyphens, collapses multiple hyphens, and lowercases the result.
+    Truncates to ``limit`` chars.
+    """
+    normalized = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", str(value))
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", normalized.replace("_", "-"))
+    normalized = re.sub(r"-+", "-", normalized).strip("-").lower()
+    return normalized[:limit] if normalized else ""
+
+
 def text_hash(value: str) -> str:
     return hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
 
@@ -211,6 +224,22 @@ def read_json(path: Path, default: Any = None, *, encoding: str = "utf-8") -> An
         return json.loads(path.read_text(encoding=encoding))
     except (OSError, json.JSONDecodeError):
         return default
+
+
+def sanitize_secrets(text: str, secret_patterns: list) -> str:
+    """Redact secrets from text using provided patterns and validate safety.
+
+    Shared helper for sanitization across capture, transcript, and github_export
+    modules.  Applies each (pattern, label) from ``secret_patterns``, then
+    runs ``check_text`` for final safety validation.
+    """
+    for pattern, _label in secret_patterns:
+        text = pattern.sub("[redacted sensitive evidence]", text)
+    from .security import check_text
+    result = check_text(text)
+    if not result.safe and "sensitive" in result.reason:
+        return "[redacted sensitive evidence]"
+    return text if result.safe else "[redacted sensitive content]"
 
 
 def vault_key(vault: Path | str, length: int = 16) -> str:

@@ -23,7 +23,7 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, clean_list, one_line, read_json, slugify, vault_key
+from .utils import atomic_write, clean_list, one_line, read_json, safe_join, slugify, vault_key
 
 
 VISIBILITIES = {"public", "private", "internal"}

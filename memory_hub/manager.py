@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import os
+import threading
 import uuid
 import json
 import shutil
@@ -11,6 +12,34 @@ from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+
+
+def load_session_manifest(vault_path: Path) -> dict:
+    """Load and validate the session manifest JSON file from ``vault_path``.
+
+    This is a lightweight module-level helper that does not require
+    constructing a full ``MemoryManager`` — it reads the file,
+    parses it, validates the format, and returns either a valid
+    manifest dict or raises ``ValueError``.
+
+    Used by ``MemoryManager._load_session_manifest`` and
+    ``handoff._manifest`` so the read/parse/validate logic lives in
+    exactly one place.
+    """
+    from .vault import Vault
+    root = Path(vault_path).expanduser().resolve()
+    vault = Vault(root)
+    path = vault.resolve("/sessions/session-manifest.json")
+    if not path.exists():
+        return {"version": 1, "groups": {}}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("session manifest is invalid; repair it before adding a checkpoint") from exc
+    if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("groups"), dict):
+        raise ValueError("session manifest has an unsupported format")
+    return value
+
 
 from .entities import load_entity_aliases, resolve_subject
 from .index import MemoryIndex
@@ -72,6 +101,7 @@ class MemoryManager:
         # the current file identity — writes to the .md file change mtime/size
         # and automatically invalidate the cached parse.
         self._covers_cache: dict[str, tuple[tuple[int, float], list]] = {}
+        self._covers_cache_lock = threading.Lock()
 
         # Cache for entity_registry, keyed by (st_size, st_mtime) of the
         # entity-aliases.md file so that repeated calls (conflicts(),
@@ -293,16 +323,7 @@ class MemoryManager:
         return self.vault.resolve("/sessions/session-manifest.json")
 
     def _load_session_manifest(self) -> dict:
-        path = self._session_manifest_path()
-        if not path.exists():
-            return {"version": 1, "groups": {}}
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError("session manifest is invalid; repair it before adding a checkpoint") from exc
-        if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("groups"), dict):
-            raise ValueError("session manifest has an unsupported format")
-        return value
+        return load_session_manifest(self.vault.root)
 
     def _write_session_manifest(self, manifest: dict) -> None:
         path = self._session_manifest_path()
@@ -763,15 +784,16 @@ class MemoryManager:
         except OSError:
             file_state = None
 
-        if relative in self._covers_cache:
-            cached_state, cached_records = self._covers_cache[relative]
-            if cached_state == file_state:
-                return cached_records
+        with self._covers_cache_lock:
+            if relative in self._covers_cache:
+                cached_state, cached_records = self._covers_cache[relative]
+                if cached_state == file_state:
+                    return cached_records
 
-        records = parse_records(resolved, self.vault.root)
-        if file_state is not None:
-            self._covers_cache[relative] = (file_state, records)
-        return records
+            records = parse_records(resolved, self.vault.root)
+            if file_state is not None:
+                self._covers_cache[relative] = (file_state, records)
+            return records
 
     def _mark_superseded(self, old: dict) -> bool:
         def transform(line: str) -> str:
@@ -817,7 +839,8 @@ class MemoryManager:
             body = "\n".join(lines) + "\n"
             body = ensure_metadata(body, kind=old["kind"], writer=writer)
             atomic_write(p, body)
-            self._covers_cache.pop(old["path"], None)
+            with self._covers_cache_lock:
+                self._covers_cache.pop(old["path"], None)
         rec = MemoryRecord(memory_id, old["path"], new_text, old["kind"], old["tag"],
                            subject, writer, stamp)
         self.index.upsert(rec)
@@ -854,7 +877,8 @@ class MemoryManager:
             changed = self.vault.delete_entry(old["path"], memory_id)
         if changed:
             self.index.remove(memory_id)
-            self._covers_cache.pop(old["path"], None)
+            with self._covers_cache_lock:
+                self._covers_cache.pop(old["path"], None)
             if old["kind"] == "session" and transcript_info:
                 group_id = transcript_info.get("session_group_id")
                 if group_id:
@@ -1450,7 +1474,8 @@ class MemoryManager:
                 shutil.move(str(source), str(backup))
         result["backup"] = "/" + backup.relative_to(self.vault.root).as_posix()
         result["records_to_move"] = len(lines)
-        self._covers_cache.pop("/" + target.relative_to(self.vault.root).as_posix(), None)
+        with self._covers_cache_lock:
+            self._covers_cache.pop("/" + target.relative_to(self.vault.root).as_posix(), None)
         self.reindex()
         return result
 
@@ -1510,7 +1535,8 @@ class MemoryManager:
                 content += section
             registry_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write(registry_path, content)
-            self._covers_cache.pop("/" + registry_path.relative_to(self.vault.root).as_posix(), None)
+            with self._covers_cache_lock:
+                self._covers_cache.pop("/" + registry_path.relative_to(self.vault.root).as_posix(), None)
             # Invalidate the cached registry so the next entity_registry()
             # call re-reads the updated file (#124).
             self._entity_registry_cache = (None, {})

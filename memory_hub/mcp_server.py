@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -77,6 +78,7 @@ WRITE_MODE = None
 HISTORY_ENABLED = None
 
 _state = SimpleNamespace(initialized=False, manager=None)
+_init_lock = threading.Lock()
 
 
 def _ensure_init() -> None:
@@ -88,7 +90,10 @@ def _ensure_init() -> None:
     """
     if _state.initialized:
         return
-    _state.initialized = True
+    with _init_lock:
+        if _state.initialized:
+            return
+        _state.initialized = True
 
     bootstrap_environment(VAULT)
 
@@ -272,20 +277,18 @@ def session_write(
 ) -> dict:
     """Write a four-section session summary for the current client/model."""
     _ensure_init()
-    payload = {
-        "model": WRITER, "title": title, "date": session_date,
-        "project": project, "investigated": investigated, "learned": learned,
-        "completed": completed, "next_steps": next_steps,
-    }
-    metadata = {
-        "session_group_id": session_group_id, "host_session_id": host_session_id,
-        "host_session_finalized": host_session_finalized,
-        "checkpoint_id": checkpoint_id, "sequence": sequence, "entry_type": entry_type,
-        "previous_id": previous_id, "final_id": final_id, "source_client": source_client,
-        "worktree": worktree, "evidence_start": evidence_start, "evidence_end": evidence_end,
-        "token_count": token_count, "token_basis": token_basis, "session_tags": session_tags,
-    }
-    payload.update({key: value for key, value in metadata.items() if value is not None})
+    checkpoint = SessionCheckpoint(
+        title=title, investigated=investigated, learned=learned,
+        completed=completed, next_steps=next_steps, project=project,
+        date=session_date, session_group_id=session_group_id,
+        host_session_id=host_session_id, host_session_finalized=host_session_finalized,
+        checkpoint_id=checkpoint_id, sequence=sequence, entry_type=entry_type,
+        previous_id=previous_id, final_id=final_id, source_client=source_client,
+        worktree=worktree, evidence_start=evidence_start, evidence_end=evidence_end,
+        token_count=token_count, token_basis=token_basis, session_tags=session_tags,
+    )
+    payload = {"model": WRITER}
+    payload.update({k: v for k, v in checkpoint.to_dict().items() if v is not None})
     result = _state.manager.propose_session(payload, write_mode=WRITE_MODE)
     # MCP transports can return a successful tool call even when the
     # application-level operation was rejected. Surface that distinction to

@@ -20,7 +20,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .utils import clean_list, one_line, parse_iso_datetime, read_json, slugify
+from .utils import clean_list, one_line, parse_iso_datetime, read_json, safe_join, slugify
 
 
 logger = logging.getLogger(__name__)
@@ -38,13 +38,16 @@ _META_RE = re.compile(r"<!-- session-meta:(?P<meta>\{.*\}) -->")
 
 
 def _manifest(root: Path) -> tuple[dict[str, Any] | None, str | None]:
-    path = root / "sessions" / "session-manifest.json"
-    value = read_json(path)
-    if not isinstance(value, dict) or value.get("version") != 1 or not isinstance(value.get("groups"), dict):
-        if value is None:
-            return None, "no committed checkpoint manifest was found"
-        return None, "checkpoint manifest has an unsupported format"
-    return value, None
+    """Load and validate the session manifest from ``root``.
+
+    Delegates to ``manager.load_session_manifest`` to avoid duplicating
+    the read/parse/validate logic.
+    """
+    from .manager import load_session_manifest
+    try:
+        return load_session_manifest(root), None
+    except ValueError as exc:
+        return None, str(exc)
 
 
 def _latest_entry(group: dict[str, Any]) -> dict[str, Any] | None:
@@ -118,11 +121,9 @@ def _safe_path(root: Path, relative: Any) -> Path | None:
     if not value:
         return None
     try:
-        path = (root / value).resolve()
-        path.relative_to(root)
-    except (OSError, ValueError):
+        return safe_join(root, value)
+    except ValueError:
         return None
-    return path
 
 
 def _read_block(root: Path, entry: dict[str, Any]) -> tuple[dict[str, Any], str | None]:

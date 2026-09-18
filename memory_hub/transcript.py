@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify, truncated_text
+from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify, to_kebab, truncated_text
 
 
 DEFAULT_TRANSCRIPT_RETENTION_DAYS = 0
@@ -115,9 +115,7 @@ def _normalize_object_type(payload: dict[str, Any]) -> str:
              payload.get("event_name") or payload.get("hook_event") or "message")
     if value == "message" and payload.get("hook_event_name"):
         value = payload["hook_event_name"]
-    normalized = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", str(value))
-    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", normalized.replace("_", "-"))
-    return normalized.strip("-").lower()[:80] or "message"
+    return to_kebab(value, limit=80) or "message"
 
 
 def _raw_payload(payload: dict[str, Any]) -> tuple[str, str]:
