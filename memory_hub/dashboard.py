@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import secrets
 import threading
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -18,6 +20,8 @@ from .vault import FILE_PER_ENTITY_KINDS
 
 from pathlib import Path
 from .dashboard_data import detail, metadata, save_metadata
+
+logger = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).with_name('static')
 
@@ -206,8 +210,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, 404)
         except (ValueError, TypeError) as exc:
             self._json({"error": str(exc)}, 400)
-        except Exception as exc:
-            self._json({"error": str(exc)}, 500)
+        except Exception:
+            correlation_id = secrets.token_hex(8)
+            logger.exception("Unhandled error in dashboard handler (correlation_id=%s)", correlation_id)
+            self._json({"error": "An internal error occurred. See logs for details.",
+                        "correlation_id": correlation_id}, 500)
 
     def do_POST(self):
         self._post()
@@ -240,8 +247,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, 404)
         except (ValueError, TypeError) as exc:
             self._json({"error": str(exc)}, 400)
-        except Exception as exc:
-            self._json({"error": str(exc)}, 500)
+        except Exception:
+            correlation_id = secrets.token_hex(8)
+            logger.exception("Unhandled error in dashboard handler (correlation_id=%s)", correlation_id)
+            self._json({"error": "An internal error occurred. See logs for details.",
+                        "correlation_id": correlation_id}, 500)
 
 def create_server(manager: MemoryManager, host: str | None = None, port: int | None = None):
     """Every launch path receives an isolated token, host guard."""

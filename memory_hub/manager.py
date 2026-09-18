@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 import uuid
 import json
 import shutil
@@ -58,6 +59,11 @@ class MemoryManager:
         self.vault = Vault(Path(vault_root))
         self.vault.root.mkdir(parents=True, exist_ok=True)
         self.index = MemoryIndex(self.vault.root, LocalEmbeddingProvider.from_environment())
+        # Cache for parsed records keyed by relative path. Each entry stores
+        # ((st_size, st_mtime), records) so that cache hits validate against
+        # the current file identity — writes to the .md file change mtime/size
+        # and automatically invalidate the cached parse.
+        self._covers_cache: dict[str, tuple[tuple[int, float], list]] = {}
 
     def close(self):
         self.index.close()
@@ -692,7 +698,7 @@ class MemoryManager:
             return "Stable identity, role, stack, timezone, and long-term context"
         if kind == "preference":
             return "Communication, workflow, research, and output preferences"
-        records = parse_records(self.vault.resolve(relative), self.vault.root)
+        records = self._cached_parse_records(relative)
         texts = [" ".join(record.text.split()) for record in records
                  if record.tag != "superseded" and record.text.strip()]
         if not texts and fallback.strip():
@@ -709,6 +715,25 @@ class MemoryManager:
             else:
                 summary = clip(summary, 220)
         return f"{kind.title()} notes: {summary}"
+
+    def _cached_parse_records(self, relative: str):
+        """Cache parsed records keyed on file mtime/size to avoid re-reading/re-parsing on every write."""
+        resolved = self.vault.resolve(relative)
+        try:
+            stat = os.stat(resolved)
+            file_state = (stat.st_size, stat.st_mtime)
+        except OSError:
+            file_state = None
+
+        if relative in self._covers_cache:
+            cached_state, cached_records = self._covers_cache[relative]
+            if cached_state == file_state:
+                return cached_records
+
+        records = parse_records(resolved, self.vault.root)
+        if file_state is not None:
+            self._covers_cache[relative] = (file_state, records)
+        return records
 
     def _mark_superseded(self, old: dict) -> bool:
         def transform(line: str) -> str:

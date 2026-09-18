@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,40 +78,46 @@ class MemoryIndex:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.embedding_provider = embedding_provider
-        self.conn.executescript(SCHEMA)
-        self.conn.execute(
-            """CREATE TABLE IF NOT EXISTS memory_embeddings (
-                memory_id TEXT PRIMARY KEY,
-                vector_json TEXT NOT NULL,
-                model TEXT NOT NULL,
-                content_hash TEXT NOT NULL
-            )"""
-        )
-        self.conn.commit()
-        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(pending)")}
-        if "payload" not in columns:
-            self.conn.execute("ALTER TABLE pending ADD COLUMN payload TEXT")
-            self.conn.commit()
-        if "entity_id" not in columns:
-            self.conn.execute("ALTER TABLE pending ADD COLUMN entity_id TEXT")
-            self.conn.commit()
-        if "provenance" not in columns:
-            self.conn.execute("ALTER TABLE pending ADD COLUMN provenance TEXT")
-            self.conn.commit()
-        try:
+        # Reentrant lock: public methods call internal helpers that also touch
+        # the same connection (e.g. upsert -> _embed_record -> _delete_embeddings),
+        # so a plain Lock would deadlock on the call chain (#119).
+        self._db_lock = threading.RLock()
+        with self._db_lock:
+            self.conn.executescript(SCHEMA)
             self.conn.execute(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(memory_id UNINDEXED, text, path, kind, tag, subject)"
+                """CREATE TABLE IF NOT EXISTS memory_embeddings (
+                    memory_id TEXT PRIMARY KEY,
+                    vector_json TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    content_hash TEXT NOT NULL
+                )"""
             )
-            self.has_fts = True
-        except sqlite3.OperationalError:
-            self.has_fts = False
+            self.conn.commit()
+            columns = {row[1] for row in self.conn.execute("PRAGMA table_info(pending)")}
+            if "payload" not in columns:
+                self.conn.execute("ALTER TABLE pending ADD COLUMN payload TEXT")
+                self.conn.commit()
+            if "entity_id" not in columns:
+                self.conn.execute("ALTER TABLE pending ADD COLUMN entity_id TEXT")
+                self.conn.commit()
+            if "provenance" not in columns:
+                self.conn.execute("ALTER TABLE pending ADD COLUMN provenance TEXT")
+                self.conn.commit()
+            try:
+                self.conn.execute(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(memory_id UNINDEXED, text, path, kind, tag, subject)"
+                )
+                self.has_fts = True
+            except sqlite3.OperationalError:
+                self.has_fts = False
 
     def close(self):
-        self.conn.close()
+        with self._db_lock:
+            self.conn.close()
 
     def rebuild(self, records: Iterable[MemoryRecord]) -> int:
         records = list(records)
-        with self.conn:
+        with self._db_lock, self.conn:
             self.conn.execute("DELETE FROM memories")
             self.conn.execute("DELETE FROM memory_embeddings")
             if self.has_fts:
@@ -120,27 +127,31 @@ class MemoryIndex:
         return len(records)
 
     def upsert(self, r: MemoryRecord, commit: bool = True) -> None:
-        self.conn.execute(
-            """INSERT OR REPLACE INTO memories
-               (memory_id,path,text,normalized_hash,kind,tag,subject,writer,date)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (r.memory_id, r.path, r.text, text_hash(r.text), r.kind, r.tag, r.subject, r.writer, r.date),
-        )
-        if self.has_fts:
-            self.conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (r.memory_id,))
+        with self._db_lock:
             self.conn.execute(
-                "INSERT INTO memory_fts(memory_id,text,path,kind,tag,subject) VALUES(?,?,?,?,?,?)",
-                (r.memory_id, r.text, r.path, r.kind, r.tag, r.subject),
+                """INSERT OR REPLACE INTO memories
+                   (memory_id,path,text,normalized_hash,kind,tag,subject,writer,date)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (r.memory_id, r.path, r.text, text_hash(r.text), r.kind, r.tag, r.subject, r.writer, r.date),
             )
-        if commit:
-            self.conn.commit()
-        # `commit=False` means the caller (rebuild()) owns one outer transaction for
-        # the whole batch — _embed_record must not open its own nested `with self.conn`
-        # in that case, or its first commit closes the caller's transaction early and a
-        # mid-rebuild crash leaves only the records processed so far (#79).
-        self._embed_record(r, manage_transaction=commit)
+            if self.has_fts:
+                self.conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (r.memory_id,))
+                self.conn.execute(
+                    "INSERT INTO memory_fts(memory_id,text,path,kind,tag,subject) VALUES(?,?,?,?,?,?)",
+                    (r.memory_id, r.text, r.path, r.kind, r.tag, r.subject),
+                )
+            if commit:
+                self.conn.commit()
+            # `commit=False` means the caller (rebuild()) owns one outer transaction for
+            # the whole batch — _embed_record must not open its own nested `with self.conn`
+            # in that case, or its first commit closes the caller's transaction early and a
+            # mid-rebuild crash leaves only the records processed so far (#79).
+            self._embed_record(r, manage_transaction=commit)
 
     def _delete_embeddings(self, memory_id: str, *, manage_transaction: bool) -> None:
+        # Always called under self._db_lock from a public method — do NOT
+        # reacquire the lock here or the reentrant path through
+        # upsert -> _embed_record -> _delete_embeddings would deadlock.
         sql = "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?"
         params = (memory_id, f"{memory_id}::%")
         if manage_transaction:
@@ -150,6 +161,8 @@ class MemoryIndex:
             self.conn.execute(sql, params)
 
     def _embed_record(self, record: MemoryRecord, *, manage_transaction: bool = True) -> None:
+        # Always called under self._db_lock from a public method — do NOT
+        # reacquire the lock here.
         if not self.embedding_provider:
             # Nothing to embed, but any previously computed vectors for this record
             # are now stale (the record itself changed) and must still be cleared.
@@ -190,7 +203,7 @@ class MemoryIndex:
             self.conn.executemany(sql, list(writes))
 
     def remove(self, memory_id: str) -> None:
-        with self.conn:
+        with self._db_lock, self.conn:
             self.conn.execute("DELETE FROM memories WHERE memory_id=?", (memory_id,))
             self.conn.execute(
                 "DELETE FROM memory_embeddings WHERE memory_id=? OR memory_id LIKE ?",
@@ -200,29 +213,33 @@ class MemoryIndex:
                 self.conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (memory_id,))
 
     def by_id(self, memory_id: str):
-        row = self.conn.execute("SELECT * FROM memories WHERE memory_id=?", (memory_id,)).fetchone()
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM memories WHERE memory_id=?", (memory_id,)).fetchone()
         return dict(row) if row else None
 
     def exact_hash(self, normalized_hash: str, kind: str):
-        row = self.conn.execute(
-            "SELECT * FROM memories WHERE normalized_hash=? AND kind=? AND tag!='superseded' LIMIT 1",
-            (normalized_hash, kind),
-        ).fetchone()
+        with self._db_lock:
+            row = self.conn.execute(
+                "SELECT * FROM memories WHERE normalized_hash=? AND kind=? AND tag!='superseded' LIMIT 1",
+                (normalized_hash, kind),
+            ).fetchone()
         return dict(row) if row else None
 
     def all_rows(self) -> list[dict]:
-        return [dict(r) for r in self.conn.execute("SELECT * FROM memories ORDER BY path,date,memory_id")]
+        with self._db_lock:
+            return [dict(r) for r in self.conn.execute("SELECT * FROM memories ORDER BY path,date,memory_id")]
 
     def candidate_rows(self, kind: str, min_length: int, max_length: int) -> list[dict]:
         """Return only same-kind rows whose text length is in a caller-safe window."""
-        rows = self.conn.execute(
-            """SELECT * FROM memories
-               WHERE kind=? AND tag!='superseded'
-                 AND length(text) BETWEEN ? AND ?
-               ORDER BY path,date,memory_id""",
-            (kind, min_length, max_length),
-        )
-        return [dict(row) for row in rows]
+        with self._db_lock:
+            rows = self.conn.execute(
+                """SELECT * FROM memories
+                   WHERE kind=? AND tag!='superseded'
+                     AND length(text) BETWEEN ? AND ?
+                   ORDER BY path,date,memory_id""",
+                (kind, min_length, max_length),
+            )
+            return [dict(row) for row in rows]
 
     def search(self, query: str, limit: int = 10, *, allowed_paths: set[str] | None = None,
                exclude_superseded: bool = False) -> list[dict]:
@@ -237,64 +254,66 @@ class MemoryIndex:
             return []
         paths = sorted(allowed_paths) if allowed_paths is not None else []
         fts_rows: list[dict] = []
-        if self.has_fts:
-            tokens = [t for t in query.replace('"', ' ').split() if t]
-            if tokens:
-                safe = " OR ".join(f'"{t}"' for t in tokens[:12])
-                try:
-                    filters = ["memory_fts MATCH ?"]
-                    params: list[object] = [safe]
-                    if allowed_paths is not None:
-                        placeholders = ",".join("?" for _ in paths)
-                        filters.append(f"m.path IN ({placeholders})")
-                        params.extend(paths)
-                    if exclude_superseded:
-                        filters.append("m.tag != 'superseded'")
-                    params.append(limit)
-                    rows = self.conn.execute(
-                        f"""SELECT m.* FROM memory_fts f
-                            JOIN memories m USING(memory_id)
-                            WHERE {' AND '.join(filters)}
-                            ORDER BY bm25(memory_fts)
-                            LIMIT ?""",
-                        params,
-                    ).fetchall()
-                    if rows:
-                        fts_rows = [dict(r) for r in rows]
-                except sqlite3.OperationalError:
-                    pass
-        if not fts_rows:
-            like = f"%{query}%"
-            filters = ["(text LIKE ? OR path LIKE ? OR subject LIKE ?)"]
-            params = [like, like, like]
-            if allowed_paths is not None:
-                placeholders = ",".join("?" for _ in paths)
-                filters.append(f"path IN ({placeholders})")
-                params.extend(paths)
-            if exclude_superseded:
-                filters.append("tag != 'superseded'")
-            params.append(limit)
-            rows = self.conn.execute(
-                f"""SELECT * FROM memories
-                    WHERE {' AND '.join(filters)}
-                    ORDER BY date DESC LIMIT ?""",
-                params,
-            ).fetchall()
-            fts_rows = [dict(r) for r in rows]
-        if not self.embedding_provider:
-            return fts_rows[:limit]
-        try:
-            query_vector = self.embedding_provider.embed([query])[0]
-        except Exception:
-            return fts_rows[:limit]
-        rows_by_id = {row["memory_id"]: row for row in self.all_rows()
-                      if (allowed_paths is None or row["path"] in allowed_paths)
-                      and (not exclude_superseded or row["tag"] != "superseded")}
+        with self._db_lock:
+            if self.has_fts:
+                tokens = [t for t in query.replace('"', ' ').split() if t]
+                if tokens:
+                    safe = " OR ".join(f'"{t}"' for t in tokens[:12])
+                    try:
+                        filters = ["memory_fts MATCH ?"]
+                        params: list[object] = [safe]
+                        if allowed_paths is not None:
+                            placeholders = ",".join("?" for _ in paths)
+                            filters.append(f"m.path IN ({placeholders})")
+                            params.extend(paths)
+                        if exclude_superseded:
+                            filters.append("m.tag != 'superseded'")
+                        params.append(limit)
+                        rows = self.conn.execute(
+                            f"""SELECT m.* FROM memory_fts f
+                                JOIN memories m USING(memory_id)
+                                WHERE {' AND '.join(filters)}
+                                ORDER BY bm25(memory_fts)
+                                LIMIT ?""",
+                            params,
+                        ).fetchall()
+                        if rows:
+                            fts_rows = [dict(r) for r in rows]
+                    except sqlite3.OperationalError:
+                        pass
+            if not fts_rows:
+                like = f"%{query}%"
+                filters = ["(text LIKE ? OR path LIKE ? OR subject LIKE ?)"]
+                params = [like, like, like]
+                if allowed_paths is not None:
+                    placeholders = ",".join("?" for _ in paths)
+                    filters.append(f"path IN ({placeholders})")
+                    params.extend(paths)
+                if exclude_superseded:
+                    filters.append("tag != 'superseded'")
+                params.append(limit)
+                rows = self.conn.execute(
+                    f"""SELECT * FROM memories
+                        WHERE {' AND '.join(filters)}
+                        ORDER BY date DESC LIMIT ?""",
+                    params,
+                ).fetchall()
+                fts_rows = [dict(r) for r in rows]
+            if not self.embedding_provider:
+                return fts_rows[:limit]
+            try:
+                query_vector = self.embedding_provider.embed([query])[0]
+            except Exception:
+                return fts_rows[:limit]
+            rows_by_id = {row["memory_id"]: row for row in self.all_rows()
+                          if (allowed_paths is None or row["path"] in allowed_paths)
+                          and (not exclude_superseded or row["tag"] != "superseded")}
         if not rows_by_id:
             return []
-        vector_rows = self.conn.execute(
-            "SELECT memory_id, vector_json FROM memory_embeddings"
-        ).fetchall()
+        with self._db_lock:
+            vector_rows = self.conn.execute(
+                "SELECT memory_id, vector_json FROM memory_embeddings"
+            ).fetchall()
         scores: dict[str, float] = {}
         for row in vector_rows:
             parent_id = row["memory_id"].split("::", 1)[0]
@@ -318,20 +337,21 @@ class MemoryIndex:
         """Return semantic pairs for read-only audit and human review."""
         if not self.embedding_provider:
             return []
-        rows = self.conn.execute(
-            "SELECT * FROM memories WHERE kind=? AND tag!='superseded' ORDER BY memory_id",
-            (kind,),
-        ).fetchall()
-        row_by_id = {row["memory_id"]: row for row in rows}
-        vectors_by_parent: dict[str, list[list[float]]] = {memory_id: [] for memory_id in row_by_id}
-        for embedding in self.conn.execute("SELECT memory_id, vector_json FROM memory_embeddings"):
-            parent_id = embedding["memory_id"].split("::", 1)[0]
-            if parent_id not in row_by_id:
-                continue
-            try:
-                vectors_by_parent[parent_id].append(json.loads(embedding["vector_json"]))
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
+        with self._db_lock:
+            rows = self.conn.execute(
+                "SELECT * FROM memories WHERE kind=? AND tag!='superseded' ORDER BY memory_id",
+                (kind,),
+            ).fetchall()
+            row_by_id = {row["memory_id"]: row for row in rows}
+            vectors_by_parent: dict[str, list[list[float]]] = {memory_id: [] for memory_id in row_by_id}
+            for embedding in self.conn.execute("SELECT memory_id, vector_json FROM memory_embeddings"):
+                parent_id = embedding["memory_id"].split("::", 1)[0]
+                if parent_id not in row_by_id:
+                    continue
+                try:
+                    vectors_by_parent[parent_id].append(json.loads(embedding["vector_json"]))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
         pairs = []
         for index, left in enumerate(rows):
             left_vectors = vectors_by_parent[left["memory_id"]]
@@ -362,7 +382,7 @@ class MemoryIndex:
             provenance = json.dumps(payload.get("evidence_ids"), ensure_ascii=False)
         elif candidate.get("evidence_ids"):
             provenance = json.dumps(candidate.get("evidence_ids"), ensure_ascii=False)
-        with self.conn:
+        with self._db_lock, self.conn:
             self.conn.execute(
                 """INSERT INTO pending
                    (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,entity_id,created_at,status,payload,provenance)
@@ -382,47 +402,53 @@ class MemoryIndex:
                     provenance,
                 ),
             )
-        return self.pending_by_id(proposal_id)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM pending WHERE proposal_id=?", (proposal_id,)).fetchone()
+        return dict(row) if row else None
 
     def pending_by_id(self, proposal_id: str):
-        row = self.conn.execute("SELECT * FROM pending WHERE proposal_id=?", (proposal_id,)).fetchone()
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM pending WHERE proposal_id=?", (proposal_id,)).fetchone()
         return dict(row) if row else None
 
     def list_pending(self, status: str | None = "pending", limit: int = 200) -> list[dict]:
-        if status is None:
-            rows = self.conn.execute(
-                "SELECT * FROM pending ORDER BY created_at DESC LIMIT ?",
-                (max(1, min(limit, 1000)),),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT * FROM pending WHERE status=? ORDER BY created_at DESC LIMIT ?",
-                (status, max(1, min(limit, 1000))),
-            ).fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            if status is None:
+                rows = self.conn.execute(
+                    "SELECT * FROM pending ORDER BY created_at DESC LIMIT ?",
+                    (max(1, min(limit, 1000)),),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM pending WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                    (status, max(1, min(limit, 1000))),
+                ).fetchall()
+            return [dict(r) for r in rows]
 
     def set_pending_status(self, proposal_id: str, status: str, note: str | None = None) -> None:
-        with self.conn:
+        with self._db_lock, self.conn:
             self.conn.execute(
                 "UPDATE pending SET status=?, decision_note=? WHERE proposal_id=?",
                 (status, note, proposal_id),
             )
 
     def pending_duplicate(self, text: str, subject: str, kind: str):
-        row = self.conn.execute(
-            """SELECT * FROM pending
-               WHERE status='pending' AND text=? AND subject=? AND kind=? LIMIT 1""",
-            (text, subject, kind),
-        ).fetchone()
+        with self._db_lock:
+            row = self.conn.execute(
+                """SELECT * FROM pending
+                   WHERE status='pending' AND text=? AND subject=? AND kind=? LIMIT 1""",
+                (text, subject, kind),
+            ).fetchone()
         return dict(row) if row else None
 
     def pending_session_checkpoint(self, checkpoint_id: str):
         """Find an existing review proposal carrying a stable checkpoint ID."""
-        rows = self.conn.execute(
-            """SELECT * FROM pending
-               WHERE status='pending' AND kind='session' AND payload IS NOT NULL
-               ORDER BY created_at"""
-        ).fetchall()
+        with self._db_lock:
+            rows = self.conn.execute(
+                """SELECT * FROM pending
+                   WHERE status='pending' AND kind='session' AND payload IS NOT NULL
+                   ORDER BY created_at"""
+            ).fetchall()
         for row in rows:
             try:
                 payload = json.loads(row["payload"])

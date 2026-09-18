@@ -42,7 +42,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .project_resolver import UNSCOPED, resolve_project
+from .project_resolver import UNSCOPED, resolve_project_cached
 from .utils import atomic_write, file_lock, one_line, slugify
 
 DEFAULT_START_CHARS = 6000
@@ -264,7 +264,7 @@ def build_packet(vault: Path | str, *, mode: str, host: str, payload: dict[str, 
     budget = max(200, min(int(max_chars or (DEFAULT_START_CHARS if mode == "start" else DEFAULT_TURN_CHARS)),
                           MAX_CHARS))
     session_id = one_line(request.get("session_id"), 200) or "anonymous"
-    identity = resolve_project(request.get("cwd"), vault=root, explicit=request.get("project"))
+    identity = resolve_project_cached(request.get("cwd"), vault=root, explicit=request.get("project"))
     project = None if identity.project == UNSCOPED else identity.project
     ledger = load_ledger(root, host, session_id)
     already = set(ledger.get("injected", []))
