@@ -425,9 +425,10 @@ def spawn_detached_consolidation(session_id: str, *, vault: str | os.PathLike[st
         command.append("--force")
     if buffer_path:
         command.extend(["--buffer", str(buffer_path)])
+    _allowlisted_vars = ("AI_MEMORY_VAULT", "MEMORY_WRITER", "MEMORY_WRITE_MODE", "PATH", "HOME", "USERPROFILE")
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
-        "close_fds": True, "env": dict(os.environ),
+        "close_fds": True, "env": {k: v for k, v in os.environ.items() if k in _allowlisted_vars},
     }
     if os.name == "nt":
         kwargs["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)

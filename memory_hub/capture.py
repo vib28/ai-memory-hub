@@ -141,6 +141,31 @@ def _sanitize_text(value: Any, excluded_paths: Iterable[str] = ()) -> str:
     return text
 
 
+def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize a raw payload dict before any persistence.
+
+    Applies the same secret-redaction logic that ``Observation.from_payload``
+    uses, but runs it on the raw dict first so that no unsanitized secret
+    ever reaches a buffer or transcript store (#94).
+    """
+    if not isinstance(payload, dict):
+        return payload
+    sensitive_keys = (
+        "input_summary", "output_summary", "prompt", "submitted_prompt",
+        "user_message", "last_assistant_message", "prompt_response", "response",
+        "final_response", "error_message", "reason", "trigger", "source",
+    )
+    sanitized = {}
+    for key, value in payload.items():
+        if key in sensitive_keys and isinstance(value, str):
+            sanitized[key] = _sanitize_text(value)
+        elif key == "extra" and isinstance(value, dict):
+            sanitized[key] = _sanitize_payload(value)
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
 def _bounded_files(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
@@ -625,6 +650,9 @@ def hook_main(argv: list[str] | None = None) -> int:
         if client:
             for payload in payloads:
                 payload.setdefault("client", client)
+        # #94: sanitize raw payloads before any persistence so secrets never
+        # reach the buffer DB or transcript store.
+        payloads = [_sanitize_payload(p) for p in payloads]
         buffer = ObservationBuffer()
         try:
             if os.environ.get("MEMORY_TRANSCRIPT_ENABLED", "").strip().lower() in {

@@ -252,6 +252,74 @@ class HookMainTests(unittest.TestCase):
             result = json.loads(output.getvalue())
             self.assertEqual(result["observations"][0]["event"], "post-tool-use-failure")
 
+    def test_secret_is_redacted_before_persisting_to_buffer_db(self):
+        """#94: secrets must be redacted before append() writes to SQLite."""
+        import tempfile as _tf
+        tmp = _tf.mkdtemp()
+        try:
+            db_path = Path(tmp) / "capture.sqlite3"
+            buffer = ObservationBuffer(db_path)
+            try:
+                row = buffer.append({
+                    "observation_id": "secret-test",
+                    "session_id": "s1",
+                    "tool": "Read",
+                    "files": [".env", "src/a.py"],
+                    "input_summary": "api_key: sk-1234567890abcdef1234567890abcdef12345678",
+                    "output_summary": "Read .env and found api_key: sk-1234567890abcdef1234567890abcdef12345678",
+                })
+                # The stored row must not contain the raw secret
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row["input_summary"])
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row["output_summary"])
+                self.assertIn("redacted", row["input_summary"])
+                self.assertIn("redacted", row["output_summary"])
+            finally:
+                buffer.close()
+            # Verify the DB itself doesn't contain the raw secret
+            with sqlite3.connect(str(db_path)) as conn:
+                row_in_db = conn.execute(
+                    "SELECT input_summary, output_summary FROM observations WHERE observation_id=?",
+                    ("secret-test",),
+                ).fetchone()
+                self.assertIsNotNone(row_in_db)
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row_in_db[0])
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row_in_db[1])
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_hook_main_sanitizes_before_buffer_and_transcript(self):
+        """#94: hook_main must sanitize payloads before any persistence."""
+        import tempfile as _tf
+        tmp = _tf.mkdtemp()
+        try:
+            payload = {
+                "session_id": "s1",
+                "tool": "Read",
+                "prompt": "api_key: sk-1234567890abcdef1234567890abcdef12345678",
+                "output_summary": "Read .env and found api_key: sk-1234567890abcdef1234567890abcdef12345678",
+            }
+            env = {
+                "MEMORY_CAPTURE_DB": str(Path(tmp) / "hook.sqlite3"),
+                "MEMORY_TRANSCRIPT_ENABLED": "1",
+            }
+            with patch.dict("os.environ", env, clear=False):
+                with patch("sys.stdin", io.StringIO(json.dumps(payload))), redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(hook_main(), 0)
+            # Check buffer DB
+            buffer_db = Path(tmp) / "hook.sqlite3"
+            with sqlite3.connect(str(buffer_db)) as conn:
+                row = conn.execute(
+                    "SELECT input_summary, output_summary FROM observations",
+                ).fetchone()
+                self.assertIsNotNone(row)
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row[0])
+                self.assertNotIn("sk-1234567890abcdef1234567890abcdef12345678", row[1])
+                self.assertIn("redacted", row[0])
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 class EventNormalizationTests(unittest.TestCase):
     def test_common_aliases(self):
