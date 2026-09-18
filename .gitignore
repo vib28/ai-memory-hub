@@ -15,3 +15,6 @@ dist/
 *.local.json
 .claude/
 /roadmap/
+.pytest-baseline/
+ULTRAREVIEW_CYCLE2_RESULTS.json
+connect-ai-tools.ps1.bak
