@@ -45,9 +45,11 @@ def memory_search(query: str, limit: int = 10) -> list[dict]:
 
 @mcp.tool()
 def memory_context(project: str | None = None, query: str | None = None,
-                   limit: int = 5, max_chars: int = 4000) -> dict:
+                   limit: int = 5, max_chars: int = 4000, cwd: str | None = None,
+                   session_id: str | None = None) -> dict:
     """Return a small, bounded context packet for a new session or turn."""
-    return manager.context_prime(project=project, query=query, limit=limit, max_chars=max_chars)
+    return manager.context_prime(project=project, query=query, limit=limit, max_chars=max_chars,
+                                 cwd=cwd, session_id=session_id)
 
 @mcp.tool()
 def memory_read(path: str) -> str:

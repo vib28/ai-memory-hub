@@ -170,7 +170,10 @@ function Set-GitHubExport {
     }
 }
 
-if ($EnableSessionAuto) { Set-SessionAuto $true }
+# #83: -InstallHooks alone must yield a working pipeline. The resident worker is
+# the always-fresh path; one-shot children still run without it. -DisableSessionAuto
+# remains the opt-out.
+if ($InstallHooks -or $EnableSessionAuto) { if (-not $DisableSessionAuto) { Set-SessionAuto $true } }
 if ($DisableSessionAuto) { Set-SessionAuto $false }
 if ($EnableGitHubExport) { Set-GitHubExport $true }
 if ($DisableGitHubExport) { Set-GitHubExport $false }
@@ -238,158 +241,81 @@ function Get-HandoffCommandPath {
     return $handoffExe
 }
 
-function Install-ClaudeHook {
-    $settingsPath = Get-ClaudeSettingsPath
-    $hookCommand = Get-HookCommandPath
-    $events = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
-    foreach ($event in $events) {
-        $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format claude --event $event --command $hookCommand 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            $results.Add("[failed]    Claude Code $event hook install: $($output.Trim())")
-            continue
-        }
-        $status = ($output | ConvertFrom-Json).status
-        $results.Add("[hooks]     Claude Code $event $status ($settingsPath)")
+function Get-ContextCommandPath {
+    $contextExe = Join-Path $Root ".venv\Scripts\ai-memory-context.exe"
+    if (-not (Test-Path $contextExe)) {
+        throw "ai-memory-context not found at $contextExe. Run .\setup.ps1 -VaultPath `"$VaultPath`" first."
     }
+    return $contextExe
 }
 
-function Remove-ClaudeHook {
-    $settingsPath = Get-ClaudeSettingsPath
-    $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --command $hookCommand 2>&1 | Out-String
+function Invoke-HubHookInstall {
+    param(
+        [string]$Format,
+        [string]$SettingsPath,
+        [string]$Event,
+        [string]$Command,
+        [string[]]$HookArgs,
+        [string]$Label,
+        [int]$Timeout = 0,
+        [int]$ContextLimit = 0
+    )
+    $cli = @("-m", "memory_hub.cli", "hooks-install", "--settings", $SettingsPath, "--format", $Format, "--event", $Event, "--command", $Command)
+    foreach ($item in $HookArgs) { $cli += "--arg=$item" }
+    if ($Timeout -gt 0) { $cli += @("--timeout", "$Timeout") }
+    if ($ContextLimit -gt 0) { $cli += @("--additional-context-limit", "$ContextLimit") }
+    $output = & $Python @cli 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Claude Code hook removal: $($output.Trim())")
+        $results.Add("[failed]    $Label : $($output.Trim())")
         return
     }
-    $status = ($output | ConvertFrom-Json).status
-    switch ($status) {
-        "removed"   { $results.Add("[hooks]     Claude Code hook removed ($settingsPath)") }
-        "not_found" { $results.Add("[hooks]     Claude Code hook already absent ($settingsPath)") }
-        default     { $results.Add("[hooks]     Claude Code hook removal: $status ($settingsPath)") }
-    }
+    $status = "installed"
+    try { $status = ($output | ConvertFrom-Json).status } catch { }
+    $results.Add("[hooks]     $Label $status ($SettingsPath)")
 }
 
-function Install-ClaudeHandoff {
-    $settingsPath = Get-ClaudeSettingsPath
-    $handoffCommand = Get-HandoffCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format claude --event SessionStart --command $handoffCommand 2>&1 | Out-String
+function Invoke-HubHookUninstall {
+    param([string]$Format, [string]$SettingsPath, [string]$Command, [string]$Label)
+    $cli = @("-m", "memory_hub.cli", "hooks-uninstall", "--settings", $SettingsPath, "--format", $Format)
+    if ($Command) { $cli += @("--command", $Command) }
+    $output = & $Python @cli 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Claude Code handoff install: $($output.Trim())")
+        $results.Add("[failed]    $Label : $($output.Trim())")
         return
     }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[handoff]   Claude Code SessionStart $status ($settingsPath)")
+    $status = "removed"
+    try { $status = ($output | ConvertFrom-Json).status } catch { }
+    $results.Add("[hooks]     $Label $status ($SettingsPath)")
 }
 
-function Remove-ClaudeHandoff {
-    $settingsPath = Get-ClaudeSettingsPath
-    $handoffCommand = Get-HandoffCommandPath
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format claude --command $handoffCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Claude Code handoff removal: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[handoff]   Claude Code SessionStart $status ($settingsPath)")
-}
-
-function Install-NestedClientHook {
-    param([string]$Client, [string]$SettingsPath, [string]$Event)
-    $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $SettingsPath --format nested --event $Event --command $hookCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    $Client hook install: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
-}
-
-function Remove-NestedClientHook {
-    param([string]$Client, [string]$SettingsPath)
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $SettingsPath --format nested 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    $Client hook removal: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
-}
-
-function Install-TomlClientHook {
-    param([string]$Client, [string]$SettingsPath, [string]$Event)
-    $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $SettingsPath --format kimi-toml --event $Event --command $hookCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    $Client hook install: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
-}
-
-function Remove-TomlClientHook {
-    param([string]$Client, [string]$SettingsPath)
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $SettingsPath --format kimi-toml 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    $Client hook removal: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     $Client hook $status ($SettingsPath)")
-}
-
-function Install-CodexHook {
-    $settingsPath = Get-CodexSettingsPath
-    $hookCommand = Get-HookCommandPath
-    $events = @("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-        "PreCompact", "PostCompact", "Stop", "SessionEnd")
-    foreach ($event in $events) {
-        $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event $event --command $hookCommand 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            $results.Add("[failed]    Codex CLI $event hook install: $($output.Trim())")
-            continue
-        }
-        $status = ($output | ConvertFrom-Json).status
-        $results.Add("[hooks]     Codex CLI $event $status ($settingsPath)")
+function Install-CaptureHooks {
+    param([string]$Client, [string]$Format, [string]$SettingsPath, [string[]]$Events)
+    $command = Get-HookCommandPath
+    foreach ($event in $Events) {
+        Invoke-HubHookInstall -Format $Format -SettingsPath $SettingsPath -Event $event -Command $command -HookArgs @("--client", $Client) -Label "$Client capture $event"
     }
 }
 
-function Install-CodexHandoff {
-    $settingsPath = Get-CodexSettingsPath
-    $handoffCommand = Get-HandoffCommandPath
-    $output = & $Python -m memory_hub.cli hooks-install --settings $settingsPath --format codex --event SessionStart --command $handoffCommand --additional-context-limit 3000 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Codex CLI handoff install: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[handoff]   Codex CLI SessionStart $status ($settingsPath)")
+function Install-ContextHooks {
+    param([string]$HostName, [string]$Format, [string]$SettingsPath, [string]$StartEvent, [string]$TurnEvent, [int]$ContextLimit = 0)
+    $command = Get-ContextCommandPath
+    Invoke-HubHookInstall -Format $Format -SettingsPath $SettingsPath -Event $StartEvent -Command $command -HookArgs @("--host", $HostName, "--mode", "start") -Label "$HostName context $StartEvent" -ContextLimit $ContextLimit
+    Invoke-HubHookInstall -Format $Format -SettingsPath $SettingsPath -Event $TurnEvent -Command $command -HookArgs @("--host", $HostName, "--mode", "turn") -Label "$HostName context $TurnEvent" -ContextLimit $ContextLimit
 }
 
-function Remove-CodexHandoff {
-    $settingsPath = Get-CodexSettingsPath
-    $handoffCommand = Get-HandoffCommandPath
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format codex --command $handoffCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Codex CLI handoff removal: $($output.Trim())")
-        return
-    }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[handoff]   Codex CLI SessionStart $status ($settingsPath)")
+function Remove-CaptureHooks {
+    param([string]$Client, [string]$Format, [string]$SettingsPath)
+    Invoke-HubHookUninstall -Format $Format -SettingsPath $SettingsPath -Command (Get-HookCommandPath) -Label "$Client capture removal"
 }
 
-function Remove-CodexHook {
-    $settingsPath = Get-CodexSettingsPath
-    $hookCommand = Get-HookCommandPath
-    $output = & $Python -m memory_hub.cli hooks-uninstall --settings $settingsPath --format codex --command $hookCommand 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        $results.Add("[failed]    Codex CLI hook removal: $($output.Trim())")
-        return
+function Remove-ContextHooks {
+    param([string]$HostName, [string]$Format, [string]$SettingsPath)
+    Invoke-HubHookUninstall -Format $Format -SettingsPath $SettingsPath -Command (Get-ContextCommandPath) -Label "$HostName context removal"
+    # Existing installs used ai-memory-handoff.exe on SessionStart (#86 replacement).
+    $handoff = Join-Path $Root ".venv\Scripts\ai-memory-handoff.exe"
+    if (Test-Path $handoff) {
+        Invoke-HubHookUninstall -Format $Format -SettingsPath $SettingsPath -Command $handoff -Label "$HostName legacy handoff removal"
     }
-    $status = ($output | ConvertFrom-Json).status
-    $results.Add("[hooks]     Codex CLI hook $status ($settingsPath)")
 }
 
 function Get-GeminiSettingsPath {
@@ -401,10 +327,73 @@ function Get-QwenSettingsPath {
     return Join-Path $qwenConfigHome "settings.json"
 }
 function Get-KimiSettingsPath {
-    $kimiConfigHome = if ($env:KIMI_CONFIG_DIR) { $env:KIMI_CONFIG_DIR } else { Join-Path $HOME ".kimi" }
+    # Kimi Code 2.0.1 reads ~/.kimi-code/config.toml (see moonshotai.github.io/kimi-code).
+    $kimiConfigHome = if ($env:KIMI_CODE_HOME) { $env:KIMI_CODE_HOME } else { Join-Path $HOME ".kimi-code" }
     return Join-Path $kimiConfigHome "config.toml"
 }
+function Get-LegacyKimiSettingsPath {
+    $kimiHome = if ($env:KIMI_CONFIG_DIR) { $env:KIMI_CONFIG_DIR } else { Join-Path $HOME ".kimi" }
+    return Join-Path $kimiHome "config.toml"
+}
 function Get-CodexSettingsPath { return Join-Path $HOME ".codex\hooks.json" }
+function Install-ClaudeHook {
+    Install-CaptureHooks -Client "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) -Events @(
+        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd")
+}
+function Remove-ClaudeHook { Remove-CaptureHooks -Client "Claude Code" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) }
+function Install-ClaudeHandoff {
+    Install-ContextHooks -HostName "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
+}
+function Remove-ClaudeHandoff { Remove-ContextHooks -HostName "claude" -Format "claude" -SettingsPath (Get-ClaudeSettingsPath) }
+function Install-CodexHook {
+    Install-CaptureHooks -Client "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) -Events @(
+        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PreCompact", "PostCompact", "Stop", "Interrupt", "SessionEnd")
+}
+function Remove-CodexHook { Remove-CaptureHooks -Client "Codex CLI" -Format "codex" -SettingsPath (Get-CodexSettingsPath) }
+function Install-CodexHandoff {
+    Install-ContextHooks -HostName "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit" -ContextLimit 3000
+}
+function Remove-CodexHandoff { Remove-ContextHooks -HostName "codex" -Format "codex" -SettingsPath (Get-CodexSettingsPath) }
+
+function Install-GeminiHooks {
+    Install-CaptureHooks -Client "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) -Events @(
+        "SessionStart", "SessionEnd", "BeforeTool", "AfterTool", "AfterAgent", "PreCompress")
+}
+function Remove-GeminiHooks { Remove-CaptureHooks -Client "Gemini CLI" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) }
+function Install-GeminiHandoff {
+    Install-ContextHooks -HostName "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) -StartEvent "SessionStart" -TurnEvent "BeforeAgent"
+}
+function Remove-GeminiHandoff { Remove-ContextHooks -HostName "gemini" -Format "nested" -SettingsPath (Get-GeminiSettingsPath) }
+
+function Install-QwenHooks {
+    Install-CaptureHooks -Client "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) -Events @(
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "Stop", "StopFailure", "PreCompact", "PostCompact")
+}
+function Remove-QwenHooks { Remove-CaptureHooks -Client "Qwen Code" -Format "nested" -SettingsPath (Get-QwenSettingsPath) }
+function Install-QwenHandoff {
+    Install-ContextHooks -HostName "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
+}
+function Remove-QwenHandoff { Remove-ContextHooks -HostName "qwen" -Format "nested" -SettingsPath (Get-QwenSettingsPath) }
+
+function Install-KimiHooks {
+    Install-CaptureHooks -Client "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) -Events @(
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "Stop", "StopFailure", "Interrupt", "PreCompact", "PostCompact", "SessionHeartbeat")
+}
+function Remove-KimiHooks {
+    Remove-CaptureHooks -Client "Kimi Code" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath)
+    $legacy = Get-LegacyKimiSettingsPath
+    if (Test-Path $legacy) {
+        Invoke-HubHookUninstall -Format "kimi-toml" -SettingsPath $legacy -Command (Get-HookCommandPath) -Label "Kimi Code legacy ~/.kimi capture removal"
+    }
+}
+function Install-KimiHandoff {
+    Install-ContextHooks -HostName "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) -StartEvent "SessionStart" -TurnEvent "UserPromptSubmit"
+}
+function Remove-KimiHandoff { Remove-ContextHooks -HostName "kimi" -Format "kimi-toml" -SettingsPath (Get-KimiSettingsPath) }
 
 function Find-Codex {
     $cmd = Get-Command codex -ErrorAction SilentlyContinue
@@ -491,8 +480,10 @@ if ($geminiLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
-            if ($InstallHooks) { Install-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) "AfterTool" }
-            if ($RemoveHooks) { Remove-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) }
+            if ($InstallHooks) { Install-GeminiHooks }
+            if ($RemoveHooks) { Remove-GeminiHooks }
+            if ($InstallHandoff) { Install-GeminiHandoff }
+            if ($RemoveHandoff) { Remove-GeminiHandoff }
         }
         else {
             $results.Add("[failed]    Gemini CLI (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -502,8 +493,10 @@ if ($geminiLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.gemini\GEMINI.md" "gemini.md"
             $results.Add("[connected] Gemini CLI")
-            if ($InstallHooks) { Install-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) "AfterTool" }
-            if ($RemoveHooks) { Remove-NestedClientHook "Gemini CLI" (Get-GeminiSettingsPath) }
+            if ($InstallHooks) { Install-GeminiHooks }
+            if ($RemoveHooks) { Remove-GeminiHooks }
+            if ($InstallHandoff) { Install-GeminiHandoff }
+            if ($RemoveHandoff) { Remove-GeminiHandoff }
         }
         else {
             $results.Add("[failed]    Gemini CLI ($($_.Exception.Message))")
@@ -513,6 +506,7 @@ if ($geminiLauncher) {
 else {
     $results.Add("[skipped]   Gemini CLI (not found on PATH)")
     if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Gemini CLI hooks (Gemini CLI not found on PATH)") }
+    if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Gemini CLI handoff (Gemini CLI not found on PATH)") }
 }
 
 # --- Qwen Code -----------------------------------------------------------
@@ -527,8 +521,10 @@ if ($qwenLauncher) {
         if ($LASTEXITCODE -eq 0 -or (Test-AlreadyRegistered $output)) {
             Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
             $results.Add("[connected] Qwen Code")
-            if ($InstallHooks) { Install-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) "PostToolUse" }
-            if ($RemoveHooks) { Remove-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) }
+            if ($InstallHooks) { Install-QwenHooks }
+            if ($RemoveHooks) { Remove-QwenHooks }
+            if ($InstallHandoff) { Install-QwenHandoff }
+            if ($RemoveHandoff) { Remove-QwenHandoff }
         }
         else {
             $results.Add("[failed]    Qwen Code (exit ${LASTEXITCODE}): $($output.Trim())")
@@ -538,8 +534,10 @@ if ($qwenLauncher) {
         if (Test-AlreadyRegistered $_.Exception.Message) {
             Install-Instructions "$HOME\.qwen\QWEN.md" "qwen.md"
             $results.Add("[connected] Qwen Code")
-            if ($InstallHooks) { Install-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) "PostToolUse" }
-            if ($RemoveHooks) { Remove-NestedClientHook "Qwen Code" (Get-QwenSettingsPath) }
+            if ($InstallHooks) { Install-QwenHooks }
+            if ($RemoveHooks) { Remove-QwenHooks }
+            if ($InstallHandoff) { Install-QwenHandoff }
+            if ($RemoveHandoff) { Remove-QwenHandoff }
         }
         else {
             $results.Add("[failed]    Qwen Code ($($_.Exception.Message))")
@@ -549,6 +547,7 @@ if ($qwenLauncher) {
 else {
     $results.Add("[skipped]   Qwen Code (not found on PATH)")
     if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Qwen Code hooks (Qwen Code CLI not found on PATH)") }
+    if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Qwen Code handoff (Qwen Code CLI not found on PATH)") }
 }
 
 # --- Codex CLI -------------------------------------------------------------
@@ -636,8 +635,10 @@ if (Get-Command kimi -ErrorAction SilentlyContinue) {
 
         Install-Instructions (Join-Path $kimiHome "AGENTS.md") "kimi.md"
         $results.Add("[connected] Kimi Code")
-        if ($InstallHooks) { Install-TomlClientHook "Kimi Code" (Get-KimiSettingsPath) "PostToolUse" }
-        if ($RemoveHooks) { Remove-TomlClientHook "Kimi Code" (Get-KimiSettingsPath) }
+        if ($InstallHooks) { Install-KimiHooks }
+        if ($RemoveHooks) { Remove-KimiHooks }
+        if ($InstallHandoff) { Install-KimiHandoff }
+        if ($RemoveHandoff) { Remove-KimiHandoff }
     }
     catch {
         $results.Add("[failed]    Kimi Code ($($_.Exception.Message))")
@@ -646,6 +647,7 @@ if (Get-Command kimi -ErrorAction SilentlyContinue) {
 else {
     $results.Add("[skipped]   Kimi Code (not found on PATH)")
     if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Kimi Code hooks (Kimi Code CLI not found on PATH)") }
+    if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Kimi Code handoff (Kimi Code CLI not found on PATH)") }
 }
 
 # --- Hermes Agent ------------------------------------------------------------
@@ -698,6 +700,21 @@ if ($hermesLauncher) {
         else {
             $results.Add("[failed]    Hermes Agent (skill source missing: $skillSource)")
         }
+
+        if ($InstallHooks) {
+            Install-CaptureHooks -Client "hermes" -Format "hermes-yaml" -SettingsPath $hermesConfig -Events @("post_tool_call", "on_session_end")
+        }
+        if ($RemoveHooks) {
+            Remove-CaptureHooks -Client "Hermes Agent" -Format "hermes-yaml" -SettingsPath $hermesConfig
+        }
+        if ($InstallHandoff) {
+            # Hermes injects only from pre_llm_call; first turn is treated as start (#86).
+            Invoke-HubHookInstall -Format "hermes-yaml" -SettingsPath $hermesConfig -Event "pre_llm_call" -Command (Get-ContextCommandPath) -HookArgs @("--host", "hermes", "--mode", "auto") -Label "Hermes Agent context pre_llm_call" -Timeout 20
+            $results.Add("[consent]   Hermes will prompt once to approve each (event, command) hook. hooks_auto_accept is not set.")
+        }
+        if ($RemoveHandoff) {
+            Remove-ContextHooks -HostName "hermes" -Format "hermes-yaml" -SettingsPath $hermesConfig
+        }
     }
     catch {
         $results.Add("[failed]    Hermes Agent ($($_.Exception.Message))")
@@ -705,6 +722,8 @@ if ($hermesLauncher) {
 }
 else {
     $results.Add("[skipped]   Hermes Agent (not found on PATH)")
+    if ($InstallHooks -or $RemoveHooks) { $results.Add("[skipped]   Hermes Agent hooks (Hermes not found on PATH)") }
+    if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Hermes Agent handoff (Hermes not found on PATH)") }
 }
 
 # --- Summary -----------------------------------------------------------

@@ -26,6 +26,12 @@ Do NOT confuse it with Hermes' native `memory` tool. Hermes' own store is a sepa
 
 ## Retrieval
 
+Hooks inject a bounded `<ai-memory-context>` packet via `pre_llm_call`. If that block is
+already in the conversation, do not call `memory_context` again for the same facts.
+
+If no injected block is present, call `mcp_ai_memory_hub_memory_context` with `cwd` set
+to the current workspace on the first turn.
+
 When the current request could materially benefit from personal history, prior project decisions, durable preferences, people, or recurring constraints:
 
 1. call `mcp_ai_memory_hub_memory_search` with a narrow query

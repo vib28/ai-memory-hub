@@ -298,6 +298,16 @@ class SessionWorker:
                     state=state, host_session_finalized=host_finalized,
                 )
                 result["trigger"] = reason
+                try:
+                    from .categorizer import apply_from_observations
+                    batch = rows[: self._batch_size(rows, reason)]
+                    result["categorized"] = apply_from_observations(
+                        self.manager, batch, write_mode=self.config.write_mode,
+                        writer=self.config.writer,
+                        project=next((str(row.get("project") or "") for row in batch if row.get("project")), None),
+                    )
+                except Exception as cat_exc:  # categorization must not fail the checkpoint
+                    result["categorized"] = [{"status": "error", "reason": str(cat_exc)}]
                 processed.append(result)
             except Exception as exc:  # one broken session must not stop the worker
                 errors.append({"session_id": session_id, "reason": str(exc)})

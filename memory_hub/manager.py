@@ -144,7 +144,7 @@ class MemoryManager:
             return None, (match, score)
         return None, None
 
-    def queue(self, candidate: MemoryCandidate) -> dict:
+    def queue(self, candidate: MemoryCandidate, payload: dict | None = None) -> dict:
         problem = self._validate(candidate)
         if problem:
             return problem
@@ -154,13 +154,13 @@ class MemoryManager:
         if update:
             match, score = update
             candidate.supersedes_id = match["memory_id"]
-            row = self.index.enqueue(candidate.to_dict())
+            row = self.index.enqueue(candidate.to_dict(), payload=payload)
             return {"status": "queued_as_update", "similarity": round(score, 3),
                     "supersedes": match["memory_id"], "proposal": row}
         dup = self.index.pending_duplicate(candidate.text, candidate.subject, candidate.kind)
         if dup:
             return {"status": "already_pending", "proposal": dup}
-        row = self.index.enqueue(candidate.to_dict())
+        row = self.index.enqueue(candidate.to_dict(), payload=payload)
         return {"status": "queued", "proposal": row}
 
     def _session_payload(self, data: dict) -> dict:
@@ -838,13 +838,20 @@ class MemoryManager:
         return self.index.search(query, limit)
 
     def context_prime(self, *, project: str | None = None, query: str | None = None,
-                      limit: int = 5, max_chars: int = 4000) -> dict:
+                      limit: int = 5, max_chars: int = 4000, cwd: str | None = None,
+                      session_id: str | None = None, host: str = "generic") -> dict:
         """Return a bounded, project-scoped session-start context packet.
 
         ``max_chars`` applies to the complete serialized ``{"memories": [...]}``
         payload, not to model tokens or the response metadata around it.
+        When ``project`` is empty, ``cwd`` is resolved via the project resolver (#89).
         """
         project = (project or "").strip()
+        if not project and cwd:
+            from .project_resolver import UNSCOPED, resolve_project
+            identity = resolve_project(cwd, vault=self.vault.root, explicit=None)
+            if identity.project != UNSCOPED:
+                project = identity.project
         query = (query or "").strip()
         search_query = " ".join(part for part in (project, query) if part).strip() or "general"
         project_slug = slugify(project) if project else None
@@ -912,6 +919,24 @@ class MemoryManager:
                 break
             selected.append(item)
         used = packet_size(selected)
+        packet_text = ""
+        packet_ids: list[str] = []
+        injected_by_hook = False
+        try:
+            from .context_packet import build_packet, load_ledger
+            packet = build_packet(
+                self.vault.root, mode="start", host=host or "generic",
+                payload={"cwd": cwd, "project": project or None, "session_id": session_id or "mcp",
+                         "prompt": query, "_catch_up": False},
+                max_chars=max(200, min(int(max_chars), 12000)), record=False,
+            )
+            packet_text = packet.get("text") or ""
+            packet_ids = list(packet.get("memory_ids") or [])
+            if session_id:
+                ledger = load_ledger(self.vault.root, host or "generic", session_id)
+                injected_by_hook = bool(ledger.get("start_sent"))
+        except Exception:
+            packet_text = ""
         return {
             "status": "ok",
             "project": project or None,
@@ -923,6 +948,9 @@ class MemoryManager:
             "candidate_count": len(rows),
             "truncated": len(selected) < len(rows),
             "truncation_reason": truncated_reason,
+            "packet_text": packet_text,
+            "packet_memory_ids": packet_ids,
+            "injected_by_hook": injected_by_hook,
         }
 
     def read(self, path: str) -> str:

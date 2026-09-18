@@ -61,6 +61,8 @@ after changing a setting.
 | MEMORY_WORKER_BATCH_LIMIT | Maximum observations claimed per worker pass | 500 |
 | MEMORY_WORKER_HEALTH | Optional explicit worker-health JSON path | Per-vault default |
 | MEMORY_HANDOFF_MAX_CHARS | Maximum serialized startup evidence packet | 6000 |
+| MEMORY_TURN_MAX_CHARS | Maximum per-prompt delta packet | 1500 |
+| MEMORY_HANDOFF_CATCHUP_SECONDS | SessionStart catch-up budget | 2 |
 | MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS | Exporter polling interval | 30 |
 | MEMORY_GITHUB_EXPORT_CONFIG | Optional GitHub export configuration path | Per-vault user-home default |
 | MEMORY_GITHUB_OUTBOX | Optional GitHub export SQLite outbox path | Per-vault user-home default |
@@ -216,8 +218,12 @@ the vault at `.ai-memory-hub/worker-health.json`, next to `config.json`; configu
 explicit path with `MEMORY_WORKER_HEALTH` if you need a different location. A vault
 upgraded from an older release is still read from the previous user-home
 `.ai-memory-hub/worker-health-<vault-hash>.json` location until the next worker pass
-rewrites it in the vault; the old files can then be deleted. The dashboard's
-worker-health endpoint is the better view when the launcher is already running.
+rewrites it. The dashboard worker-health endpoint is the better view when the launcher is already running.
+
+Project identity for capture and injection is resolved from `cwd` (git root, then
+package markers, then the directory name). Override the slug with
+`<vault>/.ai-memory-hub/projects.json` (`{"C:/absolute/path/to/repo": "canonical-slug"}`)
+or a `.ai-memory-project` file at the repository root. Remote git URLs are never used.
 
 ## Optional vault history
 

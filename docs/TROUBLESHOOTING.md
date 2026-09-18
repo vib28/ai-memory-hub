@@ -168,6 +168,14 @@ $memoryTestBase = Join-Path $env:TEMP ("ai-memory-tests-" + [guid]::NewGuid().To
 
 Record an environment setup error separately from a failing test assertion.
 
+## Leftover worker-health files in the user home directory
+
+Older builds wrote `worker-health-<hash>.json` under `~/.ai-memory-hub/` once per
+pytest temp vault and per real vault. Health now lives at
+`<vault>/.ai-memory-hub/worker-health.json`. Files matching
+`worker-health-*.json` in the home directory are leftover and safe to delete;
+the worker still reads the old path as a one-release fallback.
+
 ## Report a problem
 
 Use synthetic examples, not credentials or real vault contents. Follow the

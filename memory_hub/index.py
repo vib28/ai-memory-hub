@@ -94,6 +94,9 @@ class MemoryIndex:
         if "entity_id" not in columns:
             self.conn.execute("ALTER TABLE pending ADD COLUMN entity_id TEXT")
             self.conn.commit()
+        if "provenance" not in columns:
+            self.conn.execute("ALTER TABLE pending ADD COLUMN provenance TEXT")
+            self.conn.commit()
         try:
             self.conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(memory_id UNINDEXED, text, path, kind, tag, subject)"
@@ -354,11 +357,16 @@ class MemoryIndex:
     def enqueue(self, candidate: dict, payload: dict | None = None) -> dict:
         proposal_id = uuid.uuid4().hex[:12]
         created_at = datetime.now(timezone.utc).isoformat()
+        provenance = None
+        if payload and payload.get("evidence_ids"):
+            provenance = json.dumps(payload.get("evidence_ids"), ensure_ascii=False)
+        elif candidate.get("evidence_ids"):
+            provenance = json.dumps(candidate.get("evidence_ids"), ensure_ascii=False)
         with self.conn:
             self.conn.execute(
                 """INSERT INTO pending
-                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,entity_id,created_at,status,payload)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?)""",
+                   (proposal_id,text,kind,tag,subject,writer,target_path,supersedes_id,entity_id,created_at,status,payload,provenance)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?)""",
                 (
                     proposal_id,
                     candidate["text"],
@@ -371,6 +379,7 @@ class MemoryIndex:
                     candidate.get("entity_id"),
                     created_at,
                     json.dumps(payload, ensure_ascii=False) if payload is not None else None,
+                    provenance,
                 ),
             )
         return self.pending_by_id(proposal_id)

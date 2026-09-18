@@ -11,10 +11,13 @@ from .hooks import (
     install_hook,
     install_claude_hook,
     install_codex_hook,
+    install_hermes_hook,
     install_nested_hook,
     install_toml_hook,
     uninstall_hook,
+    uninstall_claude_hook,
     uninstall_codex_hook,
+    uninstall_hermes_hook,
     uninstall_nested_hook,
     uninstall_toml_hook,
 )
@@ -23,6 +26,19 @@ from .models import MemoryCandidate
 
 def jprint(obj):
     print(json.dumps(obj, indent=2, ensure_ascii=False))
+
+
+def _quote_for_shell(value: str) -> str:
+    """Quote one argv element for a host that runs a single command *string*.
+
+    Gemini/Qwen/Kimi/Hermes/Codex spawn the command through a shell, so a path
+    with spaces (OneDrive folders) must be double-quoted; bare safe tokens stay
+    bare so `--client claude` reads naturally in the user's config.
+    """
+    text = str(value)
+    if text and all(ch.isalnum() or ch in "-_=./:\\" for ch in text):
+        return text
+    return '"' + text.replace('"', '\\"') + '"'
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="AI Memory Hub")
@@ -64,12 +80,15 @@ def build_parser() -> argparse.ArgumentParser:
     hi.add_argument("--event", default="PostToolUse")
     hi.add_argument("--command", dest="hook_command", default="ai-memory-hook")
     hi.add_argument("--arg", action="append", default=[])
-    hi.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
+    hi.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex", "hermes-yaml"),
+                    default="claude")
     hi.add_argument("--matcher", default="*")
+    hi.add_argument("--timeout", type=int, default=None)
     hi.add_argument("--additional-context-limit", type=int)
     hu = sub.add_parser("hooks-uninstall")
     hu.add_argument("--settings", required=True)
-    hu.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex"), default="claude")
+    hu.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex", "hermes-yaml"),
+                    default="claude")
     hu.add_argument("--command", dest="hook_command")
 
     s = sub.add_parser("search")
@@ -111,14 +130,23 @@ def main():
     args = build_parser().parse_args()
     if args.command in {"hooks-install", "hooks-uninstall"}:
         if args.command == "hooks-install":
+            # Nested/TOML/YAML hosts take one command string, not argv; fold --arg
+            # values in so `--client claude` reaches the receiver everywhere (#86).
+            joined = " ".join([_quote_for_shell(args.hook_command), *map(_quote_for_shell, args.arg)])
             if args.format == "nested":
                 jprint(install_nested_hook(args.settings, event=args.event,
-                                           command=args.hook_command, matcher=args.matcher))
+                                           command=joined, matcher=args.matcher))
             elif args.format == "kimi-toml":
-                jprint(install_toml_hook(args.settings, event=args.event, command=args.hook_command))
+                jprint(install_toml_hook(args.settings, event=args.event, command=joined,
+                                         matcher=None if args.matcher in {"*", ""} else args.matcher,
+                                         timeout=args.timeout))
+            elif args.format == "hermes-yaml":
+                jprint(install_hermes_hook(args.settings, event=args.event, command=joined,
+                                           timeout=args.timeout or 20,
+                                           matcher=None if args.matcher in {"*", ""} else args.matcher))
             elif args.format == "codex":
                 jprint(install_codex_hook(args.settings, event=args.event,
-                                          command=args.hook_command, matcher=args.matcher,
+                                          command=joined, matcher=args.matcher,
                                           additional_context_limit=args.additional_context_limit))
             elif args.format == "claude":
                 jprint(install_claude_hook(args.settings, event=args.event,
@@ -128,14 +156,19 @@ def main():
                 jprint(install_hook(args.settings, event=args.event, command=args.hook_command, args=args.arg))
         else:
             hook_format = getattr(args, "format", "claude")
+            command = args.hook_command
             if hook_format == "nested":
-                jprint(uninstall_nested_hook(args.settings))
+                jprint(uninstall_nested_hook(args.settings, command=command))
             elif hook_format == "kimi-toml":
-                jprint(uninstall_toml_hook(args.settings))
+                jprint(uninstall_toml_hook(args.settings, command=command))
+            elif hook_format == "hermes-yaml":
+                jprint(uninstall_hermes_hook(args.settings, command=command))
             elif hook_format == "codex":
-                jprint(uninstall_codex_hook(args.settings, command=args.hook_command))
+                jprint(uninstall_codex_hook(args.settings, command=command))
+            elif hook_format == "claude":
+                jprint(uninstall_claude_hook(args.settings, command=command))
             else:
-                jprint(uninstall_hook(args.settings, command=args.hook_command))
+                jprint(uninstall_hook(args.settings, command=command))
         return
     if not args.vault:
         raise SystemExit("--vault is required for this command")

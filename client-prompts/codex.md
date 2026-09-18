@@ -6,9 +6,15 @@ The Obsidian memory vault behind it is the canonical source of durable user cont
 
 ## Retrieval
 
-At the start of a new session, call `memory_context` with the known project and current
-task when durable context could help. Treat it as a compact orientation packet, not as a
-replacement for targeted `memory_search` or `memory_read`.
+Lifecycle hooks inject a bounded `<ai-memory-context>` (or legacy `<ai-memory-handoff>`)
+packet at session start and, when something new is relevant, on later prompts. If that
+block is already in the conversation, do not call `memory_context` again for the same
+facts.
+
+If no injected block is present (MCP-only clients, or a host without start hooks), call
+`memory_context` with `cwd` set to the current workspace on the first turn. Treat it as
+a compact orientation packet, not as a replacement for targeted `memory_search` or
+`memory_read`.
 
 When the current request could materially benefit from personal history, prior project decisions, durable preferences, people, or recurring constraints:
 

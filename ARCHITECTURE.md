@@ -65,16 +65,16 @@ Public MCP tools ---> MemoryManager
                              keyword / optional vector search
 ~~~
 
-A separate capture path currently stops short of unattended operation:
+The automatic capture path runs without a resident worker or a host-model tool call:
 
 ~~~text
-Client hook -> generic receiver -> observation SQLite
-                                         |
-                              explicit session_consolidate call
-                                         |
-                          local summary or deterministic fallback
-                                         |
-                               session proposal policy
+Client lifecycle hook -> generic receiver -> observation SQLite
+                                              |
+                         detached one-shot worker (session-end / stop / compact)
+                                              |
+                         project resolver -> checkpoint + typed categorizer
+                                              |
+                         SessionStart / per-turn context packet -> host additionalContext
 ~~~
 
 > [!IMPORTANT]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 MANAGED_KEY = "ai_memory_hub_managed"
 TOML_MARKER = "# ai-memory-hub managed hook"
 CODEX_STATUS_MESSAGE = "AI Memory Hub capture"
+CODEX_STATUS_CONTEXT = "AI Memory Hub context"
 
 
 class HookConfigError(RuntimeError):
@@ -82,31 +84,81 @@ def install_hook(settings: Path | str, *, event: str, command: str, args: list[s
     return {"status": "installed" if changed else "already_installed", "settings": str(path), "event": event, "backup": backup}
 
 
+def _claude_managed(handler: Any, command: str | None = None) -> bool:
+    return (isinstance(handler, dict) and handler.get(MANAGED_KEY)
+            and (command is None or handler.get("command") == command))
+
+
 def install_claude_hook(settings: Path | str, *, event: str, command: str,
                         matcher: str = "*", args: list[str] | None = None) -> dict[str, Any]:
-    """Install a Claude nested matcher group without disturbing sibling handlers."""
+    """Install a Claude nested matcher group without disturbing sibling handlers.
+
+    Capture and context are different commands, so one event may own two managed
+    handlers (#86). Matching is by command; unrelated managed handlers stay.
+    """
     path = Path(settings).expanduser().resolve()
     config = _load(path)
     groups = _hook_list(config, event)
     managed = {"type": "command", "command": command, "args": list(args or []), MANAGED_KEY: True}
-    matches = []
-    for index, group in enumerate(groups):
-        if isinstance(group, dict) and any(isinstance(h, dict) and h.get(MANAGED_KEY) for h in group.get("hooks", [])):
-            matches.append(index)
-    if len(matches) > 1:
-        raise HookConfigError("multiple managed Claude hook groups found")
-    desired = {"matcher": matcher, "hooks": [managed]}
-    if matches and groups[matches[0]] == desired:
+    found_group = None
+    found_index = None
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for index, handler in enumerate(group.get("hooks", [])):
+            if _claude_managed(handler, command):
+                found_group, found_index = group, index
+                break
+        if found_group is not None:
+            break
+    if found_group is not None and found_group["hooks"][found_index] == managed:
         return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
     backup = _backup(path) if path.exists() else None
-    if matches:
-        group = groups[matches[0]]
-        siblings = [h for h in group.get("hooks", []) if not (isinstance(h, dict) and h.get(MANAGED_KEY))]
-        group["hooks"] = siblings + [managed]
+    if found_group is not None:
+        found_group["hooks"][found_index] = managed
     else:
-        groups.append(desired)
+        star = next((group for group in groups
+                     if isinstance(group, dict) and group.get("matcher", matcher) == matcher), None)
+        if star is not None:
+            star.setdefault("hooks", []).append(managed)
+        else:
+            groups.append({"matcher": matcher, "hooks": [managed]})
     _write(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+
+def uninstall_claude_hook(settings: Path | str, *, command: str | None = None) -> dict[str, Any]:
+    """Remove nested Claude managed handlers, optionally limited to ``command``."""
+    path = Path(settings).expanduser().resolve()
+    if not path.exists():
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    config = _load(path)
+    hooks = config.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise HookConfigError("settings 'hooks' value must be an object")
+    removed = 0
+    for event, groups in list(hooks.items()):
+        if not isinstance(groups, list):
+            continue
+        kept_groups = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                kept_groups.append(group)
+                continue
+            kept = [handler for handler in group["hooks"] if not _claude_managed(handler, command)]
+            removed += len(group["hooks"]) - len(kept)
+            if kept:
+                group["hooks"] = kept
+                kept_groups.append(group)
+        if kept_groups:
+            hooks[event] = kept_groups
+        else:
+            hooks.pop(event)
+    if not removed:
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    backup = _backup(path)
+    _write(path, config)
+    return {"status": "removed", "settings": str(path), "removed": removed, "backup": backup}
 
 
 def uninstall_hook(settings: Path | str, *, command: str | None = None) -> dict[str, Any]:
@@ -139,7 +191,11 @@ def uninstall_hook(settings: Path | str, *, command: str | None = None) -> dict[
 
 def install_nested_hook(settings: Path | str, *, event: str, command: str,
                         matcher: str = "*") -> dict[str, Any]:
-    """Install a managed Gemini/Qwen-style nested command hook."""
+    """Install a managed Gemini/Qwen-style nested command hook.
+
+    Capture and context are different commands, so one event may own two managed
+    handlers (#86). Matching is by command.
+    """
     path = Path(settings).expanduser().resolve()
     config = _load(path)
     hooks = config.setdefault("hooks", {})
@@ -148,34 +204,42 @@ def install_nested_hook(settings: Path | str, *, event: str, command: str,
     groups = hooks.setdefault(event, [])
     if not isinstance(groups, list):
         raise HookConfigError(f"settings hook event '{event}' must be an array")
-    entry = {"type": "command", "command": command, "name": "ai-memory-hub"}
-    # Gemini/Qwen document the nested group shape; keep the marker in the
-    # documented hook entry instead of adding an unknown group-level field.
-    managed_group = {"matcher": matcher, "hooks": [entry]}
-    matches = [i for i, item in enumerate(groups)
-               if isinstance(item, dict) and any(
-                   isinstance(hook, dict) and hook.get("name") == "ai-memory-hub"
-                   for hook in item.get("hooks", [])
-               )]
-    if len(matches) == 1 and groups[matches[0]] == managed_group:
+    name = "ai-memory-hub-context" if "ai-memory-context" in command or "ai-memory-handoff" in command else "ai-memory-hub"
+    entry = {"type": "command", "command": command, "name": name}
+
+    def ours(hook: Any) -> bool:
+        return (isinstance(hook, dict) and hook.get("command") == command
+                and str(hook.get("name", "")).startswith("ai-memory-hub"))
+
+    found_group = None
+    found_index = None
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for index, hook in enumerate(group.get("hooks", [])):
+            if ours(hook):
+                found_group, found_index = group, index
+                break
+        if found_group is not None:
+            break
+    if found_group is not None and found_group["hooks"][found_index] == entry:
         return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
     backup = _backup(path) if path.exists() else None
-    if matches:
-        existing = groups[matches[0]]
-        siblings = [hook for hook in existing.get("hooks", [])
-                    if not (isinstance(hook, dict) and hook.get("name") == "ai-memory-hub")]
-        existing["hooks"] = siblings + [entry]
-        existing["matcher"] = existing.get("matcher", matcher)
-        for index in reversed(matches[1:]):
-            groups.pop(index)
+    if found_group is not None:
+        found_group["hooks"][found_index] = entry
     else:
-        groups.append(managed_group)
+        star = next((group for group in groups
+                     if isinstance(group, dict) and group.get("matcher", matcher) == matcher), None)
+        if star is not None:
+            star.setdefault("hooks", []).append(entry)
+        else:
+            groups.append({"matcher": matcher, "hooks": [entry]})
     _write(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
-def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
-    """Remove managed Gemini/Qwen-style nested hook groups only."""
+def uninstall_nested_hook(settings: Path | str, *, command: str | None = None) -> dict[str, Any]:
+    """Remove managed Gemini/Qwen-style nested hook handlers."""
     path = Path(settings).expanduser().resolve()
     if not path.exists():
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
@@ -194,7 +258,9 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
                 continue
             handlers = item["hooks"]
             remaining = [hook for hook in handlers if not (
-                isinstance(hook, dict) and hook.get("name") == "ai-memory-hub"
+                isinstance(hook, dict) and str(hook.get("name", "")).startswith("ai-memory-hub")
+                and (command is None or hook.get("command") == command
+                     or str(hook.get("command", "")).startswith(str(command)))
             )]
             removed += len(handlers) - len(remaining)
             if remaining:
@@ -213,7 +279,11 @@ def uninstall_nested_hook(settings: Path | str) -> dict[str, Any]:
 
 def install_codex_hook(settings: Path | str, *, event: str, command: str,
                        matcher: str = "*", additional_context_limit: int | None = None) -> dict[str, Any]:
-    """Install a Codex hook using only documented handler fields."""
+    """Install a Codex hook using only documented handler fields.
+
+    Capture and context are different commands, so one event may own two managed
+    handlers (#86). Matching is by command.
+    """
     path = Path(settings).expanduser().resolve()
     config = _load(path)
     hooks = config.setdefault("hooks", {})
@@ -222,35 +292,39 @@ def install_codex_hook(settings: Path | str, *, event: str, command: str,
     groups = hooks.setdefault(event, [])
     if not isinstance(groups, list):
         raise HookConfigError(f"settings hook event '{event}' must be an array")
-    entry = {"type": "command", "command": command, "statusMessage": CODEX_STATUS_MESSAGE}
+    status = CODEX_STATUS_CONTEXT if additional_context_limit is not None else CODEX_STATUS_MESSAGE
+    entry = {"type": "command", "command": command, "statusMessage": status}
     if additional_context_limit is not None:
         entry["additionalContextLimit"] = max(0, int(additional_context_limit))
-    managed_group = {"matcher": matcher, "hooks": [entry]}
 
-    def is_managed(item: Any) -> bool:
-        return isinstance(item, dict) and any(
-            isinstance(hook, dict)
-            and hook.get("type") == "command"
-            and hook.get("statusMessage") == CODEX_STATUS_MESSAGE
-            for hook in item.get("hooks", [])
-        )
+    def ours(hook: Any) -> bool:
+        return (isinstance(hook, dict) and hook.get("type") == "command"
+                and hook.get("command") == command
+                and str(hook.get("statusMessage", "")).startswith("AI Memory Hub"))
 
-    matches = [index for index, item in enumerate(groups) if is_managed(item)]
-    if len(matches) == 1 and groups[matches[0]] == managed_group:
+    found_group = None
+    found_index = None
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for index, hook in enumerate(group.get("hooks", [])):
+            if ours(hook):
+                found_group, found_index = group, index
+                break
+        if found_group is not None:
+            break
+    if found_group is not None and found_group["hooks"][found_index] == entry:
         return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
-    if len(matches) > 1:
-        raise HookConfigError("multiple managed Codex hook groups found")
     backup = _backup(path) if path.exists() else None
-    if matches:
-        existing = groups[matches[0]]
-        siblings = [hook for hook in existing.get("hooks", []) if not (
-            isinstance(hook, dict) and hook.get("type") == "command"
-            and hook.get("statusMessage") == CODEX_STATUS_MESSAGE
-        )]
-        existing["hooks"] = siblings + [entry]
-        existing["matcher"] = existing.get("matcher", matcher)
+    if found_group is not None:
+        found_group["hooks"][found_index] = entry
     else:
-        groups.append(managed_group)
+        star = next((group for group in groups
+                     if isinstance(group, dict) and group.get("matcher", matcher) == matcher), None)
+        if star is not None:
+            star.setdefault("hooks", []).append(entry)
+        else:
+            groups.append({"matcher": matcher, "hooks": [entry]})
     _write(path, config)
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
@@ -277,7 +351,7 @@ def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any
                 isinstance(handler, dict)
                 and handler.get("type") == "command"
                 and handler.get("command") == command
-                and handler.get("statusMessage") == CODEX_STATUS_MESSAGE
+                and str(handler.get("statusMessage", "")).startswith("AI Memory Hub")
             )]
             removed += len(group["hooks"]) - len(kept_handlers)
             if kept_handlers:
@@ -295,23 +369,40 @@ def uninstall_codex_hook(settings: Path | str, *, command: str) -> dict[str, Any
 
 
 def _toml_managed_ranges(content: str) -> list[tuple[int, int]]:
-    """Return exact managed block ranges without parsing/reformatting TOML."""
+    """Return exact managed block ranges without parsing/reformatting TOML.
+
+    A managed block is the marker line followed by ``[[hooks]]``, ``event = ...``
+    and ``command = ...``, optionally followed by ``matcher = ...`` and/or
+    ``timeout = ...`` lines that this project also owns (#86).
+    """
     lines = content.splitlines(keepends=True)
     ranges: list[tuple[int, int]] = []
     offset = 0
-    for index, line in enumerate(lines):
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         if line.rstrip("\r\n") != TOML_MARKER:
             offset += len(line)
+            index += 1
             continue
         if index + 3 >= len(lines):
             raise HookConfigError("managed Kimi hook marker is incomplete")
         table, event, command = lines[index + 1:index + 4]
         if table.rstrip("\r\n") != "[[hooks]]" or not event.startswith("event = ") or not command.startswith("command = "):
             raise HookConfigError("managed Kimi hook marker has an unexpected TOML shape")
-        end = offset + sum(len(item) for item in lines[index:index + 4])
+        length = 4
+        while index + length < len(lines) and re.match(r"^(matcher|timeout) = ", lines[index + length]):
+            length += 1
+        end = offset + sum(len(item) for item in lines[index:index + length])
         ranges.append((offset, end))
-        offset += len(line)
+        offset = end
+        index += length
     return ranges
+
+
+def _toml_block_event(content: str, block: tuple[int, int]) -> str:
+    match = re.search(r'^event = "(?P<event>[^"]*)"', content[block[0]:block[1]], re.MULTILINE)
+    return match.group("event") if match else ""
 
 
 def _toml_quote(value: str) -> str:
@@ -325,8 +416,14 @@ def _write_text(path: Path, content: str) -> None:
     os.replace(temporary, path)
 
 
-def install_toml_hook(settings: Path | str, *, event: str, command: str) -> dict[str, Any]:
-    """Install a marked Kimi-style TOML hook while preserving source text."""
+def install_toml_hook(settings: Path | str, *, event: str, command: str,
+                      matcher: str | None = None, timeout: int | None = None) -> dict[str, Any]:
+    """Install a marked Kimi-style TOML hook while preserving source text.
+
+    One managed block per *event*: installing a second event appends a second
+    marked block; re-installing the same event replaces only its own block (#86).
+    Kimi's ``[[hooks]]`` accepts exactly ``event``/``matcher``/``command``/``timeout``.
+    """
     path = Path(settings).expanduser().resolve()
     content = path.read_text(encoding="utf-8") if path.exists() else ""
     ranges = _toml_managed_ranges(content)
@@ -334,13 +431,18 @@ def install_toml_hook(settings: Path | str, *, event: str, command: str) -> dict
         f"{TOML_MARKER}\n[[hooks]]\nevent = {_toml_quote(event)}\n"
         f"command = {_toml_quote(command)}\n"
     )
-    if len(ranges) == 1 and content[ranges[0][0]:ranges[0][1]] == desired:
+    if matcher is not None:
+        desired += f"matcher = {_toml_quote(matcher)}\n"
+    if timeout is not None:
+        desired += f"timeout = {max(1, min(int(timeout), 600))}\n"
+    same_event = [block for block in ranges if _toml_block_event(content, block) == event]
+    if len(same_event) > 1:
+        raise HookConfigError(f"multiple managed Kimi hook blocks found for {event}")
+    if same_event and content[same_event[0][0]:same_event[0][1]] == desired:
         return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
-    if len(ranges) > 1:
-        raise HookConfigError("multiple managed Kimi hook blocks found")
     backup = _backup(path) if path.exists() else None
-    if ranges:
-        start, end = ranges[0]
+    if same_event:
+        start, end = same_event[0]
         updated = content[:start] + desired + content[end:]
     else:
         separator = "" if not content else ("" if content.endswith("\n") else "\n")
@@ -351,18 +453,144 @@ def install_toml_hook(settings: Path | str, *, event: str, command: str) -> dict
     return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
 
 
-def uninstall_toml_hook(settings: Path | str) -> dict[str, Any]:
-    """Remove only the marked Kimi-style TOML hook block."""
+def uninstall_toml_hook(settings: Path | str, *, command: str | None = None) -> dict[str, Any]:
+    """Remove the marked Kimi-style TOML hook blocks (all, or only those running ``command``)."""
     path = Path(settings).expanduser().resolve()
     if not path.exists():
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
     content = path.read_text(encoding="utf-8")
     ranges = _toml_managed_ranges(content)
+    if command is not None:
+        quoted = f"command = {_toml_quote(command)}"
+        ranges = [block for block in ranges if quoted in content[block[0]:block[1]]]
     if not ranges:
         return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
-    if len(ranges) > 1:
-        raise HookConfigError("multiple managed Kimi hook blocks found")
-    start, end = ranges[0]
     backup = _backup(path)
-    _write_text(path, content[:start] + content[end:])
-    return {"status": "removed", "settings": str(path), "removed": 1, "backup": backup}
+    for start, end in sorted(ranges, reverse=True):
+        content = content[:start] + content[end:]
+    _write_text(path, content)
+    return {"status": "removed", "settings": str(path), "removed": len(ranges), "backup": backup}
+
+
+# ------------------------------------------------------------------ Hermes YAML
+
+HERMES_MARKER = "# ai-memory-hub managed hook"
+
+
+def _hermes_load(path: Path) -> dict[str, Any]:
+    """Load a Hermes profile config.yaml without a YAML dependency for the write path.
+
+    We need round-tripping that preserves the user's file byte-for-byte outside
+    the managed entries, so the *edit* is textual: the managed entry is a
+    fenced, marker-commented block under ``hooks:``.  Parsing for status uses
+    PyYAML when available and a conservative regex otherwise.
+    """
+    if not path.exists():
+        return {}
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return {}
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - depends on user file
+        raise HookConfigError(f"config.yaml is invalid: {exc}") from exc
+    return value if isinstance(value, dict) else {}
+
+
+_HERMES_BLOCK_RE = re.compile(
+    r"^(?P<indent>[ \t]*)" + re.escape(HERMES_MARKER) + r" event=(?P<event>[a-z_]+)\n"
+    r"(?P=indent)- command: (?P<command>[^\n]*)\n"
+    r"(?:(?P=indent)  [a-z_]+: [^\n]*\n)*",
+    re.MULTILINE,
+)
+
+
+def install_hermes_hook(config_yaml: Path | str, *, event: str, command: str,
+                        timeout: int = 20, matcher: str | None = None) -> dict[str, Any]:
+    """Install a managed shell hook into a Hermes profile ``config.yaml`` (#86).
+
+    Hermes shell hooks live under a top-level ``hooks:`` map keyed by event
+    (``pre_llm_call``, ``on_session_start``, ``post_tool_call``, ...), each a list
+    of ``{command, timeout, matcher}`` entries.  The edit is textual and marker
+    fenced so the rest of the user's YAML is untouched; siblings under the same
+    event are preserved.  The user still has to approve the hook once in Hermes
+    (its consent model) unless ``hooks_auto_accept`` is set -- this installer
+    never sets that flag.
+    """
+    path = Path(config_yaml).expanduser().resolve()
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    entry_lines = [f"  {HERMES_MARKER} event={event}", f"  - command: {json.dumps(command)}",
+                   f"    timeout: {max(1, min(int(timeout), 300))}"]
+    if matcher:
+        entry_lines.append(f"    matcher: {json.dumps(matcher)}")
+    entry = "\n".join(entry_lines) + "\n"
+
+    existing = [m for m in _HERMES_BLOCK_RE.finditer(content) if m.group("event") == event
+                and json.loads(m.group("command").strip()) == command]
+    if len(existing) > 1:
+        raise HookConfigError("multiple managed Hermes hook entries found")
+    if existing:
+        current = content[existing[0].start():existing[0].end()]
+        # Normalise indentation to compare the payload only.
+        if "\n".join(line.strip() for line in current.splitlines()) == \
+                "\n".join(line.strip() for line in entry.splitlines()):
+            return {"status": "already_installed", "settings": str(path), "event": event, "backup": None}
+    backup = _backup(path) if path.exists() else None
+    if existing:
+        updated = content[:existing[0].start()] + entry + content[existing[0].end():]
+        _write_text(path, updated)
+        return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+    lines = content.splitlines(keepends=True)
+    hooks_index = next((i for i, line in enumerate(lines) if re.match(r"^hooks:\s*$", line)), None)
+    if hooks_index is None:
+        separator = "" if not content or content.endswith("\n") else "\n"
+        updated = content + separator + ("\n" if content else "") + "hooks:\n" + f"  {event}:\n" + \
+            "\n".join("  " + line if line.strip() else line for line in entry.splitlines()) + "\n"
+        _write_text(path, updated)
+        return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+    # Find the end of the hooks: mapping (next top-level key or EOF).
+    end = len(lines)
+    for i in range(hooks_index + 1, len(lines)):
+        if lines[i].strip() and not lines[i].startswith((" ", "\t", "#")):
+            end = i
+            break
+    event_index = next((i for i in range(hooks_index + 1, end)
+                        if re.match(rf"^  {re.escape(event)}:\s*$", lines[i])), None)
+    indented_entry = "".join("  " + line if line.strip() else line
+                             for line in entry.splitlines(keepends=True))
+    if event_index is None:
+        insert_at = end
+        block = f"  {event}:\n" + indented_entry
+    else:
+        insert_at = end
+        for i in range(event_index + 1, end):
+            if re.match(r"^  [a-z_]+:\s*$", lines[i]):
+                insert_at = i
+                break
+        block = indented_entry
+    lines[insert_at:insert_at] = [block]
+    _write_text(path, "".join(lines))
+    return {"status": "installed", "settings": str(path), "event": event, "backup": backup}
+
+
+def uninstall_hermes_hook(config_yaml: Path | str, *, command: str | None = None) -> dict[str, Any]:
+    """Remove managed Hermes hook entries (all, or only those running ``command``)."""
+    path = Path(config_yaml).expanduser().resolve()
+    if not path.exists():
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    content = path.read_text(encoding="utf-8")
+    matches = list(_HERMES_BLOCK_RE.finditer(content))
+    if command is not None:
+        matches = [m for m in matches if json.loads(m.group("command").strip()) == command]
+    if not matches:
+        return {"status": "not_found", "settings": str(path), "removed": 0, "backup": None}
+    backup = _backup(path)
+    for match in sorted(matches, key=lambda m: m.start(), reverse=True):
+        content = content[:match.start()] + content[match.end():]
+    # Drop now-empty "  <event>:" headers and an empty "hooks:" map.
+    content = re.sub(r"^  [a-z_]+:\s*\n(?=  [a-z_]+:\s*\n|(?![ \t]))", "", content, flags=re.MULTILINE)
+    content = re.sub(r"^hooks:\s*\n(?![ \t])", "", content, flags=re.MULTILINE)
+    _write_text(path, content)
+    return {"status": "removed", "settings": str(path), "removed": len(matches), "backup": backup}

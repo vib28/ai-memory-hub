@@ -83,7 +83,7 @@ class HookConfigTests(unittest.TestCase):
         ]}}), encoding="utf-8")
         install_nested_hook(self.settings, event="AfterTool", command="new-hook")
         handlers = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["AfterTool"][0]["hooks"]
-        self.assertEqual([item.get("command") for item in handlers], ["user-hook", "new-hook"])
+        self.assertEqual([item.get("command") for item in handlers], ["user-hook", "ai-memory-hub", "new-hook"])
         uninstall_nested_hook(self.settings)
         groups = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["AfterTool"]
         self.assertEqual([item.get("command") for item in groups[0]["hooks"]], ["user-hook"])
@@ -96,7 +96,7 @@ class HookConfigTests(unittest.TestCase):
         groups = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"]
         group = next(group for group in groups if any(item.get("ai_memory_hub_managed") for item in group["hooks"]))
         self.assertEqual(group["matcher"], "*")
-        self.assertEqual([item["command"] for item in group["hooks"]], ["C:/Program Files/hook.exe"])
+        self.assertEqual([item["command"] for item in group["hooks"]], ["user-hook", "C:/Program Files/hook.exe"])
         self.assertTrue(any(item["command"] == "user-hook" for group in groups for item in group["hooks"]))
 
     def test_kimi_toml_hook_preserves_text_and_is_idempotent(self):
@@ -178,9 +178,29 @@ class HookConfigTests(unittest.TestCase):
         config = json.loads(settings.read_text(encoding="utf-8"))
         config["hooks"]["PostToolUse"][0]["hooks"].append({"type": "command", "command": "user-hook"})
         settings.write_text(json.dumps(config), encoding="utf-8")
+        install_codex_hook(settings, event="PostToolUse", command="old-hook")
+        handlers = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"]
+        self.assertEqual([item["command"] for item in handlers], ["old-hook", "user-hook"])
         install_codex_hook(settings, event="PostToolUse", command="new-hook")
         handlers = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"]
-        self.assertEqual([item["command"] for item in handlers], ["user-hook", "new-hook"])
+        self.assertEqual([item["command"] for item in handlers], ["old-hook", "user-hook", "new-hook"])
+
+    def test_claude_capture_and_context_coexist_on_the_same_event(self):
+        install_claude_hook(self.settings, event="UserPromptSubmit", command="hook.exe",
+                            args=["--client", "claude"])
+        install_claude_hook(self.settings, event="UserPromptSubmit", command="context.exe",
+                            args=["--host", "claude", "--mode", "turn"])
+        groups = json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["UserPromptSubmit"]
+        commands = [handler["command"] for group in groups for handler in group["hooks"]]
+        self.assertEqual(commands.count("hook.exe"), 1)
+        self.assertEqual(commands.count("context.exe"), 1)
+        from memory_hub.hooks import uninstall_claude_hook
+        removed = uninstall_claude_hook(self.settings, command="context.exe")
+        self.assertEqual(removed["removed"], 1)
+        leftover = [handler["command"] for group in json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]["UserPromptSubmit"]
+                    for handler in group["hooks"]]
+        self.assertIn("hook.exe", leftover)
+        self.assertNotIn("context.exe", leftover)
 
 
 if __name__ == "__main__":
