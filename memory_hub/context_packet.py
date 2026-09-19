@@ -37,6 +37,7 @@ import logging
 import os
 import re
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -358,9 +359,11 @@ def _read_index_rows(root: Path) -> list[dict[str, Any]]:
     # Cache rows keyed on mtime to avoid re-reading SQLite when the index
     # file hasn't changed between consecutive calls in the same session.
     mtime = path.stat().st_mtime
-    cache = _read_index_rows._cache  # type: ignore[attr-defined]
-    if cache and cache.get("mtime") == mtime and cache.get("root") == root:
-        return cache["rows"]
+    cache_lock = _read_index_rows._cache_lock  # type: ignore[attr-defined]
+    with cache_lock:
+        cache = _read_index_rows._cache  # type: ignore[attr-defined]
+        if cache and cache.get("mtime") == mtime and cache.get("root") == root:
+            return cache["rows"]
 
     try:
         conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
@@ -375,10 +378,12 @@ def _read_index_rows(root: Path) -> list[dict[str, Any]]:
     finally:
         conn.close()
 
-    _read_index_rows._cache = {"mtime": mtime, "root": root, "rows": rows}  # type: ignore[attr-defined]
+    with cache_lock:
+        _read_index_rows._cache = {"mtime": mtime, "root": root, "rows": rows}  # type: ignore[attr-defined]
     return rows
 
 
+_read_index_rows._cache_lock = threading.Lock()  # type: ignore[attr-defined]
 _read_index_rows._cache = None  # type: ignore[attr-defined]
 
 

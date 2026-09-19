@@ -714,12 +714,24 @@ class MemoryManager:
         return result
 
     def _safe_set_status(self, proposal_id: str, status: str) -> None:
-        """Set pending status with compensating action on failure."""
+        """Set pending status with compensating action on failure.
+
+        Uses a bounded retry (max 3 attempts) for the primary write; the
+        compensating action is a best-effort single attempt that must not
+        recurse, so a permanently failing index still returns promptly.
+        """
+        last_exc = None
+        for attempt in range(3):
+            try:
+                self.index.set_pending_status(proposal_id, status)
+                return
+            except Exception as exc:
+                last_exc = exc
+        # Compensating action: best-effort single attempt. Must not recurse.
         try:
-            self.index.set_pending_status(proposal_id, status)
-        except Exception:
-            # Compensating action: mark as failed so it can be retried
             self.index.set_pending_status(proposal_id, "failed")
+        except Exception:
+            pass  # Nothing more we can do; log and move on
 
     def reject(self, proposal_id: str, note: str = "") -> dict:
         row = self.index.pending_by_id(proposal_id)

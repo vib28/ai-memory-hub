@@ -714,7 +714,12 @@ def hook_main(argv: list[str] | None = None) -> int:
             ]
         print(json.dumps(response))
     except Exception as exc:  # Hook failures must not block the calling AI tool.
-        print(json.dumps({"status": "rejected", "count": 0, "reason": str(exc)}))
+        # Sanitize the exception message to avoid leaking internal paths or
+        # implementation details back to the AI tool via stdout.
+        reason = f"{type(exc).__name__}: {exc}"
+        if len(reason) > 200:
+            reason = reason[:200] + "…"
+        print(json.dumps({"status": "rejected", "count": 0, "reason": reason}))
     return 0
 
 
