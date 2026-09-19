@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .app_config import bootstrap_environment
+from .browser_normalize import (
+    is_browser_tool_payload,
+    normalize_browser_tool_payload,
+)
 from .events import (
     ASSISTANT_FIELDS,
     CONSOLIDATION_EVENTS,
@@ -130,6 +134,9 @@ def _sensitive_path(value: str) -> bool:
 
 
 def _sanitize_text(value: Any, excluded_paths: Iterable[str] = ()) -> str:
+    # Normalize browser-tool payloads before any other processing
+    if is_browser_tool_payload(value):
+        return normalize_browser_tool_payload(value)
     text = truncated_text(value, DEFAULT_MAX_TEXT)
     for pattern, _label in SECRET_PATTERNS:
         text = pattern.sub("[redacted sensitive evidence]", text)
