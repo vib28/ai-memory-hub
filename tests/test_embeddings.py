@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from memory_hub.embeddings import LocalEmbeddingProvider, cosine_similarity
 from memory_hub.index import MemoryIndex, embedding_text_for
 from memory_hub.models import MemoryRecord
@@ -92,8 +94,8 @@ class EmbeddingTests(unittest.TestCase):
             index.close()
 
     def test_cosine_similarity(self):
-        self.assertAlmostEqual(cosine_similarity([1, 0], [1, 0]), 1.0)
-        self.assertAlmostEqual(cosine_similarity([1, 0], [0, 1]), 0.0)
+        assert cosine_similarity([1, 0], [1, 0]) == pytest.approx(1.0)
+        assert cosine_similarity([1, 0], [0, 1]) == pytest.approx(0.0)
 
     def test_index_uses_vector_results_and_fts_fallback(self):
         with tempfile.TemporaryDirectory() as temp:

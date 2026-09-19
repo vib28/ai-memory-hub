@@ -62,7 +62,7 @@ def run(vault, port=None, tray=True, open_browser=True):
                 finally:
                     icon.stop()
                 return
-            except Exception as exc:
+            except (AttributeError, ImportError, OSError) as exc:
                 print(f'Tray unavailable ({exc}). Browser dashboard remains running.', flush=True)
         print('Press Ctrl+C in this terminal to stop AI Memory Hub.', flush=True)
         thread.join()

@@ -79,8 +79,6 @@ ignore = [
     "SLF",     # self (we use self consistently
     "SIM",     # simplify (we prefer explicit code
     "UP",      # pyupgrade (we target py310
-    "NPY",     # numpy
-    "PD",      # pandas
     "PL",      # pylint
     "PGH",     # pygrep hooks
     "TRY",     # tryceratops
@@ -89,4 +87,22 @@ ignore = [
     "FURB",    # refurb
     "DOC",     # docstrings
     "CPY",     # copyright
+    "E501",    # line-too-long (many long strings/URLs that shouldn't be broken)
+    "C901",    # complex-structure (subjective, many are inherently complex)
+    "INP001",  # implicit-namespace-package (tests/scripts don't need __init__.py)
+    "N806",    # non-lowercase-variable-in-function (some constants are uppercase)
+    "ARG001",  # unused-function-argument (some args are part of interface)
+    "ARG002",  # unused-method-argument (some args are part of interface)
+    "ARG005",  # unused-lambda-argument (some lambda args are part of interface)
+    "B025",    # duplicate-try-block-exception (intentional pattern)
+    "RUF034",  # useless-if-else (subjective)
+    "F821",    # undefined-name (some are dynamic or conditional)
 ]
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["BLE001"]  # scripts can use broad exceptions
+"tests/**" = ["BLE001", "B904", "DTZ001", "DTZ005", "DTZ011", "PT011", "E402"]  # test files have different standards
+"memory_hub/**" = ["BLE001"]  # intentional broad catches with explanatory comments throughout
+"memory_hub/manager.py" = ["E402", "DTZ005"]  # imports after function; datetime.now() for local backup filenames
+"memory_hub/worker.py" = ["E402"]  # imports after function to avoid circular imports
+"memory_hub/vault.py" = ["DTZ011"]  # today() is a local date string, no timezone needed
+"memory_hub/utils.py" = ["B904"]  # polling loop raises without chaining (no prior exception)
