@@ -4,15 +4,7 @@
 
 The user is building **ai-memory-hub v0.2.1** — a local-first shared memory system for AI tools (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code, Hermes Agent). The project captures session evidence, consolidates it into Markdown memories, and injects relevant context into new sessions via MCP.
 
-The conversation covered:
-- **Ultrareview cycles 1-7** finding and fixing 126+ issues
-- **Rust hot path porting** for tokenization, embeddings, and capture buffer
-- **Browser tool normalization** to fix Hermes payload pollution
-- **Encryption at rest** (AES-256-GCM)
-- **Capability health dashboard** and doctor CLI
-- **Manual hook system** for unsupported clients
-- **Auto-fix system** for vault health issues
-- **Closing all 16 remaining GitHub issues**
+The conversation covered **7 ultrareview cycles** finding and fixing **126+ issues**, **Rust hot path porting** for performance, **browser tool normalization** to fix Hermes payload pollution, **encryption at rest**, **capability health dashboard**, **manual hook system**, **auto-fix system**, and finally **closing all 16 remaining GitHub issues**.
 
 ## User Goals and Reasoning
 
