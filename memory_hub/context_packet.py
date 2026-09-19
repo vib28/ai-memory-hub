@@ -46,8 +46,11 @@ from typing import Any
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
-            atomic_write, file_lock, one_line, read_json, slugify
+from .utils import (
+    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
+    normalize_relative, sanitize_secrets, atomic_write, file_lock,
+    one_line, read_json, slugify,
+)
 
 log = logging.getLogger("ai_memory_hub.context_packet")
 

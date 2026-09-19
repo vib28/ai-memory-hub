@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import MemoryRecord
-from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
-            text_hash
+from .utils import (
+    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
+    normalize_relative, sanitize_secrets, text_hash,
+)
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
 from .vault import session_embedding_chunks
 

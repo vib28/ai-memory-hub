@@ -48,7 +48,7 @@ from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KIND
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import utc_timestamp_naive, utc_timestamp, atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, utc_timestamp, normalize_relative
+from .utils import utc_timestamp_naive, utc_timestamp, atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, normalize_relative
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
                     parse_records, _parse_records_from_content, dump_frontmatter, ensure_metadata,
                     SESSION_RE, SESSION_ID_RE, SESSION_META_RE)

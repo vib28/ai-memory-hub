@@ -23,8 +23,11 @@ from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
 from .transcript import TranscriptStore, transcript_enabled
-from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
-            atomic_write, parse_iso_datetime, read_json
+from .utils import (
+    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
+    normalize_relative, sanitize_secrets, atomic_write, parse_iso_datetime,
+    read_json,
+)
 
 
 FINAL_EVENTS = {"session-end"}

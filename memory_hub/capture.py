@@ -21,8 +21,8 @@ from typing import Any, Iterable
 from .app_config import bootstrap_environment
 from .events import AFTER_AGENT_EVENTS, CONSOLIDATION_EVENTS, FAILURE_EVENTS, HOST_META_FIELDS, PROMPT_EVENTS, PROMPT_FIELDS, ASSISTANT_FIELDS
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
-            is_truthy, to_kebab, truncated_text
+from .utils import (utc_timestamp, utc_timestamp_naive, vault_key, read_json,
+            normalize_relative, sanitize_secrets, is_truthy, to_kebab, truncated_text)
 from .security import SECRET_PATTERNS, check_text
 
 
