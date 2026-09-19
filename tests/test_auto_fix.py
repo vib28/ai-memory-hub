@@ -11,16 +11,11 @@ import threading
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from memory_hub.auto_fix import (
-    _BROWSER_PAYLOAD_RE,
     _build_issue_body,
     _classify_malformed_line,
-    _configured_repo_from_vault,
     _create_github_issue,
-    _delete_malformed_line,
-    _delete_orphan_session_block,
     apply_fix,
     build_issue_title,
     fix_issue,
@@ -28,9 +23,8 @@ from memory_hub.auto_fix import (
     record_issue,
     scan_audit_issues,
 )
-from memory_hub.dashboard import HTML, DashboardHandler
+from memory_hub.dashboard import DashboardHandler
 from memory_hub.manager import MemoryManager
-from memory_hub.models import MemoryCandidate
 
 
 class MalformedLineClassificationTests(unittest.TestCase):
@@ -38,40 +32,40 @@ class MalformedLineClassificationTests(unittest.TestCase):
 
     def test_browser_payload_screenshot(self):
         line = '- [{"text": "Successfully captured screenshot...", "type": "text"}, ...]'
-        self.assertEqual(_classify_malformed_line(line), "browser-payload-leak")
+        assert _classify_malformed_line(line) == "browser-payload-leak"
 
     def test_browser_payload_clicked(self):
         line = '- [{"text": "Clicked at (1178, 39)", "type": "text"}]'
-        self.assertEqual(_classify_malformed_line(line), "browser-payload-leak")
+        assert _classify_malformed_line(line) == "browser-payload-leak"
 
     def test_browser_payload_navigated(self):
         line = '- [{"text": "Navigated to https://example.com", "type": "text"}]'
-        self.assertEqual(_classify_malformed_line(line), "browser-payload-leak")
+        assert _classify_malformed_line(line) == "browser-payload-leak"
 
     def test_browser_payload_selector(self):
         line = '- [{"text": "Found selector #submit-btn", "type": "text"}]'
-        self.assertEqual(_classify_malformed_line(line), "browser-payload-leak")
+        assert _classify_malformed_line(line) == "browser-payload-leak"
 
     def test_browser_payload_executed(self):
         line = '- [{"text": "Successfully executed JavaScript...", "type": "text"}]'
-        self.assertEqual(_classify_malformed_line(line), "browser-payload-leak")
+        assert _classify_malformed_line(line) == "browser-payload-leak"
 
     def test_plain_bracket_entry(self):
         line = '- [{"foo": "bar"}]'
-        self.assertEqual(_classify_malformed_line(line), "malformed-bracket-entry")
+        assert _classify_malformed_line(line) == "malformed-bracket-entry"
 
     def test_malformed_list_entry(self):
         line = '- [something] some text'
-        self.assertEqual(_classify_malformed_line(line), "malformed-list-entry")
+        assert _classify_malformed_line(line) == "malformed-list-entry"
 
     def test_generic_malformed(self):
         line = '- [garbage'
         # Still matches the bracket pattern so it's classified as a list entry
-        self.assertEqual(_classify_malformed_line(line), "malformed-list-entry")
+        assert _classify_malformed_line(line) == "malformed-list-entry"
 
     def test_non_list_generic(self):
         line = 'random text without dash-bracket'
-        self.assertEqual(_classify_malformed_line(line), "malformed-line")
+        assert _classify_malformed_line(line) == "malformed-line"
 
 
 class IssueBodyTests(unittest.TestCase):
@@ -91,7 +85,7 @@ class IssueBodyTests(unittest.TestCase):
         for level in ("## 1. Summary", "## 2. Affected location", "## 3. Evidence",
                        "## 4. Classification", "## 5. Proposed fix",
                        "## 6. Risks / trade-offs", "## 7. References"):
-            self.assertIn(level, body, f"Missing section: {level}")
+            assert level in body, f"Missing section: {level}"
 
     def test_build_issue_body_escapes_code_block(self):
         issue = {
@@ -103,14 +97,14 @@ class IssueBodyTests(unittest.TestCase):
             "heading": "my-session",
         }
         body = _build_issue_body(issue)
-        self.assertIn("orphan-session-block", body)
-        self.assertIn("`/sessions/other.md`", body)
+        assert "orphan-session-block" in body
+        assert "`/sessions/other.md`" in body
 
     def test_build_issue_title(self):
         issue = {"issue_type": "orphan-session-block", "summary": "Test orphan"}
         title = build_issue_title(issue)
-        self.assertTrue(title.startswith("[auto-fix]"))
-        self.assertIn("orphan-session-block", title)
+        assert title.startswith("[auto-fix]")
+        assert "orphan-session-block" in title
 
 
 class ScanAuditIssuesTests(unittest.TestCase):
@@ -153,17 +147,17 @@ class ScanAuditIssuesTests(unittest.TestCase):
         self._inject_malformed_line("/topics/security.md", browser_line)
         issues = scan_audit_issues(self.manager)
         types = [i["issue_type"] for i in issues]
-        self.assertIn("browser-payload-leak", types)
+        assert "browser-payload-leak" in types
         leak = next(i for i in issues if i["issue_type"] == "browser-payload-leak")
-        self.assertTrue(leak["fixable"])
-        self.assertEqual(leak["path"], "/topics/security.md")
+        assert leak["fixable"]
+        assert leak["path"] == "/topics/security.md"
 
     def test_scan_detects_malformed_bracket_entry(self):
         line = '- [{"foo": "bar"}]'
         self._inject_malformed_line("/topics/security.md", line)
         issues = scan_audit_issues(self.manager)
         types = [i["issue_type"] for i in issues]
-        self.assertIn("malformed-bracket-entry", types)
+        assert "malformed-bracket-entry" in types
 
     def test_scan_detects_orphan_session_block(self):
         session_path = self.manager.vault.resolve("/sessions/other.md")
@@ -179,15 +173,15 @@ class ScanAuditIssuesTests(unittest.TestCase):
         self.manager.reindex()
         issues = scan_audit_issues(self.manager)
         types = [i["issue_type"] for i in issues]
-        self.assertIn("orphan-session-block", types)
+        assert "orphan-session-block" in types
         orphan = next(i for i in issues if i["issue_type"] == "orphan-session-block")
-        self.assertTrue(orphan["fixable"])
-        self.assertEqual(orphan["heading"], "orphan-heading-123")
+        assert orphan["fixable"]
+        assert orphan["heading"] == "orphan-heading-123"
 
     def test_healthy_vault_returns_no_issues(self):
         # Fresh vault should have no issues
         issues = scan_audit_issues(self.manager)
-        self.assertEqual(issues, [])
+        assert issues == []
 
 
 class ApplyFixTests(unittest.TestCase):
@@ -237,10 +231,10 @@ class ApplyFixTests(unittest.TestCase):
             "text": browser_line,
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "fixed")
+        assert result["status"] == "fixed"
         # Verify the line was removed
         content = self.manager.vault.read("/topics/security.md")
-        self.assertNotIn("Successfully captured screenshot", content)
+        assert "Successfully captured screenshot" not in content
 
     def test_apply_fix_deletes_orphan_session_block(self):
         session_path = self.manager.vault.resolve("/sessions/other.md")
@@ -262,9 +256,9 @@ class ApplyFixTests(unittest.TestCase):
             "heading": "orphan-test-block",
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "fixed")
+        assert result["status"] == "fixed"
         content = self.manager.vault.read("/sessions/other.md")
-        self.assertNotIn("orphan-test-block", content)
+        assert "orphan-test-block" not in content
 
     def test_apply_fix_duplicate_is_manual(self):
         issue = {
@@ -275,7 +269,7 @@ class ApplyFixTests(unittest.TestCase):
             "memory_id": "abc123",
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "manual")
+        assert result["status"] == "manual"
 
     def test_apply_fix_missing_from_index_reindexes(self):
         # Write a valid entry directly to disk (bypassing the manager)
@@ -294,10 +288,14 @@ class ApplyFixTests(unittest.TestCase):
             "memory_id": "test-manual-123",
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "fixed")
+        assert result["status"] == "fixed"
 
     def test_apply_fix_refuses_well_formed_line(self):
         # A line that looks like a bracket but is well-formed should not be deleted
+        # First create the file since topics/security.md doesn't exist in the template
+        vault_path = self.manager.vault.resolve("/topics/security.md")
+        vault_path.parent.mkdir(parents=True, exist_ok=True)
+        vault_path.write_text("---\ntype: topic\n---\n# Security\n", encoding="utf-8")
         issue = {
             "issue_type": "browser-payload-leak",
             "severity": "warning",
@@ -308,7 +306,7 @@ class ApplyFixTests(unittest.TestCase):
             "text": "type: topic",
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "skipped")
+        assert result["status"] == "skipped"
 
     def test_apply_fix_already_gone(self):
         issue = {
@@ -321,7 +319,7 @@ class ApplyFixTests(unittest.TestCase):
             "text": "- [{garbage]",
         }
         result = apply_fix(self.manager, issue)
-        self.assertEqual(result["status"], "skipped")
+        assert result["status"] == "skipped"
 
 
 class RecordIssueTests(unittest.TestCase):
@@ -351,11 +349,11 @@ class RecordIssueTests(unittest.TestCase):
         github = {"skipped": True, "reason": "test"}
         issue_id = record_issue(self.vault, issue, github)
         target = issues_dir(self.vault) / f"{issue_id}.json"
-        self.assertTrue(target.exists())
+        assert target.exists()
         record = json.loads(target.read_text(encoding="utf-8"))
-        self.assertEqual(record["issue_type"], "browser-payload-leak")
-        self.assertEqual(record["github"]["reason"], "test")
-        self.assertFalse(record["fixed"])
+        assert record["issue_type"] == "browser-payload-leak"
+        assert record["github"]["reason"] == "test"
+        assert not record["fixed"]
 
 
 class GitHubIssueTests(unittest.TestCase):
@@ -365,7 +363,7 @@ class GitHubIssueTests(unittest.TestCase):
         issue = {"issue_type": "browser-payload-leak", "fixable": True,
                  "summary": "test", "vault_path": None}
         result = _create_github_issue(issue)
-        self.assertTrue(result["skipped"])
+        assert result["skipped"]
 
     def test_skips_when_vault_has_no_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -374,10 +372,9 @@ class GitHubIssueTests(unittest.TestCase):
             issue = {"issue_type": "browser-payload-leak", "fixable": True,
                      "summary": "test", "vault_path": str(vault)}
             result = _create_github_issue(issue)
-            self.assertTrue(result["skipped"])
+            assert result["skipped"]
 
     def test_creates_issue_with_mock_client(self):
-        from memory_hub.github_export import ExportError
 
         issue = {
             "issue_type": "browser-payload-leak",
@@ -393,8 +390,8 @@ class GitHubIssueTests(unittest.TestCase):
                 return {"number": 99, "html_url": "https://github.com/owner/repo/issues/99"}
 
         result = _create_github_issue(issue, repo="owner/repo", client_factory=FakeClient)
-        self.assertFalse(result["skipped"])
-        self.assertEqual(result["number"], 99)
+        assert not result["skipped"]
+        assert result["number"] == 99
 
     def test_handles_github_failure(self):
         issue = {
@@ -409,8 +406,8 @@ class GitHubIssueTests(unittest.TestCase):
             raise RuntimeError("gh CLI not found")
 
         result = _create_github_issue(issue, repo="owner/repo", client_factory=failing_factory)
-        self.assertTrue(result["skipped"])
-        self.assertIn("gh CLI not found", result["reason"])
+        assert result["skipped"]
+        assert "gh CLI not found" in result["reason"]
 
 
 class FixIssueEndToEndTests(unittest.TestCase):
@@ -435,6 +432,9 @@ class FixIssueEndToEndTests(unittest.TestCase):
         # Inject a browser payload
         browser_line = '- [{"text": "Clicked at (100, 200)", "type": "text"}]'
         vault_path = self.manager.vault.resolve("/topics/security.md")
+        vault_path.parent.mkdir(parents=True, exist_ok=True)
+        if not vault_path.exists():
+            vault_path.write_text("---\ntype: topic\n---\n# Security\n", encoding="utf-8")
         content = vault_path.read_text(encoding="utf-8")
         lines = content.splitlines()
         lines.insert(2, browser_line)
@@ -456,13 +456,13 @@ class FixIssueEndToEndTests(unittest.TestCase):
             line=leak["line"],
             text=leak["text"],
         )
-        self.assertEqual(result["fix"]["status"], "fixed")
+        assert result["fix"]["status"] == "fixed"
         # Verify the line was removed from disk
         content = self.manager.vault.read("/topics/security.md")
-        self.assertNotIn("Clicked at", content)
+        assert "Clicked at" not in content
         # Verify the issue was recorded
         target = issues_dir(self.vault) / f"{result['issue_id']}.json"
-        self.assertTrue(target.exists())
+        assert target.exists()
 
 
 class DashboardFixEndpointTests(unittest.TestCase):
@@ -517,6 +517,9 @@ class DashboardFixEndpointTests(unittest.TestCase):
         # First inject a malformed line
         browser_line = '- [{"text": "Successfully executed script", "type": "text"}]'
         vault_path = self.manager.vault.resolve("/topics/security.md")
+        vault_path.parent.mkdir(parents=True, exist_ok=True)
+        if not vault_path.exists():
+            vault_path.write_text("---\ntype: topic\n---\n# Security\n", encoding="utf-8")
         content = vault_path.read_text(encoding="utf-8")
         lines = content.splitlines()
         lines.insert(2, browser_line)
@@ -538,18 +541,18 @@ class DashboardFixEndpointTests(unittest.TestCase):
             "text": leak["text"],
         }
         status, body = self._post("/api/fix-issue", headers, payload)
-        self.assertEqual(status, 200)
+        assert status == 200
         result = json.loads(body)
-        self.assertEqual(result["fix"]["status"], "fixed")
-        self.assertIn("issue_id", result)
+        assert result["fix"]["status"] == "fixed"
+        assert "issue_id" in result
 
         # Verify the file was fixed
         content = self.manager.vault.read("/topics/security.md")
-        self.assertNotIn("Successfully executed script", content)
+        assert "Successfully executed script" not in content
 
         # Verify the record was created
         target = issues_dir(self.vault) / f"{result['issue_id']}.json"
-        self.assertTrue(target.exists())
+        assert target.exists()
 
     def test_audit_issues_endpoint(self):
         headers = {
@@ -559,6 +562,9 @@ class DashboardFixEndpointTests(unittest.TestCase):
         # Inject a malformed line
         browser_line = '- [{"text": "Clicked somewhere", "type": "text"}]'
         vault_path = self.manager.vault.resolve("/topics/security.md")
+        vault_path.parent.mkdir(parents=True, exist_ok=True)
+        if not vault_path.exists():
+            vault_path.write_text("---\ntype: topic\n---\n# Security\n", encoding="utf-8")
         content = vault_path.read_text(encoding="utf-8")
         lines = content.splitlines()
         lines.insert(2, browser_line)
@@ -566,11 +572,11 @@ class DashboardFixEndpointTests(unittest.TestCase):
         self.manager.reindex()
 
         status, body = self._get("/api/audit/issues", headers)
-        self.assertEqual(status, 200)
+        assert status == 200
         data = json.loads(body)
-        self.assertIn("issues", data)
+        assert "issues" in data
         types = [i["issue_type"] for i in data["issues"]]
-        self.assertIn("browser-payload-leak", types)
+        assert "browser-payload-leak" in types
 
 
 if __name__ == "__main__":
