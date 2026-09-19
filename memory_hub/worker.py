@@ -433,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--idle-seconds", type=int)
     parser.add_argument("--interval-seconds", type=int)
     parser.add_argument("--once", action="store_true")
-    parser.add_argument("--session", action="append", default=[],
+    parser.add_argument("--session", action="append", default=None,
                         help="Consolidate only this host session (repeatable). Implies --once.")
     parser.add_argument("--project", default=None,
                         help="Consolidate only sessions resolved to this project. Implies --once.")

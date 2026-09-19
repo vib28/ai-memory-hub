@@ -26,13 +26,14 @@ def normalize_text(value: str) -> str:
 def to_kebab(value: Any, limit: int = 80) -> str:
     """Convert a string to kebab-case.
 
-    Inserts hyphens at camelCase boundaries, replaces underscores and spaces
-    with hyphens, collapses multiple hyphens, and lowercases the result.
+    Inserts hyphens at camelCase boundaries, then delegates to slugify
+    for the common normalization (collapse hyphens, strip, lowercase).
     Truncates to ``limit`` chars.
     """
     normalized = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", str(value))
     normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", normalized.replace("_", "-"))
-    normalized = re.sub(r"-+", "-", normalized).strip("-").lower()
+    # Delegate to slugify for collapse/strip/lowercase (single source of truth)
+    normalized = slugify(normalized)
     return normalized[:limit] if normalized else ""
 
 
@@ -266,6 +267,38 @@ def read_json(path: Path, default: Any = None, *, encoding: str = "utf-8") -> An
         return json.loads(path.read_text(encoding=encoding))
     except (OSError, json.JSONDecodeError):
         return default
+
+
+def sanitize_output_text(value: Any, limit: int = 1000, private_path_re=None, secret_patterns=None) -> str:
+    """Sanitize text for output: one-line, redact paths and secrets, validate safety.
+
+    Shared helper for sanitization across github_export and other modules.
+    Consolidates the pattern previously in _safe_text and _sanitize_text.
+    """
+    from .security import check_text
+    text = one_line(value, limit)
+    if private_path_re is not None:
+        text = private_path_re.sub("[private path redacted]", text)
+    if secret_patterns:
+        for pattern, _label in secret_patterns:
+            text = pattern.sub("[redacted sensitive evidence]", text)
+    result = check_text(text)
+    if not result.safe and "sensitive" in result.reason:
+        return "[redacted sensitive evidence]"
+    return text if result.safe else "[redacted sensitive content]"
+
+
+def safe_output_path(value: Any, limit: int = 500, private_path_re=None) -> str:
+    """Sanitize a file path for output: normalize, redact private paths.
+
+    Shared helper for path sanitization across github_export and other modules.
+    Consolidates the pattern previously duplicated as _safe_path in handoff.py
+    and github_export.py.
+    """
+    text = one_line(value, limit).replace("\\", "/")
+    if private_path_re is not None and (not text or private_path_re.match(text) or text.startswith("/")):
+        return "[private path redacted]"
+    return text
 
 
 def sanitize_secrets(text: str, secret_patterns: list) -> str:

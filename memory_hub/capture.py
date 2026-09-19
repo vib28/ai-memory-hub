@@ -500,32 +500,37 @@ class ObservationBuffer:
 
     def claim_for_session(self, session_id: str, *, owner: str,
                           limit: int = 500, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> list[dict[str, Any]]:
-        """Atomically claim one bounded, ordered batch for a worker."""
+        """Atomically claim one bounded, ordered batch for a worker.
+
+        Uses a single atomic UPDATE...RETURNING to avoid the SELECT-then-UPDATE
+        race where two workers could both read the same rows before either
+        claims them. The WHERE status IN ('pending','failed') guard ensures
+        only unclaimed rows are returned; any rows concurrently claimed by
+        another worker are silently skipped.
+        """
         now = datetime.now(timezone.utc)
         lease = (now.timestamp() + max(1, int(lease_seconds)))
         expires = datetime.fromtimestamp(lease, timezone.utc).isoformat()
+        limit_val = max(1, min(int(limit), 5000))
         with self.conn:
-            rows = self.conn.execute(
-                """SELECT observation_id FROM observations
-                   WHERE session_id=? AND status IN ('pending','failed')
-                     AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-                   ORDER BY created_at, observation_id LIMIT ?""",
-                (session_id, now.isoformat(), max(1, min(int(limit), 5000))),
-            ).fetchall()
-            ids = [row[0] for row in rows]
-            if not ids:
-                return []
-            # Single bulk UPDATE ... RETURNING in one round-trip replaces the N
-            # individual UPDATEs that each read-then-write one row (#252).
-            placeholders = ",".join("?" for _ in ids)
+            # Single atomic UPDATE...RETURNING: no separate SELECT, so no race
+            # window where another worker can observe and claim the same rows.
+            # Rows are locked by SQLite's write lock for the duration of the
+            # transaction; concurrent callers block until commit, then see the
+            # updated status and skip those rows.
             claimed_rows = self.conn.execute(
-                f"""UPDATE observations SET status='processing', attempts=attempts+1,
+                """UPDATE observations SET status='processing', attempts=attempts+1,
                        claim_token=?, lease_expires_at=?, last_error=NULL,
                        next_attempt_at=NULL
-                       WHERE observation_id IN ({placeholders})
-                       AND status IN ('pending','failed')
-                       RETURNING *""",
-                (owner, expires, *ids),
+                   WHERE observation_id IN (
+                       SELECT observation_id FROM observations
+                       WHERE session_id=? AND status IN ('pending','failed')
+                         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                       ORDER BY created_at, observation_id LIMIT ?
+                   )
+                   AND status IN ('pending','failed')
+                   RETURNING *""",
+                (owner, expires, session_id, now.isoformat(), limit_val),
             ).fetchall()
             return [self._row(row) for row in claimed_rows]
 

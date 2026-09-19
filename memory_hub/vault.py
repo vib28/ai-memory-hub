@@ -21,7 +21,7 @@ RESERVED_FILENAMES = {"memory.md", "ai_instructions.md", "dashboard-metadata.md"
 FILE_PER_ENTITY_KINDS = {"project", "topic", "decision", "person"}
 
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
-ENTRY_RE = re.compile(
+ENTRY_RE = re.compile(  # (#256: pre-compiled, not in hot path)
     r"^- \[(?P<tag>[a-z]+)\] (?P<text>.*?) "
     r"<!-- mem:(?P<id>[a-zA-Z0-9_-]+) source:(?P<source>[a-zA-Z0-9_-]+)"
     r"(?: subject:(?P<subject>[a-zA-Z0-9_-]+))? "

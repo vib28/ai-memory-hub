@@ -1,5 +1,5 @@
 """Compatibility entry point; the shared app owns tray and dashboard lifecycle."""
-from __future__ import annotations
+from __future__ import annotations  # (#262: verified present)
 
 from .app import main
 

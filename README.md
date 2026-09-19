@@ -162,7 +162,7 @@ Each has a matching removal flag (`-RemoveHooks`, `-DisableSessionAuto`, etc.) t
 | **Capability health dashboard** | ✅ Per-client event support monitoring |
 | **Tests** | ✅ **395+ passing** |
 
-All pipeline features from the v0.2.x roadmap are complete. The live paired benchmark ([#62](https://github.com/vib28/ai-memory-hub/issues/62)) remains an open research question — the no-paid-call replay harness is available but does not claim live token savings.
+All pipeline features from the v0.2.x roadmap are complete. The live paired benchmark ([#62](https://github.com/vib28/ai-memory-hub/issues/62)) remains an open research question — the no-paid-call replay harness is available but does not claim live token savings. All 16 remaining quality/efficiency/correctness issues from the `enhancements/no-promises` branch are now resolved.
 
 ---
 

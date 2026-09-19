@@ -21,7 +21,8 @@ class HookConfigError(RuntimeError):
 
 
 def _backup(path: Path) -> str:
-    stamp = utc_timestamp().replace(":", "").replace("-", "")[:22]
+    # Filesystem-safe UTC timestamp: YYYYMMDDTHHMMSS+0000 (no colons/dashes)
+    stamp = utc_timestamp().replace(":", "").replace("-", "")[:15] + "Z"
     destination = path.with_name(f"{path.name}.bak-{stamp}")
     shutil.copy2(path, destination)
     return str(destination)

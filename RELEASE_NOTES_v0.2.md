@@ -75,6 +75,8 @@ unnecessary work.
 | **Single aggregate backlog query** | Worker claims backlog in one query instead of N+1 |
 | **Shared helpers** | `one_line`, `is_truthy`, `parse_iso_datetime` extracted to `utils.py` — single source, no duplicated definitions |
 | **Stopword filtering** | Expanded `_STOPWORDS` plus `_MIN_CONTENT_TOKEN_LEN` filter and score floor (0.3) so full-trace prompts no longer match unrelated memories |
+| **Incremental packet sizing** | `_fit()` tracks byte length incrementally instead of O(n²) re-serialization |
+| **Atomic batch claiming** | `claim_for_session` uses single `UPDATE...RETURNING` subquery — no race window |
 
 ---
 
@@ -84,7 +86,7 @@ Test coverage, operational visibility, and data integrity improvements.
 
 | Feature | What it does |
 | --- | --- |
-| **343 tests** | Cover memory, capture, worker, handoff, hooks, sessions, dashboard, patterns, security, embeddings, GitHub export, benchmarks, and pipeline end-to-end |
+| **395+ tests** | Cover memory, capture, worker, handoff, hooks, sessions, dashboard, patterns, security, embeddings, GitHub export, benchmarks, and pipeline end-to-end |
 | **Test isolation** | `tests/conftest.py` scrubs `MEMORY_*`/`AI_MEMORY_*` env vars and redirects `HOME` per test; scratch vaults never litter `~/.ai-memory-hub` |
 | **Worker health in vault** | Health file defaults to `<vault>/.ai-memory-hub/worker-health.json` next to `config.json` |
 | **Session manifest as single source** | `MemoryManager.session_transcript_target()` is the sole resolver for transcript path/project/summary-links |
@@ -95,6 +97,8 @@ Test coverage, operational visibility, and data integrity improvements.
 | **Degraded run recovery** | A failing run preserves `last_success_at` so "failing for a minute" is distinguishable from "never succeeded" |
 | **Codex hook uninstall** | Uninstall now removes a handler alone in its group, matching what `install_codex_hook` creates |
 | **Dashboard port/host single source** | `MEMORY_DASHBOARD_PORT`/`MEMORY_DASHBOARD_HOST` used by `app.py`, `dashboard.py`, and all three `start-*.ps1` launchers |
+| **Thread-safe caches** | `_covers_cache`, `_entity_registry_cache`, and `_state` all protected by dedicated locks |
+| **Specific exception handling** | All broad `except Exception` clauses narrowed to domain-specific exception types |
 
 ---
 

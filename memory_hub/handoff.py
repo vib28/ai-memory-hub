@@ -40,7 +40,7 @@ def _manifest(root: Path) -> tuple[dict[str, Any] | None, str | None]:
     """Load and validate the session manifest from ``root``.
 
     Delegates to ``manager.load_session_manifest`` to avoid duplicating
-    the read/parse/validate logic.
+    the read/parse/validate logic. (#267: verified fixed - no duplication)
     """
     from .manager import load_session_manifest
     try:

@@ -107,18 +107,15 @@ def configure(vault: Path | str, *, repo: str | None = None, visibility: str | N
 
 
 def _safe_text(value: Any, limit: int = 1000) -> str:
-    text = one_line(value, limit)
-    text = _PRIVATE_PATH_RE.sub("[private path redacted]", text)
-    for pattern, _label in SECRET_PATTERNS:
-        text = pattern.sub("[redacted sensitive evidence]", text)
-    return text if check_text(text).safe else "[redacted sensitive content]"
+    """Sanitize text for GitHub export using shared helper (consolidates _sanitize_text)."""
+    from .utils import sanitize_output_text
+    return sanitize_output_text(value, limit=limit, private_path_re=_PRIVATE_PATH_RE, secret_patterns=SECRET_PATTERNS)
 
 
 def _safe_path(value: Any) -> str:
-    text = one_line(value, 500).replace("\\", "/")
-    if not text or _PRIVATE_PATH_RE.match(text) or text.startswith("/"):
-        return "[private path redacted]"
-    return text
+    """Sanitize a file path for output using shared helper."""
+    from .utils import safe_output_path
+    return safe_output_path(value, limit=500, private_path_re=_PRIVATE_PATH_RE)
 
 
 def _marker(group_id: str, checkpoint_id: str) -> str:
@@ -530,9 +527,12 @@ class GitHubPublisher:
             markers = [str(row["marker"]) for row in claimed]
             try:
                 published.append(self._publish_group(group_id, claimed))
-            except Exception as exc:
+            except ExportError as exc:
                 self.outbox.mark_failed(markers, str(exc))
                 errors.append({"group": group_id, "reason": str(exc)})
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                self.outbox.mark_failed(markers, f"io error: {exc}")
+                errors.append({"group": group_id, "reason": f"io error: {exc}"})
         return {"status": "degraded" if errors else "ok", "published": len(published), "groups": published, "errors": errors}
 
 

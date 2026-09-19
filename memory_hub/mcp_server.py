@@ -79,6 +79,7 @@ HISTORY_ENABLED = None
 
 _state = SimpleNamespace(initialized=False, manager=None)
 _init_lock = threading.Lock()
+_state_lock = threading.Lock()
 
 
 def _ensure_init() -> None:
@@ -93,26 +94,25 @@ def _ensure_init() -> None:
     with _init_lock:
         if _state.initialized:
             return
+        bootstrap_environment(VAULT)
+
+        # After bootstrap_environment seeds os.environ from config.json, read the
+        # effective values.  bootstrap_environment uses setdefault semantics, so a
+        # real env var still wins over the file.  Skip any value a test has already
+        # patched in so the patch survives.
+        global WRITER, WRITE_MODE, HISTORY_ENABLED
+        if WRITER is None:
+            WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
+        if WRITE_MODE is None:
+            mode = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
+            if mode not in {"auto", "review"}:
+                mode = "auto"
+            WRITE_MODE = mode
+        if HISTORY_ENABLED is None:
+            HISTORY_ENABLED = is_truthy(os.environ.get("MEMORY_VAULT_HISTORY", "false"))
+
+        _state.manager = MemoryManager(VAULT)
         _state.initialized = True
-
-    bootstrap_environment(VAULT)
-
-    # After bootstrap_environment seeds os.environ from config.json, read the
-    # effective values.  bootstrap_environment uses setdefault semantics, so a
-    # real env var still wins over the file.  Skip any value a test has already
-    # patched in so the patch survives.
-    global WRITER, WRITE_MODE, HISTORY_ENABLED
-    if WRITER is None:
-        WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
-    if WRITE_MODE is None:
-        mode = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
-        if mode not in {"auto", "review"}:
-            mode = "auto"
-        WRITE_MODE = mode
-    if HISTORY_ENABLED is None:
-        HISTORY_ENABLED = is_truthy(os.environ.get("MEMORY_VAULT_HISTORY", "false"))
-
-    _state.manager = MemoryManager(VAULT)
 
 
 def __getattr__(name: str):

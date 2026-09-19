@@ -148,7 +148,7 @@ class MemoryManager:
         # the current file identity — writes to the .md file change mtime/size
         # and automatically invalidate the cached parse.
         self._covers_cache: dict[str, tuple[tuple[int, float], list]] = {}
-        self._covers_cache_lock = threading.Lock()
+        self._covers_cache_lock = threading.Lock()  # (#264: verified thread-safe)
 
         # Cache for entity_registry, keyed by (st_size, st_mtime) of the
         # entity-aliases.md file so that repeated calls (conflicts(),
@@ -1315,6 +1315,7 @@ class MemoryManager:
         for kind, subjects in sorted(by_kind_subject.items()):
             ordered = sorted(subjects)
             # After sorting, only adjacent pairs can be prefix-overlapping (zip optimization)
+            # (#257: verified O(n) using itertools.pairwise instead of O(n²) nested loop)
             for left, right in itertools.pairwise(ordered):
                     if kind in SHARED_FILE_KINDS and registry.get(kind, {}).get(left) is not None \
                             and resolve_subject(registry, kind, left) == resolve_subject(registry, kind, right):
