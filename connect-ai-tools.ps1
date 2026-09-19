@@ -45,13 +45,33 @@
 .PARAMETER RemoveHandoff
     Remove only the SessionStart handoff entry owned by this project.
 
+.PARAMETER InstallManualHook
+    Install a generic capture hook for an unsupported MCP client. The client name
+    is required and must be a single word (e.g., "opencode", "continue", "zed").
+    This registers the standard ai-memory-hook PostToolUse receiver in the
+    client's settings file at the specified path. Use with -ManualHookSettings
+    to specify the settings file path. Mutually exclusive with -RemoveManualHook.
+
+.PARAMETER RemoveManualHook
+    Remove the generic capture hook entry installed by -InstallManualHook for
+    the specified client name. Mutually exclusive with -InstallManualHook.
+
+.PARAMETER ManualHookSettings
+    Absolute path to the client's settings file (JSON format). Required when
+    using -InstallManualHook or -RemoveManualHook.
+
+.PARAMETER ManualHookEvent
+    The lifecycle event to hook into (default: PostToolUse). Common options
+    include PostToolUse, PreToolUse, SessionStart, Stop. Consult your client's
+    documentation for supported events.
+
+.PARAMETER DisableGitHubExport
+    Disable the owned GitHub export configuration and startup entry.
+
 .PARAMETER EnableGitHubExport
     Approve one sanitized GitHub destination/visibility and register the local
     outbox publisher in Windows startup. This is separate from memory write mode,
     capture hooks and session-auto.
-
-.PARAMETER DisableGitHubExport
-    Disable the owned GitHub export configuration and startup entry.
 
 .PARAMETER GitHubRepo
     GitHub owner/name approved by -EnableGitHubExport.
@@ -77,6 +97,12 @@
 
 .EXAMPLE
     .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -RemoveHooks
+
+.EXAMPLE
+    .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -InstallManualHook opencode -ManualHookSettings "C:\Users\YOU\.opencode\settings.json"
+
+.EXAMPLE
+    .\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" -RemoveManualHook opencode -ManualHookSettings "C:\Users\YOU\.opencode\settings.json"
 #>
 
 param(
@@ -106,15 +132,35 @@ param(
 
     [switch]$EnableSessionAuto,
 
-    [switch]$DisableSessionAuto
+    [switch]$DisableSessionAuto,
+
+    [Parameter(ParameterSetName = "InstallManual")]
+    [ValidatePattern('^[a-zA-Z0-9_-]+$')]
+    [string]$InstallManualHook,
+
+    [Parameter(ParameterSetName = "RemoveManual")]
+    [ValidatePattern('^[a-zA-Z0-9_-]+$')]
+    [string]$RemoveManualHook,
+
+    [Parameter(ParameterSetName = "InstallManual")]
+    [Parameter(ParameterSetName = "RemoveManual")]
+    [string]$ManualHookSettings,
+
+    [Parameter(ParameterSetName = "InstallManual")]
+    [ValidateSet("PreToolUse", "PostToolUse", "PostToolUseFailure", "SessionStart", "Stop", "SessionEnd")]
+    [string]$ManualHookEvent = "PostToolUse"
 )
 
 if (($InstallHooks -and $RemoveHooks) -or ($InstallHandoff -and $RemoveHandoff) -or
-    ($EnableSessionAuto -and $DisableSessionAuto) -or ($EnableGitHubExport -and $DisableGitHubExport)) {
+    ($EnableSessionAuto -and $DisableSessionAuto) -or ($EnableGitHubExport -and $DisableGitHubExport) -or
+    ($InstallManualHook -and $RemoveManualHook)) {
     throw "Install/remove switches are mutually exclusive; pass at most one of each pair."
 }
 if ($EnableGitHubExport -and [string]::IsNullOrWhiteSpace($GitHubRepo)) {
     throw "-GitHubRepo owner/name is required with -EnableGitHubExport."
+}
+if (($InstallManualHook -or $RemoveManualHook) -and [string]::IsNullOrWhiteSpace($ManualHookSettings)) {
+    throw "-ManualHookSettings is required when using -InstallManualHook or -RemoveManualHook."
 }
 
 $ErrorActionPreference = "Stop"
@@ -765,6 +811,20 @@ else {
     if ($InstallHandoff -or $RemoveHandoff) { $results.Add("[skipped]   Hermes Agent handoff (Hermes not found on PATH)") }
 }
 
+# --- Manual Hook (generic/unsupported clients) ----------------------------
+if ($InstallManualHook -or $RemoveManualHook) {
+    $manualHookName = if ($InstallManualHook) { $InstallManualHook } else { $RemoveManualHook }
+    $hookExe = Get-HookCommandPath
+    if ($InstallManualHook) {
+        Invoke-HubHookInstall -Format "claude" -SettingsPath $ManualHookSettings -Event $ManualHookEvent -Command $hookExe -HookArgs @("--client", $manualHookName) -Label "$manualHookName manual hook $ManualHookEvent"
+        $results.Add("[manual]    $manualHookName hook installed at $ManualHookSettings ($ManualHookEvent)")
+    }
+    else {
+        Invoke-HubHookUninstall -Format "claude" -SettingsPath $ManualHookSettings -Command $hookExe -Label "$manualHookName manual hook removal"
+        $results.Add("[manual]    $manualHookName hook removed from $ManualHookSettings")
+    }
+}
+
 # --- Summary -----------------------------------------------------------
 Write-Host ""
 Write-Host "AI Memory Hub connection summary"
@@ -777,7 +837,10 @@ Write-Host ""
 Write-Host "ChatGPT (desktop app): run .\connect-chatgpt-tunnel.ps1 separately."
 Write-Host "It needs one-time OpenAI account setup; see README.md."
 Write-Host "Any other MCP-capable tool without a CLI must be connected manually."
-Write-Host "See client-prompts/ and README.md."
+Write-Host "See client-prompts/ and templates/."
+Write-Host ""
+Write-Host "Manual hooks: use -InstallManualHook <name> -ManualHookSettings <path.json>"
+Write-Host "See templates/manual-hook-config.md for the generic template."
 Write-Host ""
 Write-Host "IMPORTANT: each tool reads its MCP server list once, at session start."
 Write-Host "If you already had a Claude Code / Gemini CLI / Qwen Code / Codex CLI /"

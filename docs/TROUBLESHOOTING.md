@@ -18,6 +18,7 @@
 | Dashboard won't open or port error | [Dashboard won't open](#dashboard-wont-open) |
 | "file is not a database" or corrupt index | [Database won't open](#database-wont-open) |
 | Hooks installed but no sessions saved | [Hooks are installed but no session is saved](#hooks-are-installed-but-no-session-is-saved) |
+| Client hook not firing (unsupported client) | [Manual hook is not firing](#manual-hook-is-not-firing) |
 | Transcript is missing or incomplete | [Transcript is missing or incomplete](#transcript-is-missing-or-incomplete) |
 | Startup handoff is empty or wrong project | [Startup handoff is empty or ambiguous](#startup-handoff-is-empty-or-ambiguous) |
 | GitHub export is queued or failing | [GitHub export is queued or unhealthy](#github-export-is-queued-or-unhealthy) |
@@ -216,6 +217,56 @@ in `review` mode the proposal waits in the dashboard queue.
 > **Don't** repeatedly reinstall hooks into personal settings. CLI help output
 > or valid JSON alone doesn't prove event delivery. See
 > [Client connections](CLIENTS.md) for the tested version matrix.
+
+---
+
+## Manual hook is not firing
+
+**Symptom:** You used `-InstallManualHook <name>` but the hook never fires when
+the client runs a tool, or it fires but nothing is captured.
+
+**Check in this order:**
+
+1. **Does the client actually run the hook?**
+   Open the settings file specified by `-ManualHookSettings` and confirm the
+   entry is there with the correct command path. Not all clients pass stdin
+   JSON correctly — test with a simple wrapper script first:
+
+   ```powershell
+   @'
+   $input | Out-File -Encoding UTF8 "$env:TEMP\hook-test.log"
+   '@ | Set-Content "$env:TEMP\hook-wrapper.ps1"
+   ```
+
+   Point the hook at this wrapper, trigger a tool call, and check the log.
+
+2. **Is `ai-memory-hook` on the path the client sees?**
+   The script uses the venv's copy directly, but some clients spawn hooks in a
+   stripped environment. If the client can't find the binary, use the full
+   path to `ai-memory-hook.exe` in the venv's `Scripts` directory.
+
+3. **Is the worker running?**
+   The hook only writes to the observation buffer — the worker must be running
+   to process it. Run with `-EnableSessionAuto` or start the worker manually:
+
+   ```powershell
+   .\start-worker.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory"
+   ```
+
+4. **Wrong event name?**
+   The default is `PostToolUse`. If your client uses a different event name
+   (e.g., `afterToolUse`, `tool_call_complete`), pass it with `-ManualHookEvent`.
+   Check your client's documentation for the exact event names it supports.
+
+5. **Settings file format mismatch?**
+   The `-InstallManualHook` flag uses the `claude` format (nested matcher groups).
+   If your client expects a flat array instead, you may need to edit the
+   settings file manually. See [templates/manual-hook-config.md](../templates/manual-hook-config.md)
+   for the generic JSON shape.
+
+6. **Backup files accumulating?**
+   The script creates `.bak-*` files on every write. These are safe to delete
+   after confirming the current settings are correct.
 
 ---
 

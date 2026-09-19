@@ -50,6 +50,39 @@ flowchart LR
 |----------|---------|-------------|
 | `AI_MEMORY_VAULT` | `memory-vault/` under working directory | Absolute path to the vault directory |
 | `MEMORY_WRITER` | `claude` | Provenance tag for writes. Options: `chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `hermes`, `user`, `other` |
+| `VAULT_ENCRYPTION_KEY` | *(unset)* | Base64-encoded 32-byte AES-256-GCM key. When set, all vault files are encrypted at rest with `.enc` extensions. Back up this key — losing it means losing your vault data. |
+
+### Encryption at Rest
+
+When `VAULT_ENCRYPTION_KEY` is set (via environment variable or in `config.json`), all vault memory files are transparently encrypted at rest using AES-256-GCM. Files are written with a `.enc` extension alongside their plaintext name (e.g., `topics/ai.md` becomes `topics/ai.md.enc`).
+
+**Key format:** a base64-encoded 32-byte (256-bit) random key.
+
+```powershell
+# Generate a fresh key (print to stdout, save it somewhere secure)
+.venv\Scripts\python.exe -m memory_hub.cli vault-key
+
+# Set the key in the environment
+$env:VAULT_ENCRYPTION_KEY = "your-base64-key-here"
+
+# Encrypt all existing .md files (writes .enc companions)
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault vault-encrypt
+
+# Check status: how many files are encrypted vs plaintext
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault vault-status
+
+# To decrypt everything back to plaintext (requires the same key)
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault vault-decrypt
+```
+
+**Migration workflow:**
+1. Generate a key with `vault-key` and store it securely (password manager).
+2. Export it as `VAULT_ENCRYPTION_KEY` in your shell/MCP config.
+3. Run `vault-encrypt` to create `.enc` companions for all existing `.md` files.
+4. Manually delete the plaintext `.md` files once you've verified decryption works (use `vault-decrypt --key ...` on a copy of the vault to test).
+5. Restart your MCP server / worker / dashboard — all read/write paths now transparently decrypt/encrypt.
+
+**On-disk format:** encrypted files start with the 8-byte magic header `AMHENC\x00\x01`, followed by a 12-byte random nonce, then the AES-256-GCM ciphertext (which includes the 16-byte authentication tag). Each file uses a unique random nonce.
 
 ### Write Mode & History
 

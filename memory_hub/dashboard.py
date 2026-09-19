@@ -221,9 +221,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(self.manager.conflicts())
             if u.path == "/api/audit":
                 return self._json(self.manager.audit())
-            if u.path == "/api/worker-health":
-                from .worker import read_health
-                return self._json(read_health(self.manager.vault.root))
+            if u.path == "/api/capabilities":
+                from .capabilities import gather_capabilities
+                return self._json(gather_capabilities(self.manager.vault.root))
             if u.path == "/api/config":
                 return self._json({"groups": GROUPS, "settings": effective_config(self.manager.vault.root)})
             return self._json({"error": "not found"}, 404)

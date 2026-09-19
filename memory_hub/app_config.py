@@ -106,6 +106,8 @@ SETTINGS_SCHEMA: list[dict[str, Any]] = [
     {"key": "MEMORY_GITHUB_EXPORT_CONFIG", "group": "github", "label": "Export config path", "type": "text", "default": ""},
     {"key": "MEMORY_GITHUB_OUTBOX", "group": "github", "label": "Outbox database path", "type": "text", "default": ""},
     {"key": "MEMORY_GITHUB_HEALTH", "group": "github", "label": "Exporter health JSON path", "type": "text", "default": ""},
+    {"key": "VAULT_ENCRYPTION_KEY", "group": "identity", "label": "Vault encryption key (base64 32-byte key)", "type": "password", "default": "",
+     "description": "When set, all vault files are encrypted at rest with AES-256-GCM. Set via environment variable, or store in config.json. Back up this key — losing it means losing your vault data."},
 ]
 
 _BY_KEY = {entry["key"]: entry for entry in SETTINGS_SCHEMA}

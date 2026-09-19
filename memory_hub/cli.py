@@ -24,22 +24,131 @@ from .hooks import (
 )
 from .manager import MemoryManager
 from .models import MemoryCandidate
+from .security import (
+    VaultEncryption,
+    VaultEncryptionError,
+    generate_encryption_key,
+    get_vault_encryption,
+)
+
+
+def cmd_vault_key(args):
+    """Generate and print a fresh 256-bit encryption key."""
+    print(generate_encryption_key())
+
+
+def cmd_vault_encrypt(args):
+    """Encrypt every *.md file in the vault (writes *.md.enc companions)."""
+    import sys
+    vault = Path(args.vault).expanduser().resolve()
+    enc = get_vault_encryption(vault)
+    if args.key:
+        enc = VaultEncryption(args.key)
+    if not enc.enabled:
+        raise SystemExit("no key: pass --key or set VAULT_ENCRYPTION_KEY")
+
+    changed = 0
+    skipped = 0
+    for md in sorted(vault.rglob("*.md")):
+        if ".obsidian" in md.parts:
+            continue
+        enc_path = md.with_suffix(md.suffix + ".enc")
+        if enc_path.exists():
+            skipped += 1
+            continue
+        try:
+            content = md.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"  skip {md}: {exc}", file=sys.stderr)
+            continue
+        from .security import encrypt_data
+        enc_path.write_bytes(encrypt_data(content, enc._key))
+        changed += 1
+    jprint({"encrypted": changed, "skipped_already_encrypted": skipped})
+
+
+def cmd_vault_decrypt(args):
+    """Decrypt every *.md.enc file back to plaintext *.md."""
+    import sys
+    vault = Path(args.vault).expanduser().resolve()
+    enc = get_vault_encryption(vault)
+    if args.key:
+        enc = VaultEncryption(args.key)
+    if not enc.enabled:
+        raise SystemExit("no key: pass --key or set VAULT_ENCRYPTION_KEY")
+
+    from .security import decrypt_data
+
+    changed = 0
+    skipped = 0
+    for enc_path in sorted(vault.rglob("*.md.enc")):
+        if ".obsidian" in enc_path.parts:
+            continue
+        md = enc_path.with_suffix("")  # strip .enc
+        try:
+            blob = enc_path.read_bytes()
+            plaintext = decrypt_data(blob, enc._key).decode("utf-8")
+        except (OSError, VaultEncryptionError) as exc:
+            print(f"  skip {enc_path}: {exc}", file=sys.stderr)
+            skipped += 1
+            continue
+        md.write_text(plaintext, encoding="utf-8")
+        changed += 1
+    jprint({"decrypted": changed, "skipped_errors": skipped})
+
+
+def cmd_vault_status(args):
+    """Show how many .enc companions exist vs plaintext-only files."""
+    vault = Path(args.vault).expanduser().resolve()
+    encrypted = 0
+    plaintext_only = 0
+    for md in sorted(vault.rglob("*.md")):
+        if ".obsidian" in md.parts:
+            continue
+        if md.with_suffix(md.suffix + ".enc").exists():
+            encrypted += 1
+        else:
+            plaintext_only += 1
+    jprint({"encrypted": encrypted, "plaintext_only": plaintext_only})
+
+# ---------------------------------------------------------------------------
+# Doctor / capabilities imports (lazy to keep CLI startup fast)
+# ---------------------------------------------------------------------------
+_CAPABILITIES_IMPORTS = None
+
+
+def _capabilities():
+    global _CAPABILITIES_IMPORTS
+    if _CAPABILITIES_IMPORTS is None:
+        from .capabilities import (
+            ALL_EVENTS,
+            EVENT_LABELS,
+            CLIENT_PROFILES,
+            check_encryption_status,
+            check_mcp_connectivity,
+            gather_capabilities,
+        )
+        _CAPABILITIES_IMPORTS = {
+            "ALL_EVENTS": ALL_EVENTS,
+            "EVENT_LABELS": EVENT_LABELS,
+            "CLIENT_PROFILES": CLIENT_PROFILES,
+            "check_encryption_status": check_encryption_status,
+            "check_mcp_connectivity": check_mcp_connectivity,
+            "gather_capabilities": gather_capabilities,
+        }
+    return _CAPABILITIES_IMPORTS
+
 
 def jprint(obj):
     print(json.dumps(obj, indent=2, ensure_ascii=False))
 
 
 def _quote_for_shell(value: str) -> str:
-    """Quote one argv element for a host that runs a single command *string*.
-
-    Gemini/Qwen/Kimi/Hermes/Codex spawn the command through a shell, so a path
-    with spaces (OneDrive folders) must be double-quoted; bare safe tokens stay
-    bare so `--client claude` reads naturally in the user's config.
-    """
     text = str(value)
     if text and all(ch.isalnum() or ch in "-_=./:\\" for ch in text):
         return text
     return '"' + text.replace('"', '\\"') + '"'
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="AI Memory Hub")
@@ -92,6 +201,26 @@ def build_parser() -> argparse.ArgumentParser:
                     default="claude")
     hu.add_argument("--command", dest="hook_command")
 
+    # --- doctor subcommand ---
+    dr = sub.add_parser("doctor", help="Diagnose hub and client health")
+    dr.add_argument("--clients", action="store_true",
+                    help="Report per-client capability health")
+    dr.add_argument("--json", action="store_true",
+                    help="Output raw JSON instead of a formatted report")
+    dr.add_argument("--vault", default=None,
+                    help="Vault path (defaults to AI_MEMORY_VAULT)")
+
+    # --- vault encryption subcommands ---
+    sub.add_parser("vault-key", help="Generate a new random 256-bit encryption key")
+
+    ve = sub.add_parser("vault-encrypt", help="Encrypt all *.md files in the vault")
+    ve.add_argument("--key", help="Base64 32-byte key (default: VAULT_ENCRYPTION_KEY env var)")
+
+    vd = sub.add_parser("vault-decrypt", help="Decrypt all *.md.enc files back to plaintext")
+    vd.add_argument("--key", help="Base64 32-byte key (default: VAULT_ENCRYPTION_KEY env var)")
+
+    sub.add_parser("vault-status", help="Count encrypted vs plaintext files")
+
     s = sub.add_parser("search")
     s.add_argument("query")
     s.add_argument("--limit", type=int, default=10)
@@ -127,12 +256,106 @@ def build_parser() -> argparse.ArgumentParser:
 
     return p
 
+
+def _doctor_report(args) -> dict:
+    cap = _capabilities()
+    vault = args.vault or "."
+    capabilities = cap["gather_capabilities"](vault, include_hermes=True)
+    mcp = cap["check_mcp_connectivity"]()
+    encryption = cap["check_encryption_status"]()
+    return {
+        "capabilities": capabilities,
+        "mcp": mcp,
+        "encryption": encryption,
+    }
+
+
+def _print_doctor_report(report: dict) -> None:
+    cap = report["capabilities"]
+    mcp = report["mcp"]
+    enc = report["encryption"]
+    all_events = cap["all_events"]
+    event_labels = cap["event_labels"]
+
+    print("=" * 72)
+    print("AI Memory Hub — doctor report")
+    print(f"Generated at: {cap.get('generated_at', '?')}")
+    print("=" * 72)
+
+    # Worker
+    worker = cap.get("worker", {})
+    print(f"\n[Worker] status: {worker.get('status', '?')}")
+    if worker.get("last_run_at"):
+        print(f"  last run:        {worker['last_run_at']}")
+    if worker.get("last_success_at"):
+        print(f"  last success:    {worker['last_success_at']}")
+    if worker.get("backlog") is not None:
+        print(f"  backlog:         {worker['backlog']} pending")
+    if worker.get("last_error"):
+        print(f"  last error:      {worker['last_error']}")
+
+    # MCP
+    print(f"\n[MCP Server] status: {mcp.get('status', '?')}")
+    print(f"  registered tools: {mcp.get('tool_count', '?')}")
+    if mcp.get("tools"):
+        for t in mcp["tools"]:
+            print(f"    - {t}")
+    if mcp.get("error"):
+        print(f"  error: {mcp['error']}")
+
+    # Encryption / secrets
+    print(f"\n[Security]")
+    print(f"  encryption at rest:    {enc.get('encryption_at_rest', False)}")
+    print(f"  secret detection:      {'active' if enc.get('secret_detection_active') else 'INACTIVE'}")
+    print(f"  secret patterns:       {enc.get('secret_pattern_count', 0)}")
+    print(f"  note:                  {enc.get('note', '')}")
+
+    # Per-client
+    print(f"\n[Clients] {len(cap.get('clients', []))} configured")
+    for client in cap.get("clients", []):
+        print(f"\n  ── {client['display_name']} ({client['key']}) ──")
+        hook = "installed ✓" if client["hook_installed"] else "missing ✗"
+        print(f"    hook: {hook}  (format: {client['hook_format']})")
+        if client.get("hook_events"):
+            print(f"    hook events: {', '.join(client['hook_events'])}")
+        if client.get("hook_error"):
+            print(f"    hook error:  {client['hook_error']}")
+        if client.get("settings_path"):
+            print(f"    settings:    {client['settings_path']}")
+        buf = client.get("buffer", {})
+        if buf.get("total_observations", 0):
+            print(f"    observations: {buf['total_observations']}")
+            print(f"    event types:  {buf['supported_event_count']}")
+            print(f"    last capture: {buf.get('last_capture', '?')}")
+            print(f"    pending:      {buf['pending_buffer_depth']}")
+        else:
+            print(f"    buffer:      no observations yet")
+
+    # Event support matrix
+    print(f"\n[Event Support Matrix]")
+    print(f"  {'Client':<16}", end="")
+    for ev in all_events:
+        short = ev[:6]
+        print(f" {short:>6}", end="")
+    print()
+    print(f"  {'-' * 16}", end="")
+    for _ in all_events:
+        print(f" {'-' * 6}", end="")
+    print()
+    for client in cap.get("clients", []):
+        buf_events = set(client.get("buffer", {}).get("events", {}).keys())
+        print(f"  {client['key']:<16}", end="")
+        for ev in all_events:
+            mark = "  ✓" if ev in buf_events else "  ·"
+            print(f" {mark:>6}", end="")
+        print()
+    print()
+
+
 def main():
     args = build_parser().parse_args()
     if args.command in {"hooks-install", "hooks-uninstall"}:
         if args.command == "hooks-install":
-            # Nested/TOML/YAML hosts take one command string, not argv; fold --arg
-            # values in so `--client claude` reaches the receiver everywhere (#86).
             joined = " ".join([_quote_for_shell(args.hook_command), *map(_quote_for_shell, args.arg or [])])
             if args.format == "nested":
                 jprint(install_nested_hook(args.settings, event=args.event,
@@ -171,8 +394,30 @@ def main():
             else:
                 jprint(uninstall_hook(args.settings, command=command))
         return
+
+    if args.command == "doctor":
+        report = _doctor_report(args)
+        if getattr(args, "json", False):
+            jprint(report)
+        else:
+            _print_doctor_report(report)
+        return
+
+    if args.command == "vault-key":
+        cmd_vault_key(args)
+        return
+
     if not args.vault:
         raise SystemExit("--vault is required for this command")
+    if args.command == "vault-encrypt":
+        cmd_vault_encrypt(args)
+        return
+    if args.command == "vault-decrypt":
+        cmd_vault_decrypt(args)
+        return
+    if args.command == "vault-status":
+        cmd_vault_status(args)
+        return
     if args.command == "history-init":
         jprint(initialize_history(args.vault))
         return
@@ -252,6 +497,7 @@ def main():
             jprint({"candidates": len(candidates), "results": results})
     finally:
         manager.close()
+
 
 if __name__ == "__main__":
     main()

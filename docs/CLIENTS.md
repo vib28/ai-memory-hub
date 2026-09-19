@@ -36,6 +36,29 @@ All six hosts support all three capabilities.
 
 ---
 
+## Per-Client Event Support Matrix
+
+| Event | Claude | Codex | Gemini | Qwen | Kimi | Hermes |
+|-------|:------:|:-----:|:------:|:----:|:----:|:------:|
+| session-start | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| user-prompt-submit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| pre-tool-use | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| post-tool-use | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| post-tool-use-failure | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| stop | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| stop-failure | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| interrupt | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| pre-compact | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| post-compaction | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| session-heartbeat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| subagent-stop | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| session-end | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+> [!NOTE]
+> Event support is normalized at the pipeline layer. While not every host natively emits every event above, the hub maps common lifecycle aliases (e.g. Gemini's `before-agent`, Hermes' `on-session-start`) to the canonical set. Cells marked ❌ indicate the host has no native mapping for that event.
+
+---
+
 ## Feature Breakdown
 
 ### MCP Server
@@ -111,6 +134,60 @@ If your host is not one of the six above, configure it manually. The generic sha
 ```
 
 On Linux/macOS, use `.venv/bin/python`. Add [generic instructions](../client-prompts/generic.md) to your host's instruction file. Make sure the prompt's writer label matches `MEMORY_WRITER`.
+
+---
+
+## Manual Hook Installation (Unsupported Clients)
+
+For MCP clients that `connect-ai-tools.ps1` does not auto-detect, use the `-InstallManualHook` flag:
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
+    -InstallManualHook opencode `
+    -ManualHookSettings "C:\Users\YOU\.opencode\settings.json"
+```
+
+This registers the generic `ai-memory-hook` PostToolUse receiver in the client's settings file. The hook:
+
+1. Spawns `ai-memory-hook --client <name>` after every tool call
+2. The receiver reads tool event data on stdin and forwards it to the local observation buffer
+3. The resident worker processes the buffer asynchronously
+
+### Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `-InstallManualHook <name>` | Yes | Short client identifier (e.g., `opencode`, `continue`) |
+| `-ManualHookSettings <path>` | Yes | Path to the client's JSON settings file |
+| `-ManualHookEvent <event>` | No | Lifecycle event (default: `PostToolUse`). Options: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `Stop`, `SessionEnd` |
+
+### Removing a Manual Hook
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath "C:\Users\YOU\Documents\Obsidian\AI-Memory" `
+    -RemoveManualHook opencode `
+    -ManualHookSettings "C:\Users\YOU\.opencode\settings.json"
+```
+
+### Requirements
+
+Your client must:
+- Support `command`-type hooks in a JSON configuration file
+- Spawn the hook process per event and pass event data on stdin
+
+If your client uses a different mechanism (HTTP webhooks, gRPC, plugin SDK), see [templates/manual-hook-config.md](../templates/manual-hook-config.md) for the generic configuration pattern.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `ManualHookSettings is required` | Forgot the `-ManualHookSettings` path | Provide the full path to the client's JSON settings file |
+| `ai-memory-hook not found` | `setup.ps1` hasn't been run | Run `.\setup.ps1 -VaultPath "..."` first |
+| Hook fires but no memories captured | Observation buffer/worker not running | Run with `-EnableSessionAuto` or start the worker manually: `.\start-worker.ps1 -VaultPath "..."` |
+| Client doesn't fire the hook | Wrong event name or client doesn't support lifecycle hooks | Consult your client's docs for supported event names |
+| `already_installed` status | Hook was previously installed | Normal — the hook is idempotent. Re-running updates the existing entry |
+| Backup files accumulate | The script creates `.bak-*` files on every write | Safe to delete old `.bak-*` files after confirming the current settings are correct |
+| Settings file is corrupt | Previous bad write or manual edit | Restore from the latest `.bak-*` file or re-run the hook installer |
 
 ---
 
