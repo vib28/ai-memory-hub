@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .utils import atomic_write, file_lock, is_truthy, parse_iso_datetime, slugify, to_kebab, truncated_text
+from .utils import atomic_write, file_lock, is_truthy, normalize_relative, parse_iso_datetime, slugify, to_kebab, truncated_text
 
 
 DEFAULT_TRANSCRIPT_RETENTION_DAYS = 0
@@ -350,7 +350,7 @@ class TranscriptStore:
         rows = self.events(session_group_id)
         project = project or next((row.get("project") for row in rows if row.get("project")), None)
         relative = path or transcript_path_for(session_group_id, project)
-        relative = "/" + str(relative).replace("\\", "/").lstrip("/")
+        relative = "/" + normalize_relative(str(relative))
         root = _vault_root(vault or self.vault)
         destination = root / relative.lstrip("/")
         destination.parent.mkdir(parents=True, exist_ok=True)

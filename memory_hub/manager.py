@@ -48,7 +48,7 @@ from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KIND
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash
+from .utils import atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, utc_timestamp, normalize_relative
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
                     parse_records, dump_frontmatter, ensure_metadata, SESSION_RE,
                     SESSION_ID_RE, SESSION_META_RE)
@@ -280,7 +280,7 @@ class MemoryManager:
             if transcript_enabled() and not transcript_path:
                 transcript_path = transcript_path_for(clean["session_group_id"], clean["project"])
             if transcript_path:
-                transcript_path = "/" + str(transcript_path).replace("\\", "/").lstrip("/")
+                transcript_path = "/" + normalize_relative(str(transcript_path))
                 if not transcript_path.endswith(".md"):
                     raise ValueError("session transcript_path must be a Markdown file")
                 clean["transcript_path"] = transcript_path[:500]
@@ -478,14 +478,7 @@ class MemoryManager:
         target = text_hash(text)
         prefix = slugify(f"{model}-{title}") + "-"
         expected_path = self.vault.canonical_path("session", model, project=project)
-        for row in self.index.all_rows():
-            if row["kind"] != "session" or row["tag"] == "superseded":
-                continue
-            if (row["writer"] == model and row["normalized_hash"] == target
-                    and str(row["subject"]).startswith(prefix)
-                    and row["path"] == expected_path):
-                return row
-        return None
+        return self.index.find_session_duplicate(model, target, prefix, expected_path)
 
     def propose_session(self, data: dict, *, write_mode: str = "auto") -> dict:
         try:
@@ -601,10 +594,6 @@ class MemoryManager:
         """Return validated user-configured patterns for supported callers."""
         return load_patterns(self.vault.resolve("/patterns.md"))
 
-    def _patterns(self) -> dict:
-        """Compatibility wrapper for internal callers."""
-        return self.patterns()
-
     def propose_pattern_match(self, pattern_id: str, project_fact_text: str, preference_rule_text: str,
                               subject: str, *, write_mode: str = "auto", writer: str = "other") -> dict:
         try:
@@ -668,7 +657,7 @@ class MemoryManager:
         relative = candidate.target_path or self.vault.canonical_path(
             candidate.kind, candidate.subject, entity_id=candidate.entity_id
         )
-        relative = "/" + relative.replace("\\", "/").lstrip("/")
+        relative = "/" + normalize_relative(relative)
         if not relative.endswith(".md"):
             return {"status": "rejected", "reason": "target_path must be a Markdown file"}
         if Path(relative).name.lower() in RESERVED_FILENAMES:
@@ -1214,8 +1203,7 @@ class MemoryManager:
     _LEXICAL_AUDIT_MIN_SHARED_TOKENS = 4
     _LEXICAL_AUDIT_DICE_THRESHOLD = 0.25
 
-    @classmethod
-    def _lexical_audit_tokens(cls, text: str) -> set[str]:
+    def _lexical_audit_tokens(self, text: str) -> set[str]:
         return set(re.findall(r"[a-z0-9]{4,}", normalize_text(text)))
 
     @classmethod

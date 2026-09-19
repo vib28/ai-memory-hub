@@ -199,6 +199,47 @@ def one_line(value: Any, limit: int = 1000) -> str:
     return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
 
 
+def clean_one_liner(value: Any, limit: int = 300) -> str:
+    """One-line text sanitizer used by capture, transcript, and github_export.
+
+    Strips, replaces null bytes, collapses internal whitespace, and
+    truncates. Kept alongside ``one_line`` because call sites need a
+    slightly lower default limit and the name signals the intended
+    use-case more clearly than the generic ``one_line``.
+    """
+    return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
+
+
+def utc_timestamp() -> str:
+    """Return the current UTC time as an ISO-8601 string.
+
+    Centralizes the ``datetime.now(timezone.utc).isoformat()`` pattern
+    that is otherwise repeated across github_export, worker, capture,
+    context_packet, and index modules.
+    """
+    return datetime.now(timezone.utc).isoformat()
+
+
+def utc_timestamp_naive() -> str:
+    """Return the current UTC time as a naive ISO-8601 string.
+
+    Used by manager.py session/proposal stamps that strip the tzinfo
+    before writing to the database (to keep existing naive datetimes
+    consistent). Returns e.g. ``2024-01-15T10:30:45``.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def normalize_relative(relative: str) -> str:
+    """Return a normalized relative path string.
+
+    Centralizes ``relative.replace("\\\\", "/").lstrip("/")`` which is
+    repeated in manager.py and utils.safe_join. Always strips leading
+    slashes and converts backslashes to forward slashes.
+    """
+    return relative.replace("\\", "/").lstrip("/")
+
+
 def is_truthy(value: Any) -> bool:
     """Return True for ``value`` that reads as an affirmative flag.
 

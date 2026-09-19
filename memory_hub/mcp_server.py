@@ -139,6 +139,7 @@ mcp = MCPServer(
 @mcp.tool()
 def memory_policy() -> str:
     """Return the automatic persistent-memory retention policy and active write mode."""
+    _ensure_init()
     return AUTO_POLICY + f"\n\nCurrent write mode: {WRITE_MODE}"
 
 

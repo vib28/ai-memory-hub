@@ -354,18 +354,32 @@ def _read_index_rows(root: Path) -> list[dict[str, Any]]:
     path = root / ".memory_index.sqlite3"
     if not path.exists():
         return []
+
+    # Cache rows keyed on mtime to avoid re-reading SQLite when the index
+    # file hasn't changed between consecutive calls in the same session.
+    mtime = path.stat().st_mtime
+    cache = _read_index_rows._cache  # type: ignore[attr-defined]
+    if cache and cache.get("mtime") == mtime and cache.get("root") == root:
+        return cache["rows"]
+
     try:
         conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
     except sqlite3.Error:
         return []
     try:
         conn.row_factory = sqlite3.Row
-        return [dict(row) for row in conn.execute(
+        rows = [dict(row) for row in conn.execute(
             "SELECT memory_id, path, text, kind, tag, subject, writer, date FROM memories")]
     except sqlite3.Error:
         return []
     finally:
         conn.close()
+
+    _read_index_rows._cache = {"mtime": mtime, "root": root, "rows": rows}  # type: ignore[attr-defined]
+    return rows
+
+
+_read_index_rows._cache = None  # type: ignore[attr-defined]
 
 
 # --------------------------------------------------------------------- render

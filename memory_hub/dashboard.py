@@ -198,7 +198,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             if u.path == "/api/memories":
                 q = parse_qs(u.query).get("q", [""])[0]
-                return self._json(memory_rows_for_dashboard(self.manager, q))
+                page = int(parse_qs(u.query).get("page", ["1"])[0])
+                page_size = min(200, max(1, int(parse_qs(u.query).get("page_size", ["50"])[0])))
+                rows = memory_rows_for_dashboard(self.manager, q)
+                total = len(rows)
+                start = (page - 1) * page_size
+                end = start + page_size
+                return self._json({
+                    "rows": rows[start:end],
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": max(1, (total + page_size - 1) // page_size),
+                })
             if u.path.startswith('/api/memory/'):
                 return self._json(detail(self.manager, u.path.rsplit('/', 1)[-1]))
             if u.path == "/api/pending":

@@ -23,7 +23,7 @@ from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, clean_list, one_line, read_json, safe_join, slugify, vault_key
+from .utils import atomic_write, clean_list, one_line, read_json, safe_join, slugify, vault_key, utc_timestamp
 
 
 VISIBILITIES = {"public", "private", "internal"}
@@ -41,24 +41,19 @@ class ExportError(RuntimeError):
 
 
 
-def _vault_key(vault: Path | str) -> str:
-    """Deprecated: use utils.vault_key instead. Retained for backward-compat."""
-    return vault_key(vault)
-
-
 def config_path(vault: Path | str) -> Path:
     configured = os.environ.get("MEMORY_GITHUB_EXPORT_CONFIG", "").strip()
-    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-export-{_vault_key(vault)}.json"
+    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-export-{vault_key(vault)}.json"
 
 
 def outbox_path(vault: Path | str) -> Path:
     configured = os.environ.get("MEMORY_GITHUB_OUTBOX", "").strip()
-    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-outbox-{_vault_key(vault)}.sqlite3"
+    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-outbox-{vault_key(vault)}.sqlite3"
 
 
 def health_path(vault: Path | str) -> Path:
     configured = os.environ.get("MEMORY_GITHUB_HEALTH", "").strip()
-    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-export-health-{_vault_key(vault)}.json"
+    return Path(configured).expanduser() if configured else Path.home() / ".ai-memory-hub" / f"github-export-health-{vault_key(vault)}.json"
 
 
 def load_config(vault: Path | str) -> dict[str, Any]:
@@ -336,7 +331,8 @@ class ExportOutbox:
             )
 
     def mark_failed(self, markers: list[str], error: str) -> None:
-        rows = self.conn.execute("SELECT marker,attempts FROM exports WHERE marker IN (%s)" % ",".join("?" for _ in markers), markers).fetchall() if markers else []
+        placeholders = ",".join(f"?" for _ in markers)
+        rows = self.conn.execute(f"SELECT marker,attempts FROM exports WHERE marker IN ({placeholders})", markers).fetchall() if markers else []
         stamp_dt = datetime.now(timezone.utc)
         stamp = stamp_dt.isoformat(timespec="seconds")
         with self.conn:
@@ -445,7 +441,7 @@ class GitHubPublisher:
             count += 1
         return {"status": "queued", "enqueued": count, "groups": self.outbox.due_groups()}
 
-    def _publish_group(self, group_id: str, claimed: list[dict[str, Any]], owner: str) -> dict[str, Any]:
+    def _publish_group(self, group_id: str, claimed: list[dict[str, Any]]) -> dict[str, Any]:
         all_rows = self.outbox.group_rows(group_id)
         payloads = [json.loads(row["payload_json"]) for row in all_rows]
         # `all_rows`/`payloads` supply full-group context for the issue body and link
@@ -518,7 +514,7 @@ class GitHubPublisher:
                 continue
             markers = [str(row["marker"]) for row in claimed]
             try:
-                published.append(self._publish_group(group_id, claimed, owner))
+                published.append(self._publish_group(group_id, claimed))
             except Exception as exc:
                 self.outbox.mark_failed(markers, str(exc))
                 errors.append({"group": group_id, "reason": str(exc)})

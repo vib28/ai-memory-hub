@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(normalized_hash);
+CREATE INDEX IF NOT EXISTS idx_memories_kind_writer_hash ON memories(kind, writer, normalized_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_path ON memories(path);
 CREATE INDEX IF NOT EXISTS idx_memories_kind_length ON memories(kind, length(text));
 
@@ -128,7 +129,53 @@ class MemoryIndex:
                 self.conn.execute("DELETE FROM memory_fts")
             for r in records:
                 self.upsert(r, commit=False)
+            # Batch-embed all session chunks in one provider call instead of
+            # one call per record. Collect inputs first, then emit vectors.
+            if self.embedding_provider:
+                self._embed_sessions_batch(records)
+            self.conn.commit()
         return len(records)
+
+    def _embed_sessions_batch(self, records: list[MemoryRecord]) -> None:
+        """Embed session chunks for many records in a single provider call.
+
+        Each session can have multiple sections, and each section becomes a
+        separate embedding vector. Collecting all inputs across all session
+        records and calling ``embed`` once avoids N separate HTTP round-trips.
+        """
+        inputs: list[tuple[str, str]] = []  # (memory_id::section, text)
+        for r in records:
+            if r.kind != "session":
+                continue
+            chunks = session_embedding_chunks(
+                self.vault_root / r.path.lstrip("/"), r.memory_id
+            )
+            inputs.extend(
+                (f"{r.memory_id}::{section}", embedding_text_for_section(r, section, text))
+                for section, text in chunks
+            )
+        if not inputs:
+            return
+        try:
+            vectors = self.embedding_provider.embed([text for _key, text in inputs])
+        except Exception:
+            # Don't fail the whole rebuild for a transient embedding error
+            return
+        if len(vectors) != len(inputs):
+            return
+        # Delete old embeddings first, then batch-insert
+        session_ids = {r.memory_id for r in records if r.kind == "session"}
+        if session_ids:
+            placeholders = ",".join("?" for _ in session_ids)
+            self.conn.execute(
+                f"DELETE FROM memory_embeddings WHERE memory_id IN ({placeholders}) "
+                f"OR memory_id LIKE '%::%'",
+                list(session_ids),
+            )
+        writes = ((memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text))
+                  for (memory_id, text), vector in zip(inputs, vectors))
+        sql = "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)"
+        self.conn.executemany(sql, list(writes))
 
     def upsert(self, r: MemoryRecord, commit: bool = True) -> None:
         with self._db_lock:
@@ -219,6 +266,25 @@ class MemoryIndex:
     def by_id(self, memory_id: str):
         with self._db_lock:
             row = self.conn.execute("SELECT * FROM memories WHERE memory_id=?", (memory_id,)).fetchone()
+        return dict(row) if row else None
+
+    def find_session_duplicate(self, writer: str, normalized_hash: str,
+                                subject_prefix: str, path: str) -> dict | None:
+        """Return a session row matching writer/hash/subject-prefix/path.
+
+        Targeted SQL replaces the full-index scan in ``_duplicate_session``:
+        an index on ``(kind, writer, normalized_hash)`` makes this a single
+        row lookup instead of fetching every non-superseded record.
+        """
+        with self._db_lock:
+            row = self.conn.execute(
+                """SELECT * FROM memories
+                   WHERE kind='session' AND writer=? AND normalized_hash=?
+                     AND path=? AND tag!='superseded'
+                     AND subject LIKE ? || '%'
+                   LIMIT 1""",
+                (writer, normalized_hash, path, subject_prefix),
+            ).fetchone()
         return dict(row) if row else None
 
     def exact_hash(self, normalized_hash: str, kind: str):
