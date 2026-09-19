@@ -12,25 +12,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .capture import ObservationBuffer, _CLIENT_ALIASES
+from .capture import _CLIENT_ALIASES, ObservationBuffer
 from .events import (
-    SESSION_START,
-    SESSION_END,
-    USER_PROMPT_SUBMIT,
-    PRE_TOOL_USE,
+    INTERRUPT,
+    POST_COMPACTION,
     POST_TOOL_USE,
     POST_TOOL_USE_FAILURE,
     PRE_COMPACT,
-    POST_COMPACTION,
+    PRE_TOOL_USE,
+    SESSION_END,
+    SESSION_HEARTBEAT,
+    SESSION_START,
     STOP,
     STOP_FAILURE,
-    INTERRUPT,
-    SESSION_HEARTBEAT,
     SUBAGENT_STOP,
+    USER_PROMPT_SUBMIT,
 )
 from .hooks import (
-    MANAGED_KEY,
     _HERMES_BLOCK_RE,
+    MANAGED_KEY,
     _toml_managed_ranges,
 )
 from .worker import read_health

@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-
 GITIGNORE_ENTRIES = (
     ".memory_index.sqlite3",
     ".memory_index.sqlite3-wal",

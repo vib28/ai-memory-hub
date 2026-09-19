@@ -1,9 +1,11 @@
-import sys
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
@@ -28,17 +30,17 @@ class SessionTests(unittest.TestCase):
             "learned": ["Session blocks need stable IDs"], "completed": ["Implemented sessions"],
             "next_steps": ["Add tests"],
         })
-        self.assertEqual(result["status"], "stored")
+        assert result["status"] == "stored"
         memory = result["memory"]
-        self.assertEqual(memory["path"], "/sessions/ai-memory-hub/codex.md")
+        assert memory["path"] == "/sessions/ai-memory-hub/codex.md"
         content = self.manager.read("/sessions/ai-memory-hub/codex.md")
-        self.assertIn("## codex-autotradag-2026-09-06-230000", content)
-        self.assertIn("### Investigated", content)
-        self.assertIn("#codex #2026-09-06", content)
-        self.assertTrue(any(r["memory_id"] == memory["memory_id"] for r in self.manager.search("stable IDs")))
+        assert "## codex-autotradag-2026-09-06-230000" in content
+        assert "### Investigated" in content
+        assert "#codex #2026-09-06" in content
+        assert any(r["memory_id"] == memory["memory_id"] for r in self.manager.search("stable IDs"))
         project = result["project"]["memory"]
-        self.assertEqual(project["path"], "/projects/ai-memory-hub.md")
-        self.assertIn(f"[[{memory['subject']}]]", self.manager.read(project["path"]))
+        assert project["path"] == "/projects/ai-memory-hub.md"
+        assert f"[[{memory['subject']}]]" in self.manager.read(project["path"])
 
     def test_identical_summary_in_distinct_projects_is_not_duplicate(self):
         payload = {"model": "claude", "title": "Checkpoint", "date": "2026-09-06T12:00:00",
@@ -46,8 +48,8 @@ class SessionTests(unittest.TestCase):
                    "next_steps": []}
         alpha = self.manager.propose_session({**payload, "project": "alpha"})
         beta = self.manager.propose_session({**payload, "project": "beta"})
-        self.assertEqual(alpha["status"], "stored")
-        self.assertEqual(beta["status"], "stored")
+        assert alpha["status"] == "stored"
+        assert beta["status"] == "stored"
 
     def test_checkpoint_metadata_manifest_links_and_reindex(self):
         base = {
@@ -71,28 +73,27 @@ class SessionTests(unittest.TestCase):
                                               "next_steps": ["Resume from the handoff"],
                                               "checkpoint_id": "final-1", "sequence": 3,
                                               "entry_type": "final"})
-        self.assertEqual(first["status"], "stored")
-        self.assertIn(second["status"], {"stored", "stored_without_project_link"})
-        self.assertIn(final["status"], {"stored", "stored_without_project_link"})
+        assert first["status"] == "stored"
+        assert second["status"] in {"stored", "stored_without_project_link"}
+        assert final["status"] in {"stored", "stored_without_project_link"}
         manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
         entries = manifest["groups"]["group-alpha"]["entries"]
-        self.assertEqual([entry["checkpoint_id"] for entry in entries],
-                         ["batch-1", "batch-2", "final-1"])
-        self.assertEqual(entries[1]["previous_id"], "batch-1")
-        self.assertEqual(entries[0]["next_id"], "batch-2")
-        self.assertEqual(entries[0]["final_id"], "final-1")
+        assert [entry["checkpoint_id"] for entry in entries] == ["batch-1", "batch-2", "final-1"]
+        assert entries[1]["previous_id"] == "batch-1"
+        assert entries[0]["next_id"] == "batch-2"
+        assert entries[0]["final_id"] == "final-1"
         block = self.manager.read(second["memory"]["path"])
-        self.assertIn("session-meta:", block)
-        self.assertIn("#group-group-alpha", block)
-        self.assertIn('"host_session_finalized":true', block)
+        assert "session-meta:" in block
+        assert "#group-group-alpha" in block
+        assert '"host_session_finalized":true' in block
         self.manager.reindex()
-        self.assertIsNotNone(self.manager.index.by_id(final["memory"]["memory_id"]))
-        self.assertEqual(json.loads(self.manager.read("/sessions/session-manifest.json"))["version"], 1)
+        assert self.manager.index.by_id(final["memory"]["memory_id"]) is not None
+        assert json.loads(self.manager.read("/sessions/session-manifest.json"))["version"] == 1
         retry = self.manager.propose_session({**base, "title": "Different retry title",
                                               "checkpoint_id": "batch-2", "sequence": 2,
                                               "entry_type": "checkpoint"})
-        self.assertEqual(retry["status"], "duplicate")
-        self.assertEqual(retry["checkpoint_id"], "batch-2")
+        assert retry["status"] == "duplicate"
+        assert retry["checkpoint_id"] == "batch-2"
 
     def test_checkpoint_links_repair_after_post_append_crash(self):
         base = {
@@ -102,19 +103,19 @@ class SessionTests(unittest.TestCase):
             "host_session_id": "host-2", "entry_type": "checkpoint",
         }
         first = self.manager.propose_session({**base, "checkpoint_id": "link-1", "sequence": 1})
-        self.assertEqual(first["status"], "stored")
+        assert first["status"] == "stored"
         second_data = {**base, "title": "Crash links two", "checkpoint_id": "link-2", "sequence": 2}
         with patch.object(self.manager.vault, "update_session_metadata",
                           side_effect=RuntimeError("link update crash")):
-            with self.assertRaises(RuntimeError):
+            with pytest.raises(RuntimeError):
                 self.manager.propose_session(second_data)
         retry = self.manager.propose_session(second_data)
-        self.assertEqual(retry["status"], "duplicate")
+        assert retry["status"] == "duplicate"
         manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
         entries = manifest["groups"]["link-crash"]["entries"]
-        self.assertEqual([entry["checkpoint_id"] for entry in entries], ["link-1", "link-2"])
-        self.assertEqual(entries[0]["next_id"], "link-2")
-        self.assertTrue(self.manager.vault.has_session_block(entries[1]["path"], entries[1]["memory_id"]))
+        assert [entry["checkpoint_id"] for entry in entries] == ["link-1", "link-2"]
+        assert entries[0]["next_id"] == "link-2"
+        assert self.manager.vault.has_session_block(entries[1]["path"], entries[1]["memory_id"])
 
     def test_preamble_above_first_session_heading_survives_metadata_update(self):
         """#80: update_session_metadata rebuilt the file from dump_frontmatter(meta) plus
@@ -129,7 +130,7 @@ class SessionTests(unittest.TestCase):
             "host_session_id": "host-3", "entry_type": "checkpoint",
         }
         first = self.manager.propose_session({**base, "checkpoint_id": "pre-1", "sequence": 1})
-        self.assertEqual(first["status"], "stored")
+        assert first["status"] == "stored"
         path = first["memory"]["path"]
         note = "A user's own note, kept above the first session heading."
         full_path = self.manager.vault.resolve(path)
@@ -138,10 +139,10 @@ class SessionTests(unittest.TestCase):
                              encoding="utf-8")
         second_data = {**base, "title": "Preamble two", "checkpoint_id": "pre-2", "sequence": 2}
         second = self.manager.propose_session(second_data)
-        self.assertIn(second["status"], {"stored", "stored_without_project_link"})
+        assert second["status"] in {"stored", "stored_without_project_link"}
         rebuilt = full_path.read_text(encoding="utf-8")
-        self.assertIn(note, rebuilt)
-        self.assertIn("## codex-preamble-one", rebuilt)
+        assert note in rebuilt
+        assert "## codex-preamble-one" in rebuilt
 
     def test_orphaned_checkpoint_manifest_is_repaired_after_append_crash(self):
         data = {
@@ -152,13 +153,13 @@ class SessionTests(unittest.TestCase):
             "sequence": 1, "entry_type": "checkpoint",
         }
         with patch.object(self.manager.vault, "append_session_block", side_effect=RuntimeError("crash")):
-            with self.assertRaises(RuntimeError):
+            with pytest.raises(RuntimeError):
                 self.manager.propose_session(data)
         retry = self.manager.propose_session(data)
-        self.assertEqual(retry["status"], "stored")
+        assert retry["status"] == "stored"
         manifest = json.loads(self.manager.read("/sessions/session-manifest.json"))
         entry = manifest["groups"]["crash-group"]["entries"][0]
-        self.assertTrue(self.manager.vault.has_session_block(entry["path"], entry["memory_id"]))
+        assert self.manager.vault.has_session_block(entry["path"], entry["memory_id"])
 
     def test_review_checkpoint_retry_reuses_existing_pending_proposal(self):
         data = {
@@ -170,19 +171,19 @@ class SessionTests(unittest.TestCase):
         }
         first = self.manager.propose_session(data, write_mode="review")
         second = self.manager.propose_session(data, write_mode="review")
-        self.assertEqual(first["status"], "queued")
-        self.assertEqual(second["status"], "already_pending")
-        self.assertEqual(first["proposal"]["proposal_id"], second["proposal"]["proposal_id"])
+        assert first["status"] == "queued"
+        assert second["status"] == "already_pending"
+        assert first["proposal"]["proposal_id"] == second["proposal"]["proposal_id"]
 
     def test_review_approval_preserves_session_sections(self):
         result = self.manager.propose_session({
             "model": "gemini", "title": "review", "investigated": ["One thing"],
             "learned": ["Another thing"], "completed": ["A task"], "next_steps": ["More work"],
         }, write_mode="review")
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
         approved = self.manager.approve(result["proposal"]["proposal_id"])
-        self.assertEqual(approved["status"], "stored")
-        self.assertIn("### Next Steps", self.manager.read("/sessions/gemini.md"))
+        assert approved["status"] == "stored"
+        assert "### Next Steps" in self.manager.read("/sessions/gemini.md")
 
     def _store(self, **overrides):
         payload = {"model": "claude", "title": "routine", "date": "2026-09-06T10:00:00",
@@ -195,13 +196,13 @@ class SessionTests(unittest.TestCase):
 
     def test_session_without_project_stays_writer_major(self):
         result = self._store(model="qwen", project=None)
-        self.assertEqual(result["memory"]["path"], "/sessions/qwen.md")
+        assert result["memory"]["path"] == "/sessions/qwen.md"
 
     def test_sessions_for_two_projects_are_separate_files(self):
         one = self._store(title="alpha", project="alpha-app")
         two = self._store(title="beta", project="beta-app")
-        self.assertEqual(one["memory"]["path"], "/sessions/alpha-app/claude.md")
-        self.assertEqual(two["memory"]["path"], "/sessions/beta-app/claude.md")
+        assert one["memory"]["path"] == "/sessions/alpha-app/claude.md"
+        assert two["memory"]["path"] == "/sessions/beta-app/claude.md"
 
     # ---- #20 deletion ----
 
@@ -209,19 +210,19 @@ class SessionTests(unittest.TestCase):
         stored = self._store(title="deletable", project="demo")
         memory_id = stored["memory"]["memory_id"]
         result = self.manager.forget(memory_id)
-        self.assertEqual(result["status"], "forgotten")
-        self.assertNotIn(f"session:{memory_id}", self.manager.read("/sessions/demo/claude.md"))
-        self.assertIsNone(self.manager.index.by_id(memory_id))
+        assert result["status"] == "forgotten"
+        assert f"session:{memory_id}" not in self.manager.read("/sessions/demo/claude.md")
+        assert self.manager.index.by_id(memory_id) is None
 
     def test_forget_keeps_sibling_blocks_and_frontmatter(self):
         first = self._store(title="first", project="demo")
         self._store(title="second", project="demo")
         self.manager.forget(first["memory"]["memory_id"])
         content = self.manager.read("/sessions/demo/claude.md")
-        self.assertTrue(content.startswith("---"))
-        self.assertIn("type: session", content)
-        self.assertIn("## claude-second", content)
-        self.assertNotIn("## claude-first", content)
+        assert content.startswith("---")
+        assert "type: session" in content
+        assert "## claude-second" in content
+        assert "## claude-first" not in content
 
     def test_forget_preserves_preamble_above_sibling_session_heading(self):
         """#80: delete_session_block has the identical preamble-drop pattern as
@@ -235,19 +236,19 @@ class SessionTests(unittest.TestCase):
         meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
         path.write_text(dump_frontmatter(meta) + f"\n{note}\n\n{body.lstrip(chr(10))}", encoding="utf-8")
         result = self.manager.forget(stored["memory"]["memory_id"])
-        self.assertEqual(result["status"], "forgotten")
+        assert result["status"] == "forgotten"
         rebuilt = path.read_text(encoding="utf-8")
-        self.assertIn(note, rebuilt)
-        self.assertIn("## claude-sibling", rebuilt)
+        assert note in rebuilt
+        assert "## claude-sibling" in rebuilt
 
     def test_forget_missing_session_id_reports_not_found(self):
-        self.assertEqual(self.manager.forget("nosuchid")["status"], "not_found")
+        assert self.manager.forget("nosuchid")["status"] == "not_found"
 
     def test_entry_deletion_still_works(self):
         stored = self.manager.propose(MemoryCandidate("An ordinary fact.", "topic", "stated",
                                                       "demo", "claude"))
         result = self.manager.forget(stored["memory"]["memory_id"])
-        self.assertEqual(result["status"], "forgotten")
+        assert result["status"] == "forgotten"
 
     def test_forget_removes_contiguous_companion_block_only(self):
         stored = self.manager.propose(MemoryCandidate(
@@ -266,13 +267,13 @@ class SessionTests(unittest.TestCase):
         path.write_text(content, encoding="utf-8")
 
         result = self.manager.forget(memory["memory_id"])
-        self.assertEqual(result["status"], "forgotten")
+        assert result["status"] == "forgotten"
         remaining = path.read_text(encoding="utf-8")
-        self.assertNotIn(memory["memory_id"], remaining)
-        self.assertNotIn("this explains the finding", remaining)
-        self.assertNotIn("Second companion line", remaining)
-        self.assertIn("Unrelated content must remain.", remaining)
-        self.assertIn("A later block is not contiguous.", remaining)
+        assert memory["memory_id"] not in remaining
+        assert "this explains the finding" not in remaining
+        assert "Second companion line" not in remaining
+        assert "Unrelated content must remain." in remaining
+        assert "A later block is not contiguous." in remaining
 
     def test_supersede_keeps_companion_block_with_historical_entry(self):
         stored = self.manager.propose(MemoryCandidate(
@@ -285,10 +286,10 @@ class SessionTests(unittest.TestCase):
 
         replacement = self.manager.supersede(old["memory_id"], MemoryCandidate(
             "The corrected technical finding.", "topic", "stated", "historical", "codex"))
-        self.assertEqual(replacement["status"], "stored")
+        assert replacement["status"] == "stored"
         remaining = path.read_text(encoding="utf-8")
-        self.assertIn("- [superseded]", remaining)
-        self.assertIn("Historical plain-language explanation.", remaining)
+        assert "- [superseded]" in remaining
+        assert "Historical plain-language explanation." in remaining
 
     def test_forget_stops_companion_sweep_at_blank_line(self):
         stored = self.manager.propose(MemoryCandidate(
@@ -302,10 +303,10 @@ class SessionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        self.assertEqual(self.manager.forget(memory["memory_id"])["status"], "forgotten")
+        assert self.manager.forget(memory["memory_id"])["status"] == "forgotten"
         remaining = path.read_text(encoding="utf-8")
-        self.assertNotIn("Remove this companion", remaining)
-        self.assertIn("Keep this unrelated block", remaining)
+        assert "Remove this companion" not in remaining
+        assert "Keep this unrelated block" in remaining
 
     # ---- #24 orphan blocks ----
 
@@ -317,22 +318,22 @@ class SessionTests(unittest.TestCase):
                                path.read_text(encoding="utf-8")), encoding="utf-8")
         self.manager.reindex()
         audit = self.manager.audit()
-        self.assertFalse(audit["healthy"])
-        self.assertEqual(len(audit["orphan_session_blocks"]), 1)
-        self.assertEqual(audit["orphan_session_blocks"][0]["heading"], "claude-orphan-2026-09-06-100000")
+        assert not audit["healthy"]
+        assert len(audit["orphan_session_blocks"]) == 1
+        assert audit["orphan_session_blocks"][0]["heading"] == "claude-orphan-2026-09-06-100000"
 
     def test_audit_healthy_for_intact_session_file(self):
         self._store(title="intact", project="demo")
-        self.assertEqual(self.manager.audit()["orphan_session_blocks"], [])
+        assert self.manager.audit()["orphan_session_blocks"] == []
 
     # ---- #25 dedup ----
 
     def test_identical_session_resubmission_is_a_duplicate(self):
         first = self._store(title="retry", project="demo")
         second = self._store(title="retry", project="demo")
-        self.assertEqual(first["status"], "stored")
-        self.assertEqual(second["status"], "duplicate")
-        self.assertEqual(self.manager.read("/sessions/demo/claude.md").count("## claude-retry"), 1)
+        assert first["status"] == "stored"
+        assert second["status"] == "duplicate"
+        assert self.manager.read("/sessions/demo/claude.md").count("## claude-retry") == 1
 
     def test_retry_without_explicit_date_is_still_a_duplicate(self):
         first = self.manager.propose_session({
@@ -341,17 +342,17 @@ class SessionTests(unittest.TestCase):
         second = self.manager.propose_session({
             "model": "claude", "title": "timeout", "project": "demo",
             "investigated": ["same body"], "learned": [], "completed": [], "next_steps": []})
-        self.assertEqual(first["status"], "stored")
-        self.assertEqual(second["status"], "duplicate")
+        assert first["status"] == "stored"
+        assert second["status"] == "duplicate"
 
     def test_distinct_sessions_with_same_title_are_both_stored(self):
         first = self._store(title="daily", investigated=["monday work"], project="demo")
         second = self._store(title="daily", investigated=["tuesday work"], project="demo")
         # Neither is a duplicate: same title, different bodies. The second one's project
         # cross-link may still land in the update band, which is a separate outcome (#22).
-        self.assertEqual(first["status"], "stored")
-        self.assertIn(second["status"], {"stored", "stored_without_project_link"})
-        self.assertEqual(self.manager.read("/sessions/demo/claude.md").count("## claude-daily"), 2)
+        assert first["status"] == "stored"
+        assert second["status"] in {"stored", "stored_without_project_link"}
+        assert self.manager.read("/sessions/demo/claude.md").count("## claude-daily") == 2
 
     # ---- #22 cross-link ----
 
@@ -361,36 +362,34 @@ class SessionTests(unittest.TestCase):
         second = self._store(title="second",
                              investigated=["Investigated the retry backoff behaviour."],
                              project="demo")
-        self.assertEqual(second["status"], "stored_without_project_link")
-        self.assertIn("project_link_supersedes", second)
-        self.assertEqual(self.manager.read("/projects/demo.md").count("Session summary"), 1)
+        assert second["status"] == "stored_without_project_link"
+        assert "project_link_supersedes" in second
+        assert self.manager.read("/projects/demo.md").count("Session summary") == 1
 
     def test_successful_cross_link_still_reports_stored(self):
         result = self._store(title="linked", project="demo")
-        self.assertEqual(result["status"], "stored")
-        self.assertEqual(result["project"]["status"], "stored")
+        assert result["status"] == "stored"
+        assert result["project"]["status"] == "stored"
 
     # ---- #19 write mode ----
 
     def test_review_mode_writes_nothing_to_the_vault(self):
         result = self._store(title="queued-only", project="demo")
-        self.assertEqual(result["status"], "stored")
+        assert result["status"] == "stored"
         queued = self.manager.propose_session({
             "model": "claude", "title": "review-only", "date": "2026-09-06T12:00:00",
             "project": "demo", "investigated": ["not yet persisted"], "learned": [],
             "completed": [], "next_steps": []}, write_mode="review")
-        self.assertEqual(queued["status"], "queued")
-        self.assertNotIn("## claude-review-only", self.manager.read("/sessions/demo/claude.md"))
-        self.assertEqual(len(self.manager.list_pending()), 1)
+        assert queued["status"] == "queued"
+        assert "## claude-review-only" not in self.manager.read("/sessions/demo/claude.md")
+        assert len(self.manager.list_pending()) == 1
 
     def test_auto_and_review_modes_differ_on_identical_input(self):
         payload = {"model": "gemini", "title": "modes", "date": "2026-09-06T12:00:00",
                    "project": "demo", "investigated": ["one"], "learned": [],
                    "completed": [], "next_steps": []}
-        self.assertEqual(self.manager.propose_session(dict(payload), write_mode="review")["status"],
-                         "queued")
-        self.assertEqual(self.manager.propose_session(dict(payload), write_mode="auto")["status"],
-                         "stored")
+        assert self.manager.propose_session(dict(payload), write_mode="review")["status"] == "queued"
+        assert self.manager.propose_session(dict(payload), write_mode="auto")["status"] == "stored"
 
     def test_empty_optional_section_does_not_reject_session(self):
         result = self.manager.propose_session({
@@ -400,7 +399,7 @@ class SessionTests(unittest.TestCase):
             "completed": ["Added regression coverage"],
             "next_steps": [],
         }, write_mode="review")
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
 
 
 class SessionRoutingMigrationTests(unittest.TestCase):
@@ -435,10 +434,10 @@ class SessionRoutingMigrationTests(unittest.TestCase):
         source = self._write_legacy_file("claude", self.LINKED + "\n" + self.UNLINKED)
         before = source.read_text(encoding="utf-8")
         moves, skipped = migration.plan_moves(self.manager.vault.root)
-        self.assertEqual(len(moves), 1)
-        self.assertEqual(moves[0]["project"], "demo")
-        self.assertEqual(skipped, [])
-        self.assertEqual(source.read_text(encoding="utf-8"), before)
+        assert len(moves) == 1
+        assert moves[0]["project"] == "demo"
+        assert skipped == []
+        assert source.read_text(encoding="utf-8") == before
 
     def test_apply_moves_relocates_only_project_linked_blocks(self):
         import migrate_session_routing as migration
@@ -447,34 +446,34 @@ class SessionRoutingMigrationTests(unittest.TestCase):
         migration.apply_moves(self.manager, moves)
 
         moved = self.manager.read("/sessions/demo/claude.md")
-        self.assertIn("session:aaaaaaaaaaaa", moved)
-        self.assertTrue(moved.startswith("---"))
+        assert "session:aaaaaaaaaaaa" in moved
+        assert moved.startswith("---")
         remaining = source.read_text(encoding="utf-8")
-        self.assertIn("session:bbbbbbbbbbbb", remaining)
-        self.assertNotIn("session:aaaaaaaaaaaa", remaining)
-        self.assertTrue(remaining.startswith("---"))
+        assert "session:bbbbbbbbbbbb" in remaining
+        assert "session:aaaaaaaaaaaa" not in remaining
+        assert remaining.startswith("---")
 
     def test_source_file_is_removed_when_every_block_moves(self):
         import migrate_session_routing as migration
         source = self._write_legacy_file("claude", self.LINKED)
         migration.apply_moves(self.manager, migration.plan_moves(self.manager.vault.root)[0])
-        self.assertFalse(source.exists())
+        assert not source.exists()
 
     def test_blocks_without_an_id_marker_are_skipped_not_moved(self):
         import migrate_session_routing as migration
         orphan = self.LINKED.replace("<!-- session:aaaaaaaaaaaa -->", "")
         self._write_legacy_file("claude", orphan)
         moves, skipped = migration.plan_moves(self.manager.vault.root)
-        self.assertEqual(moves, [])
-        self.assertEqual(len(skipped), 1)
+        assert moves == []
+        assert len(skipped) == 1
 
     def test_migration_is_idempotent(self):
         import migrate_session_routing as migration
         self._write_legacy_file("claude", self.LINKED)
         migration.apply_moves(self.manager, migration.plan_moves(self.manager.vault.root)[0])
         second, _ = migration.plan_moves(self.manager.vault.root)
-        self.assertEqual(second, [])
-        self.assertEqual(self.manager.read("/sessions/demo/claude.md").count("## claude-alpha"), 1)
+        assert second == []
+        assert self.manager.read("/sessions/demo/claude.md").count("## claude-alpha") == 1
 
     def test_records_survive_the_move_and_reindex(self):
         import migrate_session_routing as migration
@@ -482,8 +481,8 @@ class SessionRoutingMigrationTests(unittest.TestCase):
         migration.apply_moves(self.manager, migration.plan_moves(self.manager.vault.root)[0])
         self.manager.reindex()
         row = self.manager.index.by_id("aaaaaaaaaaaa")
-        self.assertIsNotNone(row)
-        self.assertEqual(row["path"], "/sessions/demo/claude.md")
+        assert row is not None
+        assert row["path"] == "/sessions/demo/claude.md"
 
 
 if __name__ == "__main__":

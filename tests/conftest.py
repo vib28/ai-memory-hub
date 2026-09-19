@@ -22,10 +22,8 @@ Tests that want a specific variable set it explicitly (``patch.dict`` or
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
-
 
 _PREFIXES = ("MEMORY_", "AI_MEMORY_")
 
@@ -39,4 +37,4 @@ def _isolated_environment(tmp_path, monkeypatch):
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
-    yield
+    return

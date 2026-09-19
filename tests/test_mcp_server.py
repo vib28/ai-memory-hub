@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 
 from memory_hub import mcp_server
@@ -13,7 +14,7 @@ class McpServerTests(unittest.TestCase):
     def test_session_write_surfaces_application_rejection(self):
         rejected = {"status": "rejected", "reason": "empty memory"}
         with patch.object(mcp_server.manager, "propose_session", return_value=rejected):
-            with self.assertRaisesRegex(ToolError, "session write rejected: empty memory"):
+            with pytest.raises(ToolError, match="session write rejected: empty memory"):
                 mcp_server.session_write(
                     title="test",
                     investigated=["evidence"],
@@ -32,13 +33,13 @@ class McpServerTests(unittest.TestCase):
         """
         rejected = {"status": "rejected", "reason": "empty memory"}
         with patch.object(mcp_server.manager, "propose_session", return_value=rejected):
-            with self.assertRaises(ToolError) as ctx:
+            with pytest.raises(ToolError) as ctx:
                 asyncio.run(mcp_server.mcp.call_tool("session_write", {
                     "title": "test", "investigated": ["evidence"], "learned": ["finding"],
                     "completed": ["result"], "next_steps": ["next"],
                 }))
-            self.assertNotIsInstance(ctx.exception, UnexpectedToolError)
-            self.assertIn("session write rejected: empty memory", str(ctx.exception))
+            assert not isinstance(ctx.value, UnexpectedToolError)
+            assert "session write rejected: empty memory" in str(ctx.value)
 
     def test_session_write_returns_queued_result(self):
         queued = {"status": "queued", "proposal": {"proposal_id": "p1"}}
@@ -50,14 +51,14 @@ class McpServerTests(unittest.TestCase):
                 completed=["result"],
                 next_steps=["next"],
             )
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
 
 
     def test_pattern_match_surfaces_application_rejection(self):
         """Same contract as session_write: a rejection must not look like success (#23)."""
         rejected = {"status": "rejected", "reason": "secret detected", "half": "preference"}
         with patch.object(mcp_server.manager, "propose_pattern_match", return_value=rejected):
-            with self.assertRaisesRegex(ToolError, r"pattern match rejected \(preference half\)"):
+            with pytest.raises(ToolError, match=r"pattern match rejected \(preference half\)"):
                 mcp_server.propose_pattern_match(
                     pattern_id="regression", project_fact_text="fact",
                     preference_rule_text="rule", subject="demo")
@@ -66,13 +67,13 @@ class McpServerTests(unittest.TestCase):
         """#36, same contract as the session_write boundary test above."""
         rejected = {"status": "rejected", "reason": "secret detected", "half": "preference"}
         with patch.object(mcp_server.manager, "propose_pattern_match", return_value=rejected):
-            with self.assertRaises(ToolError) as ctx:
+            with pytest.raises(ToolError) as ctx:
                 asyncio.run(mcp_server.mcp.call_tool("propose_pattern_match", {
                     "pattern_id": "regression", "project_fact_text": "fact",
                     "preference_rule_text": "rule", "subject": "demo",
                 }))
-            self.assertNotIsInstance(ctx.exception, UnexpectedToolError)
-            self.assertIn("pattern match rejected (preference half): secret detected", str(ctx.exception))
+            assert not isinstance(ctx.value, UnexpectedToolError)
+            assert "pattern match rejected (preference half): secret detected" in str(ctx.value)
 
     def test_pattern_match_returns_queued_result(self):
         queued = {"status": "queued", "proposal": {"proposal_id": "p1"}, "label": "first occurrence"}
@@ -80,7 +81,7 @@ class McpServerTests(unittest.TestCase):
             result = mcp_server.propose_pattern_match(
                 pattern_id="regression", project_fact_text="fact",
                 preference_rule_text="rule", subject="demo")
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
 
     def test_session_consolidate_survives_project_less_session_with_history_enabled(self):
         """#69: propose_session returns {"project": None} for a project-less summary, and
@@ -94,8 +95,8 @@ class McpServerTests(unittest.TestCase):
              patch.object(mcp_server, "HISTORY_ENABLED", True), \
              patch.object(mcp_server, "commit_vault_change", return_value={"status": "committed"}):
             result = mcp_server.session_consolidate(session_id="s1")
-        self.assertEqual(result["status"], "stored")
-        self.assertEqual(result["history"], {"status": "committed"})
+        assert result["status"] == "stored"
+        assert result["history"] == {"status": "committed"}
 
 
 class McpBoundaryTests(unittest.TestCase):
@@ -123,7 +124,7 @@ class McpBoundaryTests(unittest.TestCase):
                     offenders.extend(f"{path.name}: import {alias.name}"
                                      for alias in node.names
                                      if alias.name == "memory_hub.manager")
-        self.assertEqual(offenders, [], "client scripts must submit through public MCP tools")
+        assert offenders == [], "client scripts must submit through public MCP tools"
 
 
 if __name__ == "__main__":

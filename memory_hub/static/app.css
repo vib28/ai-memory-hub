@@ -214,6 +214,8 @@ pre{font:.85rem/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;back
   border-bottom:1px solid var(--line);padding:14px 0}
 .audit-row dt{text-transform:capitalize;font-weight:600;color:var(--muted);font-size:.85rem}
 .audit-row dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.audit-issues{margin-top:32px}
+.audit-issue pre{margin-top:12px;max-height:120px;overflow:auto}
 
 /* ---------- lookup / editor dialog ---------- */
 

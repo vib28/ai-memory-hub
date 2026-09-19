@@ -6,20 +6,19 @@ import logging
 import os
 import secrets
 import threading
-import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ._env import int_env
-from .app_config import bootstrap_environment, effective_config, save_settings, GROUPS
+from .app_config import GROUPS, bootstrap_environment, effective_config, save_settings
+from .auto_fix import fix_issue, scan_audit_issues
+from .dashboard_data import detail, metadata, save_metadata
 from .entities import resolve_subject
 from .manager import MemoryManager
 from .utils import slugify
 from .vault import FILE_PER_ENTITY_KINDS
-
-from pathlib import Path
-from .dashboard_data import detail, metadata, save_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +220,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._json(self.manager.conflicts())
             if u.path == "/api/audit":
                 return self._json(self.manager.audit())
+            if u.path == "/api/audit/issues":
+                return self._json({"issues": scan_audit_issues(self.manager)})
             if u.path == "/api/capabilities":
                 from .capabilities import gather_capabilities
                 return self._json(gather_capabilities(self.manager.vault.root))
@@ -263,6 +264,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if u.path == "/api/config":
                 settings = save_settings(self.manager.vault.root, body)
                 return self._json({"status": "saved", "settings": settings})
+            if u.path == "/api/fix-issue":
+                result = fix_issue(
+                    self.manager,
+                    issue_type=str(body.get("issue_type", "")),
+                    summary=str(body.get("summary", "")),
+                    severity=str(body.get("severity", "warning")),
+                    fixable=bool(body.get("fixable", False)),
+                    path=body.get("path"),
+                    line=body.get("line"),
+                    text=body.get("text"),
+                    heading=body.get("heading"),
+                    memory_id=body.get("memory_id"),
+                )
+                return self._json(result)
             self._json({"error": "not found"}, 404)
         except KeyError as exc:
             self._json({"error": str(exc)}, 404)

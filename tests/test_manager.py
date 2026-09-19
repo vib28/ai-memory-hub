@@ -8,6 +8,7 @@ from unittest.mock import patch
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate, MemoryRecord
 
+
 class ManagerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -28,11 +29,11 @@ class ManagerTests(unittest.TestCase):
             subject="response-style",
             writer="chatgpt",
         ))
-        self.assertEqual(result["status"], "stored")
+        assert result["status"] == "stored"
         mid = result["memory"]["memory_id"]
 
         search = self.manager.search("concise answers")
-        self.assertTrue(any(r["memory_id"] == mid for r in search))
+        assert any(r["memory_id"] == mid for r in search)
 
         dup = self.manager.propose(MemoryCandidate(
             text="Prefers concise answers first.",
@@ -41,11 +42,11 @@ class ManagerTests(unittest.TestCase):
             subject="response-style",
             writer="claude",
         ))
-        self.assertEqual(dup["status"], "duplicate")
+        assert dup["status"] == "duplicate"
 
         forgotten = self.manager.forget(mid)
-        self.assertEqual(forgotten["status"], "forgotten")
-        self.assertIsNone(self.manager.index.by_id(mid))
+        assert forgotten["status"] == "forgotten"
+        assert self.manager.index.by_id(mid) is None
 
     def test_memory_index_descriptions_derive_from_file_content(self):
         first = self.manager.propose(MemoryCandidate(
@@ -55,18 +56,18 @@ class ManagerTests(unittest.TestCase):
         first_id = first["memory"]["memory_id"]
         row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
                    if "[[projects/demo]]" in line)
-        self.assertIn("Project notes: The project uses local Markdown", row)
-        self.assertNotIn("Project memory for demo", row)
+        assert "Project notes: The project uses local Markdown" in row
+        assert "Project memory for demo" not in row
 
         second = self.manager.propose(MemoryCandidate(
             text="The worker retries bounded batches after a transient failure.",
             kind="project", tag="constraint", subject="demo", writer="codex",
         ))
-        self.assertNotEqual(first_id, second["memory"]["memory_id"])
+        assert first_id != second["memory"]["memory_id"]
         row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
                    if "[[projects/demo]]" in line)
-        self.assertIn("local Markdown", row)
-        self.assertIn("retries bounded batches", row)
+        assert "local Markdown" in row
+        assert "retries bounded batches" in row
 
         self.manager.propose(MemoryCandidate(
             text="Latest active finding " + ("detail " * 60),
@@ -74,13 +75,13 @@ class ManagerTests(unittest.TestCase):
         ))
         row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
                    if "[[projects/demo]]" in line)
-        self.assertIn("Latest active finding", row)
+        assert "Latest active finding" in row
 
         self.manager.edit(first_id, "The project now uses a local SQLite index.")
         row = next(line for line in self.manager.read("/MEMORY.md").splitlines()
                    if "[[projects/demo]]" in line)
-        self.assertIn("local SQLite index", row)
-        self.assertNotIn("canonical source", row)
+        assert "local SQLite index" in row
+        assert "canonical source" not in row
 
     def test_profile_and_preference_index_descriptions_remain_fixed(self):
         self.manager.propose(MemoryCandidate(
@@ -92,8 +93,8 @@ class ManagerTests(unittest.TestCase):
             subject="response-style", writer="codex",
         ))
         index = self.manager.read("/MEMORY.md")
-        self.assertIn("Stable identity, role, stack, timezone, and long-term context", index)
-        self.assertIn("Communication, workflow, research, and output preferences", index)
+        assert "Stable identity, role, stack, timezone, and long-term context" in index
+        assert "Communication, workflow, research, and output preferences" in index
 
     def test_context_prime_is_bounded(self):
         self.manager.propose(MemoryCandidate(
@@ -101,13 +102,13 @@ class ManagerTests(unittest.TestCase):
             kind="project", tag="stated", subject="demo", writer="codex",
         ))
         result = self.manager.context_prime(project="demo", query="local vault", limit=5, max_chars=500)
-        self.assertEqual(result["status"], "ok")
-        self.assertLessEqual(result["characters"], 500)
-        self.assertEqual(result["budget_type"], "serialized-json-characters")
+        assert result["status"] == "ok"
+        assert result["characters"] <= 500
+        assert result["budget_type"] == "serialized-json-characters"
         packet = json.dumps({"memories": result["memories"]}, ensure_ascii=False, separators=(",", ":"))
-        self.assertLessEqual(len(packet), 500)
-        self.assertLessEqual(len(result["memories"]), 5)
-        self.assertTrue(all("text" in item and "path" in item for item in result["memories"]))
+        assert len(packet) <= 500
+        assert len(result["memories"]) <= 5
+        assert all("text" in item and "path" in item for item in result["memories"])
 
     def test_context_prime_filters_project_and_oversized_first_result(self):
         rows = [
@@ -118,9 +119,9 @@ class ManagerTests(unittest.TestCase):
         ]
         with patch.object(self.manager.index, "search", return_value=rows):
             result = self.manager.context_prime(project="alpha", max_chars=500)
-        self.assertLessEqual(result["characters"], 500)
-        self.assertEqual(result["memories"], [])
-        self.assertEqual(result["truncation_reason"], "context budget reached")
+        assert result["characters"] <= 500
+        assert result["memories"] == []
+        assert result["truncation_reason"] == "context budget reached"
 
     def test_context_prime_scope_filters_before_ranking_and_labels_global(self):
         self.manager.propose(MemoryCandidate(
@@ -137,27 +138,27 @@ class ManagerTests(unittest.TestCase):
         ))
         result = self.manager.context_prime(project="alpha", query="shared continuity signal", limit=10)
         paths = {item["path"] for item in result["memories"]}
-        self.assertIn("/projects/alpha.md", paths)
-        self.assertNotIn("/projects/beta.md", paths)
-        self.assertIn("global", {item["scope"] for item in result["memories"]})
-        self.assertTrue(all(item["scope"] != "unscoped" for item in result["memories"]))
+        assert "/projects/alpha.md" in paths
+        assert "/projects/beta.md" not in paths
+        assert "global" in {item["scope"] for item in result["memories"]}
+        assert all(item["scope"] != "unscoped" for item in result["memories"])
 
     def test_context_prime_excludes_superseded_and_reports_empty_honestly(self):
         old = self.manager.propose(MemoryCandidate(
             text="Retired alpha continuity instruction.",
             kind="project", tag="stated", subject="alpha", writer="codex",
         ))
-        self.assertEqual(old["status"], "stored")
+        assert old["status"] == "stored"
         replacement = self.manager.supersede(old["memory"]["memory_id"], MemoryCandidate(
             text="Current alpha continuity instruction.",
             kind="project", tag="stated", subject="alpha", writer="codex",
         ))
-        self.assertEqual(replacement["status"], "stored")
+        assert replacement["status"] == "stored"
         result = self.manager.context_prime(project="missing-project", query="no such continuity")
-        self.assertEqual(result["memories"], [])
-        self.assertEqual(result["candidate_count"], 0)
-        self.assertFalse(result["truncated"])
-        self.assertIsNone(result["truncation_reason"])
+        assert result["memories"] == []
+        assert result["candidate_count"] == 0
+        assert not result["truncated"]
+        assert result["truncation_reason"] is None
 
     def test_context_prime_puts_latest_project_session_first(self):
         older = self.manager.propose_session({
@@ -170,11 +171,11 @@ class ManagerTests(unittest.TestCase):
             "project": "alpha", "investigated": ["new task"], "learned": [],
             "completed": [], "next_steps": ["new next step"],
         })
-        self.assertEqual(older["status"], "stored")
-        self.assertIn(newer["status"], {"stored", "stored_without_project_link"})
+        assert older["status"] == "stored"
+        assert newer["status"] in {"stored", "stored_without_project_link"}
         result = self.manager.context_prime(project="alpha", query="unlikely", limit=1,
                                             max_chars=12000)
-        self.assertEqual(result["memories"][0]["memory_id"], newer["memory"]["memory_id"])
+        assert result["memories"][0]["memory_id"] == newer["memory"]["memory_id"]
 
     def test_secret_rejected(self):
         key_like_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
@@ -185,7 +186,7 @@ class ManagerTests(unittest.TestCase):
             subject="credentials",
             writer="chatgpt",
         ))
-        self.assertEqual(result["status"], "rejected")
+        assert result["status"] == "rejected"
 
     def test_codex_writer_is_preserved(self):
         result = self.manager.propose(MemoryCandidate(
@@ -195,8 +196,8 @@ class ManagerTests(unittest.TestCase):
             subject="development-tooling",
             writer="codex",
         ))
-        self.assertEqual(result["status"], "stored")
-        self.assertEqual(result["memory"]["writer"], "codex")
+        assert result["status"] == "stored"
+        assert result["memory"]["writer"] == "codex"
 
     def test_qwen_writer_is_preserved(self):
         result = self.manager.propose(MemoryCandidate(
@@ -206,8 +207,8 @@ class ManagerTests(unittest.TestCase):
             subject="development-tooling",
             writer="qwen",
         ))
-        self.assertEqual(result["status"], "stored")
-        self.assertEqual(result["memory"]["writer"], "qwen")
+        assert result["status"] == "stored"
+        assert result["memory"]["writer"] == "qwen"
 
     def test_project_identity_routes_aliases_to_one_file(self):
         first = self.manager.propose(MemoryCandidate(
@@ -220,12 +221,12 @@ class ManagerTests(unittest.TestCase):
             kind="project", tag="constraint", subject="repository-memory",
             writer="claude", entity_id="vib28-ai-memory-hub",
         ))
-        self.assertEqual(first["status"], "stored")
-        self.assertEqual(second["status"], "stored")
-        self.assertEqual(first["memory"]["path"], second["memory"]["path"])
+        assert first["status"] == "stored"
+        assert second["status"] == "stored"
+        assert first["memory"]["path"] == second["memory"]["path"]
         content = (self.vault / first["memory"]["path"].lstrip("/")).read_text(encoding="utf-8")
-        self.assertIn("id: vib28-ai-memory-hub", content)
-        self.assertIn("repository-memory", content)
+        assert "id: vib28-ai-memory-hub" in content
+        assert "repository-memory" in content
 
     def test_project_without_entity_id_does_not_use_prefix_fallback(self):
         first = self.manager.propose(MemoryCandidate(
@@ -237,14 +238,11 @@ class ManagerTests(unittest.TestCase):
             kind="project", tag="stated",
             subject="ai-memory-hub-session-pattern-plan", writer="claude",
         ))
-        self.assertEqual(first["status"], "stored")
-        self.assertEqual(second["status"], "stored")
-        self.assertEqual(first["memory"]["path"], "/projects/ai-memory-hub.md")
-        self.assertEqual(
-            second["memory"]["path"],
-            "/projects/ai-memory-hub-session-pattern-plan.md",
-        )
-        self.assertNotIn("plan has a related", self.manager.read(first["memory"]["path"]))
+        assert first["status"] == "stored"
+        assert second["status"] == "stored"
+        assert first["memory"]["path"] == "/projects/ai-memory-hub.md"
+        assert second["memory"]["path"] == "/projects/ai-memory-hub-session-pattern-plan.md"
+        assert "plan has a related" not in self.manager.read(first["memory"]["path"])
 
     def test_review_queue_preserves_project_entity_id(self):
         candidate = MemoryCandidate(
@@ -252,18 +250,18 @@ class ManagerTests(unittest.TestCase):
             subject="friendly-name", writer="codex", entity_id="stable-project-id",
         )
         queued = self.manager.queue(candidate)
-        self.assertEqual(queued["status"], "queued")
-        self.assertEqual(queued["proposal"]["entity_id"], "stable-project-id")
+        assert queued["status"] == "queued"
+        assert queued["proposal"]["entity_id"] == "stable-project-id"
         approved = self.manager.approve(queued["proposal"]["proposal_id"])
-        self.assertEqual(approved["status"], "stored")
-        self.assertEqual(approved["memory"]["path"], "/projects/stable-project-id.md")
+        assert approved["status"] == "stored"
+        assert approved["memory"]["path"] == "/projects/stable-project-id.md"
 
     def test_project_audit_reports_exact_duplicates_and_name_splits(self):
         first = self.manager.propose(MemoryCandidate(
             text="Same project fact.", kind="project", tag="stated",
             subject="alpha", writer="codex",
         ))
-        self.assertEqual(first["status"], "stored")
+        assert first["status"] == "stored"
         duplicate_path = self.vault / "projects" / "alpha-copy.md"
         duplicate_path.write_text(
             "---\ntype: project\nid: alpha-copy\naliases:\n---\n\n"
@@ -271,9 +269,9 @@ class ManagerTests(unittest.TestCase):
             encoding="utf-8",
         )
         report = self.manager.project_audit()
-        self.assertFalse(report["healthy"])
-        self.assertTrue(report["exact_duplicate_groups"])
-        self.assertTrue(report["possible_name_splits"])
+        assert not report["healthy"]
+        assert report["exact_duplicate_groups"]
+        assert report["possible_name_splits"]
 
     def test_project_link_dry_run_then_reversible_apply(self):
         source = self.manager.propose(MemoryCandidate(
@@ -285,17 +283,17 @@ class ManagerTests(unittest.TestCase):
             subject="widget-app", writer="codex", entity_id="widget-app",
         ))["memory"]
         preview = self.manager.project_link(source["path"], target["path"])
-        self.assertEqual(preview["status"], "preview")
-        self.assertEqual(preview["records_to_move"], 1)
-        self.assertTrue((self.vault / source["path"].lstrip("/")).exists())
+        assert preview["status"] == "preview"
+        assert preview["records_to_move"] == 1
+        assert (self.vault / source["path"].lstrip("/")).exists()
 
         applied = self.manager.project_link(source["path"], target["path"], apply=True)
-        self.assertEqual(applied["status"], "linked")
-        self.assertTrue((self.vault / applied["backup"].lstrip("/")).exists())
-        self.assertFalse((self.vault / source["path"].lstrip("/")).exists())
+        assert applied["status"] == "linked"
+        assert (self.vault / applied["backup"].lstrip("/")).exists()
+        assert not (self.vault / source["path"].lstrip("/")).exists()
         target_text = (self.vault / target["path"].lstrip("/")).read_text(encoding="utf-8")
-        self.assertIn("Source project history.", target_text)
-        self.assertIn(source["memory_id"], target_text)
+        assert "Source project history." in target_text
+        assert source["memory_id"] in target_text
 
     def test_new_entry_timestamp_and_subject_survive_reindex(self):
         first = self.manager.propose(MemoryCandidate(
@@ -312,11 +310,11 @@ class ManagerTests(unittest.TestCase):
             subject="technical-language",
             writer="chatgpt",
         ))
-        self.assertRegex(first["memory"]["date"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+        assert re.search(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", first["memory"]["date"])
         self.manager.reindex()
-        self.assertEqual(self.manager.index.by_id(first["memory"]["memory_id"])["subject"], "primary-development-os")
-        self.assertEqual(self.manager.index.by_id(second["memory"]["memory_id"])["subject"], "technical-language")
-        self.assertEqual(self.manager.conflicts(), [])
+        assert self.manager.index.by_id(first["memory"]["memory_id"])["subject"] == "primary-development-os"
+        assert self.manager.index.by_id(second["memory"]["memory_id"])["subject"] == "technical-language"
+        assert self.manager.conflicts() == []
 
     def test_edit_normalizes_a_legacy_subject_for_reindex(self):
         memory_id = "legacy-subject"
@@ -330,9 +328,9 @@ class ManagerTests(unittest.TestCase):
             memory_id, "/profile.md", "Uses Windows.", "profile", "stated",
             "Primary Development OS", "chatgpt", "2026-09-04",
         ))
-        self.assertEqual(self.manager.edit(memory_id, "Uses Windows for development.")["status"], "updated")
+        assert self.manager.edit(memory_id, "Uses Windows for development.")["status"] == "updated"
         self.manager.reindex()
-        self.assertEqual(self.manager.index.by_id(memory_id)["subject"], "primary-development-os")
+        assert self.manager.index.by_id(memory_id)["subject"] == "primary-development-os"
 
     def test_supersede(self):
         old = self.manager.propose(MemoryCandidate(
@@ -351,8 +349,8 @@ class ManagerTests(unittest.TestCase):
             subject="operating-system",
             writer="chatgpt",
         ))
-        self.assertEqual(new["status"], "stored")
-        self.assertEqual(self.manager.index.by_id(old_id)["tag"], "superseded")
+        assert new["status"] == "stored"
+        assert self.manager.index.by_id(old_id)["tag"] == "superseded"
 
     def test_reserved_target_path_is_rejected(self):
         for reserved in ("/MEMORY.md", "/AI_INSTRUCTIONS.md", "ai_instructions.md"):
@@ -364,8 +362,8 @@ class ManagerTests(unittest.TestCase):
                 writer="other",
                 target_path=reserved,
             ))
-            self.assertEqual(result["status"], "rejected", reserved)
-            self.assertIn("reserved", result["reason"])
+            assert result["status"] == "rejected", reserved
+            assert "reserved" in result["reason"]
 
     def test_near_duplicate_update_is_surfaced_not_silently_dropped(self):
         first = self.manager.propose(MemoryCandidate(
@@ -375,7 +373,7 @@ class ManagerTests(unittest.TestCase):
             subject="python-version",
             writer="chatgpt",
         ))
-        self.assertEqual(first["status"], "stored")
+        assert first["status"] == "stored"
 
         near = self.manager.propose(MemoryCandidate(
             text="Uses Python 3.12 for local development.",
@@ -384,8 +382,8 @@ class ManagerTests(unittest.TestCase):
             subject="python-version",
             writer="chatgpt",
         ))
-        self.assertEqual(near["status"], "possible_update")
-        self.assertEqual(near["memory"]["memory_id"], first["memory"]["memory_id"])
+        assert near["status"] == "possible_update"
+        assert near["memory"]["memory_id"] == first["memory"]["memory_id"]
 
         applied = self.manager.supersede(near["memory"]["memory_id"], MemoryCandidate(
             text="Uses Python 3.12 for local development.",
@@ -394,8 +392,8 @@ class ManagerTests(unittest.TestCase):
             subject="python-version",
             writer="chatgpt",
         ))
-        self.assertEqual(applied["status"], "stored")
-        self.assertEqual(self.manager.index.by_id(first["memory"]["memory_id"])["tag"], "superseded")
+        assert applied["status"] == "stored"
+        assert self.manager.index.by_id(first["memory"]["memory_id"])["tag"] == "superseded"
 
     def test_exact_duplicate_check_is_scoped_to_kind(self):
         first = self.manager.propose(MemoryCandidate(
@@ -405,7 +403,7 @@ class ManagerTests(unittest.TestCase):
             subject="frontend-migration",
             writer="chatgpt",
         ))
-        self.assertEqual(first["status"], "stored")
+        assert first["status"] == "stored"
 
         other_kind = self.manager.propose(MemoryCandidate(
             text="Migrated the frontend to TypeScript.",
@@ -414,8 +412,8 @@ class ManagerTests(unittest.TestCase):
             subject="frontend-migration",
             writer="chatgpt",
         ))
-        self.assertEqual(other_kind["status"], "stored")
-        self.assertNotEqual(other_kind["memory"]["memory_id"], first["memory"]["memory_id"])
+        assert other_kind["status"] == "stored"
+        assert other_kind["memory"]["memory_id"] != first["memory"]["memory_id"]
 
     def test_audit_healthy(self):
         self.manager.propose(MemoryCandidate(
@@ -426,7 +424,7 @@ class ManagerTests(unittest.TestCase):
             writer="chatgpt",
         ))
         audit = self.manager.audit()
-        self.assertTrue(audit["healthy"], audit)
+        assert audit["healthy"], audit
 
 
 class SubjectAuditTests(unittest.TestCase):
@@ -446,11 +444,11 @@ class SubjectAuditTests(unittest.TestCase):
 
     def test_empty_vault_is_healthy(self):
         report = self.manager.subject_audit()
-        self.assertTrue(report["healthy"], report)
-        self.assertEqual(report["exact_duplicate_groups"], [])
-        self.assertEqual(report["subject_variant_candidates"], [])
-        self.assertEqual(report["lexical_candidates"], [])
-        self.assertEqual(report["possible_file_splits"], [])
+        assert report["healthy"], report
+        assert report["exact_duplicate_groups"] == []
+        assert report["subject_variant_candidates"] == []
+        assert report["lexical_candidates"] == []
+        assert report["possible_file_splits"] == []
 
     def test_exact_duplicate_detected_for_a_non_project_kind(self):
         """project_audit() only ever looked at kind == "project"; this is the
@@ -468,10 +466,10 @@ class SubjectAuditTests(unittest.TestCase):
         )
         duplicate_path.write_text(content, encoding="utf-8")
         report = self.manager.subject_audit()
-        self.assertFalse(report["healthy"])
-        self.assertTrue(report["exact_duplicate_groups"])
+        assert not report["healthy"]
+        assert report["exact_duplicate_groups"]
         flat = [row for group in report["exact_duplicate_groups"] for row in group]
-        self.assertTrue(all(row["kind"] == "preference" for row in flat))
+        assert all(row["kind"] == "preference" for row in flat)
 
     def test_duplicates_do_not_cross_kind_boundaries(self):
         """The same text under different kinds is not a duplicate of itself --
@@ -485,7 +483,7 @@ class SubjectAuditTests(unittest.TestCase):
             tag="decided", subject="release-plan", writer="codex",
         ))
         report = self.manager.subject_audit()
-        self.assertEqual(report["exact_duplicate_groups"], [])
+        assert report["exact_duplicate_groups"] == []
 
     def test_superseded_records_are_excluded(self):
         first = self.manager.propose(MemoryCandidate(
@@ -501,13 +499,13 @@ class SubjectAuditTests(unittest.TestCase):
         duplicate_path.write_text(content, encoding="utf-8")
         self.manager.reindex()
         report = self.manager.subject_audit()
-        self.assertTrue(report["exact_duplicate_groups"])
+        assert report["exact_duplicate_groups"]
         self.manager.supersede(first["memory"]["memory_id"], MemoryCandidate(
             text="Uses Windows as the primary development OS, confirmed 2026.",
             kind="profile", tag="stated", subject="general", writer="claude",
         ))
         report = self.manager.subject_audit()
-        self.assertEqual(report["exact_duplicate_groups"], [])
+        assert report["exact_duplicate_groups"] == []
 
     def test_subject_variant_candidates_for_a_non_project_file_per_subject_kind(self):
         self.manager.propose(MemoryCandidate(
@@ -519,15 +517,9 @@ class SubjectAuditTests(unittest.TestCase):
             tag="stated", subject="widget-app-ui", writer="codex",
         ))
         report = self.manager.subject_audit()
-        self.assertFalse(report["healthy"])
-        self.assertTrue(any(
-            c["kind"] == "topic" and set(c["subjects"]) == {"widget-app", "widget-app-ui"}
-            for c in report["subject_variant_candidates"]
-        ))
-        self.assertTrue(any(
-            s["kind"] == "topic" and set(Path(p).stem for p in s["paths"]) == {"widget-app", "widget-app-ui"}
-            for s in report["possible_file_splits"]
-        ))
+        assert not report["healthy"]
+        assert any(c["kind"] == "topic" and set(c["subjects"]) == {"widget-app", "widget-app-ui"} for c in report["subject_variant_candidates"])
+        assert any(s["kind"] == "topic" and set(Path(p).stem for p in s["paths"]) == {"widget-app", "widget-app-ui"} for s in report["possible_file_splits"])
 
     def test_preference_variants_are_reported_without_a_file_split(self):
         """preference shares one file (/preferences.md) across all subjects, so
@@ -542,12 +534,8 @@ class SubjectAuditTests(unittest.TestCase):
             tag="preference", subject="git-safety-checks", writer="codex",
         ))
         report = self.manager.subject_audit()
-        self.assertTrue(any(
-            c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"}
-            for c in report["subject_variant_candidates"]
-        ))
-        self.assertEqual(
-            [s for s in report["possible_file_splits"] if s["kind"] == "preference"], [])
+        assert any(c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"} for c in report["subject_variant_candidates"])
+        assert [s for s in report["possible_file_splits"] if s["kind"] == "preference"] == []
 
     def test_lexical_audit_finds_non_prefix_related_preferences_without_false_positive(self):
         related = [
@@ -573,25 +561,11 @@ class SubjectAuditTests(unittest.TestCase):
             frozenset(candidate["subjects"])
             for candidate in report["lexical_candidates"]
         }
-        self.assertEqual(
-            pairs,
-            {
-                frozenset({related[0][0], related[1][0]}),
-                frozenset({related[0][0], related[2][0]}),
-                frozenset({related[1][0], related[2][0]}),
-            },
-        )
-        self.assertTrue(all(
-            candidate["token_overlap"] >= self.manager._LEXICAL_AUDIT_MIN_SHARED_TOKENS
-            and candidate["similarity"] >= self.manager._LEXICAL_AUDIT_DICE_THRESHOLD
-            for candidate in report["lexical_candidates"]
-        ))
-        self.assertTrue(all(
-            "commonvault" not in candidate["shared_tokens"]
-            for candidate in report["lexical_candidates"]
-        ))
-        self.assertTrue(report["lexical_candidates"])
-        self.assertFalse(report["healthy"])
+        assert pairs == {frozenset({related[0][0], related[1][0]}), frozenset({related[0][0], related[2][0]}), frozenset({related[1][0], related[2][0]})}
+        assert all(candidate["token_overlap"] >= self.manager._LEXICAL_AUDIT_MIN_SHARED_TOKENS and candidate["similarity"] >= self.manager._LEXICAL_AUDIT_DICE_THRESHOLD for candidate in report["lexical_candidates"])
+        assert all("commonvault" not in candidate["shared_tokens"] for candidate in report["lexical_candidates"])
+        assert report["lexical_candidates"]
+        assert not report["healthy"]
 
     def test_lexical_audit_does_not_reclassify_cumulative_project_logs(self):
         self.manager.propose(MemoryCandidate(
@@ -604,8 +578,8 @@ class SubjectAuditTests(unittest.TestCase):
         ))
 
         report = self.manager.subject_audit(kinds=["project"])
-        self.assertEqual(report["lexical_candidates"], [])
-        self.assertTrue(report["healthy"])
+        assert report["lexical_candidates"] == []
+        assert report["healthy"]
 
     def test_session_subjects_are_never_treated_as_variants(self):
         """Session subjects are per-instance (writer-title-date), not entity names --
@@ -621,10 +595,8 @@ class SubjectAuditTests(unittest.TestCase):
             "completed": ["g"], "next_steps": ["h"],
         }, write_mode="auto")
         report = self.manager.subject_audit()
-        self.assertEqual(
-            [c for c in report["subject_variant_candidates"] if c["kind"] == "session"], [])
-        self.assertEqual(
-            [s for s in report["possible_file_splits"] if s["kind"] == "session"], [])
+        assert [c for c in report["subject_variant_candidates"] if c["kind"] == "session"] == []
+        assert [s for s in report["possible_file_splits"] if s["kind"] == "session"] == []
 
     def test_kinds_filter_narrows_scope(self):
         self.manager.propose(MemoryCandidate(
@@ -636,8 +608,8 @@ class SubjectAuditTests(unittest.TestCase):
             subject="widget-app-ui", writer="codex",
         ))
         report = self.manager.subject_audit(kinds=["preference"])
-        self.assertTrue(report["healthy"])
-        self.assertEqual(report["kinds"], ["preference"])
+        assert report["healthy"]
+        assert report["kinds"] == ["preference"]
 
     def test_audit_never_mutates_the_vault(self):
         self.manager.propose(MemoryCandidate(
@@ -652,7 +624,7 @@ class SubjectAuditTests(unittest.TestCase):
         self.manager.subject_audit()
         self.manager.subject_audit()
         after = {p: p.read_text(encoding="utf-8") for p in self.vault.rglob("*.md")}
-        self.assertEqual(before, after)
+        assert before == after
 
 
 class FileEntityIdentityTests(unittest.TestCase):
@@ -679,12 +651,12 @@ class FileEntityIdentityTests(unittest.TestCase):
             text="Widget paint pipeline batches layout passes.", kind="topic", tag="stated",
             subject="paint-pipeline", writer="claude", entity_id="widget-rendering",
         ))
-        self.assertEqual(first["status"], "stored")
-        self.assertEqual(second["status"], "stored")
-        self.assertEqual(first["memory"]["path"], second["memory"]["path"])
+        assert first["status"] == "stored"
+        assert second["status"] == "stored"
+        assert first["memory"]["path"] == second["memory"]["path"]
         content = (self.vault / first["memory"]["path"].lstrip("/")).read_text(encoding="utf-8")
-        self.assertIn("id: widget-rendering", content)
-        self.assertIn("paint-pipeline", content)
+        assert "id: widget-rendering" in content
+        assert "paint-pipeline" in content
 
     def test_decision_and_person_get_the_same_treatment(self):
         for kind, directory in (("decision", "decisions"), ("person", "people")):
@@ -696,8 +668,8 @@ class FileEntityIdentityTests(unittest.TestCase):
                 text=f"Second {kind} fact.", kind=kind, tag="decided" if kind == "decision" else "stated",
                 subject="beta", writer="claude", entity_id="shared-entity",
             ))
-            self.assertEqual(first["memory"]["path"], second["memory"]["path"], kind)
-            self.assertEqual(first["memory"]["path"], f"/{directory}/shared-entity.md", kind)
+            assert first["memory"]["path"] == second["memory"]["path"], kind
+            assert first["memory"]["path"] == f"/{directory}/shared-entity.md", kind
 
     def test_missing_entity_id_does_not_merge_similar_topic_names(self):
         """#37's fix (no legacy prefix fallback) applies to every generalized
@@ -711,7 +683,7 @@ class FileEntityIdentityTests(unittest.TestCase):
             text="Widget app UI layer detail.", kind="topic", tag="stated",
             subject="widget-app-ui", writer="codex",
         ))
-        self.assertNotEqual(first["memory"]["path"], second["memory"]["path"])
+        assert first["memory"]["path"] != second["memory"]["path"]
 
     def test_project_link_now_works_for_topic_files(self):
         source = self.manager.propose(MemoryCandidate(
@@ -723,10 +695,10 @@ class FileEntityIdentityTests(unittest.TestCase):
             subject="widget-app", writer="codex", entity_id="widget-app",
         ))["memory"]
         applied = self.manager.project_link(source["path"], target["path"], apply=True)
-        self.assertEqual(applied["status"], "linked")
-        self.assertFalse((self.vault / source["path"].lstrip("/")).exists())
+        assert applied["status"] == "linked"
+        assert not (self.vault / source["path"].lstrip("/")).exists()
         target_text = (self.vault / target["path"].lstrip("/")).read_text(encoding="utf-8")
-        self.assertIn("Source topic history.", target_text)
+        assert "Source topic history." in target_text
 
     def test_project_link_rejects_mismatched_kinds(self):
         project = self.manager.propose(MemoryCandidate(
@@ -738,7 +710,7 @@ class FileEntityIdentityTests(unittest.TestCase):
             subject="widget-topic", writer="claude", entity_id="widget-topic",
         ))["memory"]
         result = self.manager.project_link(topic["path"], project["path"])
-        self.assertEqual(result["status"], "rejected")
+        assert result["status"] == "rejected"
 
     def test_subject_audit_reports_alias_collision_for_topics(self):
         self.manager.propose(MemoryCandidate(
@@ -753,9 +725,8 @@ class FileEntityIdentityTests(unittest.TestCase):
             encoding="utf-8",
         )
         report = self.manager.subject_audit(kinds=["topic"])
-        self.assertFalse(report["healthy"])
-        self.assertTrue(any(c["kind"] == "topic" and c["alias"] == "widget-app"
-                            for c in report["alias_collisions"]))
+        assert not report["healthy"]
+        assert any(c["kind"] == "topic" and c["alias"] == "widget-app" for c in report["alias_collisions"])
 
 
 class EntityAliasLinkTests(unittest.TestCase):
@@ -776,11 +747,11 @@ class EntityAliasLinkTests(unittest.TestCase):
 
     def test_rejects_a_file_per_subject_kind(self):
         result = self.manager.entity_alias_link("project", "a", "b")
-        self.assertEqual(result["status"], "rejected")
+        assert result["status"] == "rejected"
 
     def test_rejects_identical_subjects(self):
         result = self.manager.entity_alias_link("preference", "git-safety", "git-safety")
-        self.assertEqual(result["status"], "rejected")
+        assert result["status"] == "rejected"
 
     def test_preview_does_not_write_the_registry(self):
         # The registry file itself already exists (vault_template seeds it with
@@ -789,10 +760,10 @@ class EntityAliasLinkTests(unittest.TestCase):
         registry_path = self.vault / "entity-aliases.md"
         before = registry_path.read_text(encoding="utf-8")
         preview = self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety")
-        self.assertEqual(preview["status"], "preview")
-        self.assertEqual(preview["entity_id"], "git-safety")
-        self.assertIn("git-safety-checks", preview["aliases"])
-        self.assertEqual(registry_path.read_text(encoding="utf-8"), before)
+        assert preview["status"] == "preview"
+        assert preview["entity_id"] == "git-safety"
+        assert "git-safety-checks" in preview["aliases"]
+        assert registry_path.read_text(encoding="utf-8") == before
 
     def test_apply_persists_and_a_second_call_extends_the_same_entity(self):
         self.manager.propose(MemoryCandidate(
@@ -804,25 +775,25 @@ class EntityAliasLinkTests(unittest.TestCase):
             tag="preference", subject="git-safety-checks", writer="codex",
         ))
         first = self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
-        self.assertEqual(first["status"], "linked")
+        assert first["status"] == "linked"
         registry_path = self.vault / "entity-aliases.md"
-        self.assertTrue(registry_path.exists())
+        assert registry_path.exists()
         content = registry_path.read_text(encoding="utf-8")
-        self.assertIn("## preference: git-safety", content)
-        self.assertIn("- git-safety-checks", content)
+        assert "## preference: git-safety" in content
+        assert "- git-safety-checks" in content
 
         # Linking a third subject to either side of the pair joins the same
         # entity rather than forking a second registry entry for it.
         second = self.manager.entity_alias_link("preference", "confirm-destructive-ops", "git-safety-checks", apply=True)
-        self.assertEqual(second["status"], "linked")
-        self.assertEqual(second["entity_id"], "git-safety")
+        assert second["status"] == "linked"
+        assert second["entity_id"] == "git-safety"
         content = registry_path.read_text(encoding="utf-8")
         # A plain substring count would also match the template's own indented
         # documentation example; count real (column-0) headings only, the same
         # way load_entity_aliases anchors on ^## with re.M.
         real_headings = re.findall(r"(?m)^## preference: git-safety\s*$", content)
-        self.assertEqual(len(real_headings), 1)
-        self.assertIn("- confirm-destructive-ops", content)
+        assert len(real_headings) == 1
+        assert "- confirm-destructive-ops" in content
 
     def test_original_entries_are_untouched_by_linking(self):
         first = self.manager.propose(MemoryCandidate(
@@ -837,9 +808,9 @@ class EntityAliasLinkTests(unittest.TestCase):
         before = preferences_path.read_text(encoding="utf-8")
         self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
         after = preferences_path.read_text(encoding="utf-8")
-        self.assertEqual(before, after)
-        self.assertIsNotNone(self.manager.index.by_id(first["memory_id"]))
-        self.assertIsNotNone(self.manager.index.by_id(second["memory_id"]))
+        assert before == after
+        assert self.manager.index.by_id(first["memory_id"]) is not None
+        assert self.manager.index.by_id(second["memory_id"]) is not None
 
     def test_linked_pair_moves_from_candidates_to_linked_entities_in_the_audit(self):
         self.manager.propose(MemoryCandidate(
@@ -851,22 +822,13 @@ class EntityAliasLinkTests(unittest.TestCase):
             tag="preference", subject="git-safety-checks", writer="codex",
         ))
         before = self.manager.subject_audit(kinds=["preference"])
-        self.assertTrue(any(
-            c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"}
-            for c in before["subject_variant_candidates"]
-        ))
-        self.assertEqual(before["linked_entities"], [])
+        assert any(c["kind"] == "preference" and set(c["subjects"]) == {"git-safety", "git-safety-checks"} for c in before["subject_variant_candidates"])
+        assert before["linked_entities"] == []
 
         self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
         after = self.manager.subject_audit(kinds=["preference"])
-        self.assertFalse(any(
-            set(c["subjects"]) == {"git-safety", "git-safety-checks"}
-            for c in after["subject_variant_candidates"]
-        ))
-        self.assertTrue(any(
-            set(link["subjects"]) == {"git-safety", "git-safety-checks"} and link["entity_id"] == "git-safety"
-            for link in after["linked_entities"]
-        ))
+        assert not any(set(c["subjects"]) == {"git-safety", "git-safety-checks"} for c in after["subject_variant_candidates"])
+        assert any(set(link["subjects"]) == {"git-safety", "git-safety-checks"} and link["entity_id"] == "git-safety" for link in after["linked_entities"])
 
     def test_linked_preferences_are_grouped_by_conflicts_and_resolvable(self):
         """A linked pair with genuinely different text is not itself a conflict
@@ -882,8 +844,8 @@ class EntityAliasLinkTests(unittest.TestCase):
         ))["memory"]
         self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
         result = self.manager.resolve_conflict(first["memory_id"])
-        self.assertEqual(result["status"], "resolved")
-        self.assertIn(second["memory_id"], result["superseded"])
+        assert result["status"] == "resolved"
+        assert second["memory_id"] in result["superseded"]
 
 
 if __name__ == "__main__":

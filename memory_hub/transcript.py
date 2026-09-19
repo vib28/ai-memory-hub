@@ -17,8 +17,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .utils import atomic_write, file_lock, is_truthy, normalize_relative, parse_iso_datetime, slugify, to_kebab, truncated_text
-
+from .utils import (
+    atomic_write,
+    file_lock,
+    is_truthy,
+    normalize_relative,
+    parse_iso_datetime,
+    slugify,
+    to_kebab,
+    truncated_text,
+)
 
 DEFAULT_TRANSCRIPT_RETENTION_DAYS = 0
 _SAFE_TAG = re.compile(r"[^a-z0-9/_-]+")

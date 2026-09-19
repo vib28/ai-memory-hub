@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import unittest
 
+import pytest
+
 from memory_hub.consolidator import ConsolidationError, consolidate_session, fallback_session
 
 
@@ -30,9 +32,9 @@ class ConsolidatorTests(unittest.TestCase):
 
     def test_without_model_uses_deterministic_fallback(self):
         payload = consolidate_session(self.OBSERVATIONS, base_url="", model="")
-        self.assertEqual(payload["project"], "demo")
-        self.assertTrue(payload["completed"])
-        self.assertIn("src/a.py", payload["investigated"][0])
+        assert payload["project"] == "demo"
+        assert payload["completed"]
+        assert "src/a.py" in payload["investigated"][0]
 
     def test_local_model_response_is_validated(self):
         def opener(*args, **kwargs):
@@ -46,11 +48,11 @@ class ConsolidatorTests(unittest.TestCase):
             })}}]})
 
         payload = consolidate_session(self.OBSERVATIONS, base_url="http://local/v1", model="small", opener=opener)
-        self.assertEqual(payload["title"], "Auth refresh")
-        self.assertEqual(payload["next_steps"], [])
+        assert payload["title"] == "Auth refresh"
+        assert payload["next_steps"] == []
 
     def test_empty_observations_are_rejected(self):
-        with self.assertRaises(ConsolidationError):
+        with pytest.raises(ConsolidationError):
             fallback_session([])
 
 

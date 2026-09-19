@@ -6,8 +6,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from memory_hub.github_export import (ExportError, ExportOutbox, GitHubClient, GitHubPublisher,
-                                      build_export_payloads, configure, run_once)
+from memory_hub.github_export import (
+    ExportError,
+    ExportOutbox,
+    GitHubClient,
+    GitHubPublisher,
+    build_export_payloads,
+    configure,
+    run_once,
+)
 from memory_hub.manager import MemoryManager
 
 
@@ -75,8 +82,8 @@ class GitHubClientPaginationTests(unittest.TestCase):
         stdout = json.dumps(pages)
 
         def runner(args, **kwargs):
-            self.assertIn("--paginate", args)
-            self.assertIn("--slurp", args)
+            assert "--paginate" in args
+            assert "--slurp" in args
             return Mock(returncode=0, stdout=stdout, stderr="")
         return runner
 
@@ -86,15 +93,15 @@ class GitHubClientPaginationTests(unittest.TestCase):
         client = GitHubClient("owner/repo", runner=self._paginated_runner([page_one, page_two]))
         found = client.find_issue("marker: group-9")
         assert found is not None
-        self.assertEqual(found["number"], 101)
+        assert found["number"] == 101
 
     def test_list_comments_returns_every_page(self):
         page_one = [{"id": n} for n in range(1, 101)]
         page_two = [{"id": 101}]
         client = GitHubClient("owner/repo", runner=self._paginated_runner([page_one, page_two]))
         comments = client.list_comments(42)
-        self.assertEqual(len(comments), 101)
-        self.assertEqual(comments[-1]["id"], 101)
+        assert len(comments) == 101
+        assert comments[-1]["id"] == 101
 
 
 class GitHubExportTests(unittest.TestCase):
@@ -127,7 +134,7 @@ class GitHubExportTests(unittest.TestCase):
             "sequence": sequence, "entry_type": entry_type, "source_client": "codex",
             "changed_files": changed_files or [f"src/file-{sequence}.py"],
         })
-        self.assertEqual(result["status"], "stored")
+        assert result["status"] == "stored"
 
     def test_sanitized_three_batches_and_final_publish_with_links_and_no_duplicates(self):
         for sequence in (1, 2, 3):
@@ -137,26 +144,26 @@ class GitHubExportTests(unittest.TestCase):
         outbox = ExportOutbox(self.root / "outbox.sqlite3")
         publisher = GitHubPublisher(self.vault, client=fake, outbox=outbox)
         try:
-            self.assertEqual(publisher.enqueue_accepted()["enqueued"], 4)
+            assert publisher.enqueue_accepted()["enqueued"] == 4
             result = publisher.publish_once()
-            self.assertEqual(result["status"], "ok")
-            self.assertEqual(len(fake.comments), 4)
-            self.assertIn("### Investigated", fake.comments[0]["body"])
-            self.assertIn("### Learned", fake.comments[0]["body"])
-            self.assertIn("### Completed", fake.comments[0]["body"])
-            self.assertIn("### Next Steps", fake.comments[0]["body"])
-            self.assertIn("issuecomment", fake.comments[1]["body"])
-            self.assertIn("issuecomment", fake.comments[0]["body"])
+            assert result["status"] == "ok"
+            assert len(fake.comments) == 4
+            assert "### Investigated" in fake.comments[0]["body"]
+            assert "### Learned" in fake.comments[0]["body"]
+            assert "### Completed" in fake.comments[0]["body"]
+            assert "### Next Steps" in fake.comments[0]["body"]
+            assert "issuecomment" in fake.comments[1]["body"]
+            assert "issuecomment" in fake.comments[0]["body"]
             user_comment = {"id": 99, "html_url": "https://github.com/owner/repo/issues/42#issuecomment-99", "body": "User note"}
             fake.comments.append(user_comment)
             fake.issue["body"] += "\n\nUser-maintained context.\n"
             self._store(5)
             publisher.enqueue_accepted()
             publisher.publish_once()
-            self.assertIn("User-maintained context.", fake.issue["body"])
-            self.assertIn(user_comment, fake.comments)
-            self.assertEqual(len([item for item in fake.comments if "ai-memory-hub:checkpoint" in item["body"]]), 5)
-            self.assertEqual(publisher.enqueue_accepted()["enqueued"], 5)
+            assert "User-maintained context." in fake.issue["body"]
+            assert user_comment in fake.comments
+            assert len([item for item in fake.comments if "ai-memory-hub:checkpoint" in item["body"]]) == 5
+            assert publisher.enqueue_accepted()["enqueued"] == 5
         finally:
             publisher.close()
             outbox.close()
@@ -174,21 +181,21 @@ class GitHubExportTests(unittest.TestCase):
         try:
             publisher.enqueue_accepted()
             publisher.publish_once()
-            self.assertEqual(fake.create_comment_calls, 3)
+            assert fake.create_comment_calls == 3
             first_update_issue_calls = fake.update_issue_calls
             first_update_comment_calls = fake.update_comment_calls
             self._store(4)
             publisher.enqueue_accepted()
             result = publisher.publish_once()
-            self.assertEqual(result["status"], "ok")
+            assert result["status"] == "ok"
             # Only the new 4th checkpoint should have produced a comment write.
-            self.assertEqual(fake.create_comment_calls, 4)
+            assert fake.create_comment_calls == 4
             # A freshly created comment gets one self-referential update once the
             # links map is complete — but rows 1-3 were already `sent` and must not
             # be re-updated on this pass, so the count rises by exactly 1, not 4.
-            self.assertEqual(fake.update_comment_calls, first_update_comment_calls + 1)
-            self.assertGreater(fake.update_issue_calls, first_update_issue_calls)
-            self.assertEqual(len(fake.comments), 4)
+            assert fake.update_comment_calls == first_update_comment_calls + 1
+            assert fake.update_issue_calls > first_update_issue_calls
+            assert len(fake.comments) == 4
         finally:
             publisher.close()
             outbox.close()
@@ -201,12 +208,12 @@ class GitHubExportTests(unittest.TestCase):
         try:
             publisher.enqueue_accepted()
             first = publisher.publish_once()
-            self.assertEqual(first["status"], "degraded")
+            assert first["status"] == "degraded"
             outbox.conn.execute("UPDATE exports SET next_attempt_at='2000-01-01T00:00:00+00:00'")
             outbox.conn.commit()
             second = publisher.publish_once()
-            self.assertEqual(second["status"], "ok")
-            self.assertEqual(len(fake.comments), 1)
+            assert second["status"] == "ok"
+            assert len(fake.comments) == 1
         finally:
             publisher.close()
             outbox.close()
@@ -217,10 +224,10 @@ class GitHubExportTests(unittest.TestCase):
         outbox = ExportOutbox(self.root / "outbox.sqlite3")
         publisher = GitHubPublisher(self.vault, client=fake, outbox=outbox)
         try:
-            self.assertEqual(publisher.enqueue_accepted()["status"], "queued")
+            assert publisher.enqueue_accepted()["status"] == "queued"
             result = publisher.publish_once()
-            self.assertEqual(result["status"], "degraded")
-            self.assertEqual(outbox.health()["pending"], 1)
+            assert result["status"] == "degraded"
+            assert outbox.health()["pending"] == 1
         finally:
             publisher.close()
             outbox.close()
@@ -232,25 +239,25 @@ class GitHubExportTests(unittest.TestCase):
                                                      "errors": [{"reason": "offline"}]}
         with patch("memory_hub.github_export.GitHubPublisher", return_value=fake_publisher):
             result = run_once(self.vault)
-        self.assertEqual(result["status"], "degraded")
+        assert result["status"] == "degraded"
         health = json.loads((self.root / "health.json").read_text(encoding="utf-8"))
-        self.assertEqual(health["errors"][0]["reason"], "offline")
+        assert health["errors"][0]["reason"] == "offline"
         fake_publisher.close.assert_called_once()
 
     def test_export_redacts_private_paths_and_secrets_and_skips_review_entries(self):
         self._store(1, changed_files=[r"C:\Users\vibm\private\secret.py", "src/safe.py"])
         payload = build_export_payloads(self.vault)[0]
-        self.assertIn("[private path redacted]", payload["changed_files"])
-        self.assertIn("src/safe.py", payload["changed_files"])
-        self.assertNotIn("Users/vibm", json.dumps(payload))
+        assert "[private path redacted]" in payload["changed_files"]
+        assert "src/safe.py" in payload["changed_files"]
+        assert "Users/vibm" not in json.dumps(payload)
         review = self.manager.propose_session({
             "model": "codex", "title": "Review only", "investigated": ["pending"],
             "learned": [], "completed": [], "next_steps": [], "project": "review-only",
             "session_group_id": "review-group", "checkpoint_id": "review-1", "sequence": 1,
             "entry_type": "checkpoint",
         }, write_mode="review")
-        self.assertEqual(review["status"], "queued")
-        self.assertEqual({item["session_group_id"] for item in build_export_payloads(self.vault)}, {"export-group"})
+        assert review["status"] == "queued"
+        assert {item["session_group_id"] for item in build_export_payloads(self.vault)} == {"export-group"}
 
 
 if __name__ == "__main__":

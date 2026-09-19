@@ -20,10 +20,10 @@ class PromptSyncTests(unittest.TestCase):
             sync_prompts(prompts)
             second = {name: (prompts / f"{name}.md").read_text(encoding="utf-8") for name in CLIENTS}
 
-            self.assertEqual(first, second)
+            assert first == second
             for client in CLIENTS:
                 identity = "<tool-name>" if client == "generic" else client
-                self.assertIn(f"Writer identity for this client: `{identity}`.", first[client])
+                assert f"Writer identity for this client: `{identity}`." in first[client]
 
     def test_repository_prompts_share_the_per_kind_templates(self):
         root = Path(__file__).resolve().parents[1]
@@ -43,13 +43,13 @@ class PromptSyncTests(unittest.TestCase):
             "contiguous `>`-prefixed lines",
         )
         for marker in markers:
-            self.assertIn(marker, generic)
-            self.assertIn(marker, instructions)
+            assert marker in generic
+            assert marker in instructions
         for client in CLIENTS:
             prompt = (root / "client-prompts" / f"{client}.md").read_text(encoding="utf-8")
-            self.assertIn("## Authoring templates by memory kind", prompt)
+            assert "## Authoring templates by memory kind" in prompt
             identity = "<tool-name>" if client == "generic" else client
-            self.assertIn(f"Writer identity for this client: `{identity}`.", prompt)
+            assert f"Writer identity for this client: `{identity}`." in prompt
 
 
 if __name__ == "__main__":

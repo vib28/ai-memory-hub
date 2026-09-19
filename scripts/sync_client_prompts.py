@@ -1,8 +1,8 @@
 """Propagate generic.md instructions while preserving each client's writer identity."""
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROMPTS = ROOT / "client-prompts"

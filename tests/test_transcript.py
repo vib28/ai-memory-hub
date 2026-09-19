@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from memory_hub.capture import hook_main
 from memory_hub.github_export import build_export_payloads
 from memory_hub.manager import MemoryManager
@@ -42,13 +44,13 @@ class TranscriptStoreTests(unittest.TestCase):
             "author": "user", "object_type": "user-message", "payload": "changed retry",
         })
         rows = self.store.events("group-1")
-        self.assertFalse(first["duplicate"])
-        self.assertFalse(second["duplicate"])
-        self.assertTrue(duplicate["duplicate"])
-        self.assertEqual([row["sequence"] for row in rows], [1, 2])
-        self.assertEqual(rows[0]["payload"], "keep *this* verbatim\n```x```")
-        self.assertEqual(rows[1]["payload"], structured)
-        self.assertEqual(rows[0]["generated_at"], "2026-09-09T10:00:00+05:30")
+        assert not first["duplicate"]
+        assert not second["duplicate"]
+        assert duplicate["duplicate"]
+        assert [row["sequence"] for row in rows] == [1, 2]
+        assert rows[0]["payload"] == "keep *this* verbatim\n```x```"
+        assert rows[1]["payload"] == structured
+        assert rows[0]["generated_at"] == "2026-09-09T10:00:00+05:30"
 
     def test_concurrent_connections_allocate_unique_monotonic_sequences(self):
         database = self.store.path
@@ -67,9 +69,9 @@ class TranscriptStoreTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=8) as executor:
             list(executor.map(append, range(64)))
         rows = self.store.events("group-2")
-        self.assertEqual(len(rows), 64)
-        self.assertEqual([row["sequence"] for row in rows], list(range(1, 65)))
-        self.assertEqual(len({row["event_id"] for row in rows}), 64)
+        assert len(rows) == 64
+        assert [row["sequence"] for row in rows] == list(range(1, 65))
+        assert len({row["event_id"] for row in rows}) == 64
 
     def test_render_is_human_readable_and_uses_obsidian_metadata(self):
         self.store.append({
@@ -89,15 +91,15 @@ class TranscriptStoreTests(unittest.TestCase):
         )
         path = self.root / "vault" / result["path"].lstrip("/")
         content = path.read_text(encoding="utf-8")
-        self.assertEqual(result["path"], transcript_path_for("group-3", "demo-app"))
-        self.assertIn("type: transcript", content)
-        self.assertIn("- user", content)
-        self.assertIn("- agent", content)
-        self.assertIn("- project/demo-app", content)
-        self.assertIn("**Topic:** transcript QA", content)
-        self.assertIn("[[sessions/demo-app/codex.md#codex-summary]]", content)
-        self.assertIn('"answer": "world"', content)
-        self.assertIn("hello transcript", content)
+        assert result["path"] == transcript_path_for("group-3", "demo-app")
+        assert "type: transcript" in content
+        assert "- user" in content
+        assert "- agent" in content
+        assert "- project/demo-app" in content
+        assert "**Topic:** transcript QA" in content
+        assert "[[sessions/demo-app/codex.md#codex-summary]]" in content
+        assert '"answer": "world"' in content
+        assert "hello transcript" in content
 
     def test_provider_native_tool_and_lifecycle_fields_normalize_without_summarying(self):
         tool = self.store.append({
@@ -113,13 +115,13 @@ class TranscriptStoreTests(unittest.TestCase):
             "client": "codex", "payload": {"source": "startup"},
         })
         rows = self.store.events("native-group")
-        self.assertEqual(tool["event_id"], "native-tool")
-        self.assertEqual(start["event_id"], "native-start")
-        self.assertEqual(rows[0]["author"], "tool")
-        self.assertEqual(rows[0]["object_type"], "post-tool-use")
-        self.assertEqual(rows[1]["author"], "system")
-        self.assertEqual(rows[1]["object_type"], "session-start")
-        self.assertIn("exact result", rows[0]["payload_raw"])
+        assert tool["event_id"] == "native-tool"
+        assert start["event_id"] == "native-start"
+        assert rows[0]["author"] == "tool"
+        assert rows[0]["object_type"] == "post-tool-use"
+        assert rows[1]["author"] == "system"
+        assert rows[1]["object_type"] == "session-start"
+        assert "exact result" in rows[0]["payload_raw"]
 
     def test_generated_at_marks_substituted_timestamps_explicitly(self):
         """#77: a provider-omitted generated_at must be recorded and rendered as
@@ -137,14 +139,14 @@ class TranscriptStoreTests(unittest.TestCase):
         rows = self.store.events("prov-group")
         supplied = next(r for r in rows if r["event_id"] == "supplied")
         omitted = next(r for r in rows if r["event_id"] == "omitted")
-        self.assertEqual(supplied["generated_at_source"], "provider")
-        self.assertEqual(omitted["generated_at_source"], "capture")
+        assert supplied["generated_at_source"] == "provider"
+        assert omitted["generated_at_source"] == "capture"
         self.store.render("prov-group", self.root / "vault")
         content = (self.root / "vault" / "transcripts" / "prov-group.md").read_text(encoding="utf-8")
-        self.assertIn("not supplied by provider", content)
+        assert "not supplied by provider" in content
         # The supplied event's block must not carry the substitution marker.
         supplied_block = content.split("### ")[1]
-        self.assertNotIn("not supplied by provider", supplied_block)
+        assert "not supplied by provider" not in supplied_block
 
     def test_delete_group_removes_project_scoped_transcript_with_no_explicit_path(self):
         """#76: a caller that omits `path` must still reach a project-scoped file, or
@@ -156,11 +158,11 @@ class TranscriptStoreTests(unittest.TestCase):
         })
         self.store.render("del-group", self.root / "vault", project="widget-app")
         destination = self.root / "vault" / "transcripts" / "widget-app" / "del-group.md"
-        self.assertTrue(destination.exists())
+        assert destination.exists()
         removed = self.store.delete_group("del-group", vault=self.root / "vault")
-        self.assertEqual(removed, 1)
-        self.assertFalse(destination.exists())
-        self.assertEqual(self.store.events("del-group"), [])
+        assert removed == 1
+        assert not destination.exists()
+        assert self.store.events("del-group") == []
 
     def test_prune_is_opt_in_and_deletes_only_old_events(self):
         self.store.append({
@@ -170,9 +172,9 @@ class TranscriptStoreTests(unittest.TestCase):
         })
         self.store.render("group-4", self.root / "vault")
         with patch.dict("os.environ", {"MEMORY_TRANSCRIPT_RETENTION_DAYS": "30"}):
-            self.assertEqual(self.store.prune(now=datetime(2026, 1, 1, tzinfo=timezone.utc)), 1)
-        self.assertEqual(self.store.events("group-4"), [])
-        self.assertFalse((self.root / "vault" / "transcripts" / "group-4.md").exists())
+            assert self.store.prune(now=datetime(2026, 1, 1, tzinfo=timezone.utc)) == 1
+        assert self.store.events("group-4") == []
+        assert not (self.root / "vault" / "transcripts" / "group-4.md").exists()
 
 
 class TranscriptIntegrationTests(unittest.TestCase):
@@ -189,16 +191,16 @@ class TranscriptIntegrationTests(unittest.TestCase):
                 "MEMORY_TRANSCRIPT_DB": str(root / "transcripts.sqlite3"),
                 "MEMORY_TRANSCRIPT_ENABLED": "true",
             }
-            from io import StringIO
             from contextlib import redirect_stdout
+            from io import StringIO
             with patch.dict("os.environ", env, clear=False), patch("sys.stdin", StringIO(json.dumps(payload))), redirect_stdout(StringIO()) as output:
-                self.assertEqual(hook_main(), 0)
+                assert hook_main() == 0
             response = json.loads(output.getvalue())
-            self.assertEqual(response["status"], "accepted")
-            self.assertEqual(response["observations"][0]["transcript"]["event_id"], "hook-transcript-1")
+            assert response["status"] == "accepted"
+            assert response["observations"][0]["transcript"]["event_id"] == "hook-transcript-1"
             store = TranscriptStore(root / "transcripts.sqlite3")
             try:
-                self.assertEqual(store.events("hook-group")[0]["payload"], "verbatim user text")
+                assert store.events("hook-group")[0]["payload"] == "verbatim user text"
             finally:
                 store.close()
 
@@ -229,23 +231,23 @@ class TranscriptIntegrationTests(unittest.TestCase):
                         "session_group_id": "group-5", "checkpoint_id": "checkpoint-5",
                         "sequence": 1, "entry_type": "final",
                     })
-                    self.assertEqual(result["status"], "stored")
+                    assert result["status"] == "stored"
                     transcript = vault / "transcripts" / "demo" / "group-5.md"
                     content = transcript.read_text(encoding="utf-8")
                     manifest = json.loads(manager.read("/sessions/session-manifest.json"))
                     entry = manifest["groups"]["group-5"]["entries"][0]
-                    self.assertEqual(entry["transcript_path"], "/transcripts/demo/group-5.md")
-                    self.assertEqual(entry["transcript_url"], "[[transcripts/demo/group-5.md]]")
-                    self.assertEqual(entry["transcript_event_count"], 1)
-                    self.assertIn("**Transcript:** [[transcripts/demo/group-5.md]]", manager.read(result["memory"]["path"]))
-                    self.assertIn("Summaries:", content)
-                    self.assertIn("raw prompt", content)
+                    assert entry["transcript_path"] == "/transcripts/demo/group-5.md"
+                    assert entry["transcript_url"] == "[[transcripts/demo/group-5.md]]"
+                    assert entry["transcript_event_count"] == 1
+                    assert "**Transcript:** [[transcripts/demo/group-5.md]]" in manager.read(result["memory"]["path"])
+                    assert "Summaries:" in content
+                    assert "raw prompt" in content
                     exported = json.dumps(build_export_payloads(vault))
-                    self.assertNotIn("raw prompt", exported)
-                    self.assertNotIn("transcripts/demo/group-5.md", exported)
+                    assert "raw prompt" not in exported
+                    assert "transcripts/demo/group-5.md" not in exported
                     forgotten = manager.forget(result["memory"]["memory_id"])
-                    self.assertEqual(forgotten["status"], "forgotten")
-                    self.assertFalse(transcript.exists())
+                    assert forgotten["status"] == "forgotten"
+                    assert not transcript.exists()
             finally:
                 manager.close()
 
@@ -281,10 +283,10 @@ class TranscriptIntegrationTests(unittest.TestCase):
                     health = read_health(vault)
                 finally:
                     worker.close()
-                self.assertEqual(result["status"], "ok")
-                self.assertEqual(result["transcript_rendered"], 1)
-                self.assertTrue(health["config"]["transcript_enabled"])
-                self.assertTrue((vault / "transcripts" / "group-6.md").exists())
+                assert result["status"] == "ok"
+                assert result["transcript_rendered"] == 1
+                assert health["config"]["transcript_enabled"]
+                assert (vault / "transcripts" / "group-6.md").exists()
 
     def test_worker_reroll_preserves_summary_back_links_and_single_path(self):
         """#68: the worker's routine poll-driven re-render must not silently strip the
@@ -318,10 +320,10 @@ class TranscriptIntegrationTests(unittest.TestCase):
                         "session_group_id": "group-8", "checkpoint_id": "checkpoint-8",
                         "sequence": 1, "entry_type": "checkpoint",
                     })
-                    self.assertEqual(result["status"], "stored")
+                    assert result["status"] == "stored"
                     transcript = vault / "transcripts" / "demo" / "group-8.md"
                     before = transcript.read_text(encoding="utf-8")
-                    self.assertIn("Summaries:", before)
+                    assert "Summaries:" in before
                     config = WorkerConfig(vault=vault, buffer_path=root / "capture.sqlite3")
                     worker = SessionWorker(config, manager=manager)
                     try:
@@ -330,9 +332,9 @@ class TranscriptIntegrationTests(unittest.TestCase):
                     finally:
                         worker.close()
                     after = transcript.read_text(encoding="utf-8")
-                    self.assertIn("Summaries:", after)
-                    self.assertIn("sessions/demo/codex.md#codex-re-render-regression", after)
-                    self.assertFalse((vault / "transcripts" / "group-8.md").exists())
+                    assert "Summaries:" in after
+                    assert "sessions/demo/codex.md#codex-re-render-regression" in after
+                    assert not (vault / "transcripts" / "group-8.md").exists()
             finally:
                 manager.close()
 
@@ -364,18 +366,18 @@ class TranscriptIntegrationTests(unittest.TestCase):
                     store.close()
                     original_append = manager.vault.append_session_block
                     with patch.object(manager.vault, "append_session_block", side_effect=RuntimeError("crash")):
-                        with self.assertRaises(RuntimeError):
+                        with pytest.raises(RuntimeError):
                             manager.propose_session(payload)
                     # #249: transcript render now happens after append_session_block,
                     # so a crash before append means the transcript is not yet written.
                     # The retry writes it on the successful second attempt.
                     transcript = vault / "transcripts" / "demo" / "group-7.md"
-                    self.assertFalse(transcript.exists())
+                    assert not transcript.exists()
                     retry = manager.propose_session(payload)
-                    self.assertEqual(retry["status"], "stored")
-                    self.assertTrue(transcript.exists())
-                    self.assertEqual(transcript.read_text(encoding="utf-8").count("exact event"), 1)
-                    self.assertIn("Summaries:", transcript.read_text(encoding="utf-8"))
+                    assert retry["status"] == "stored"
+                    assert transcript.exists()
+                    assert transcript.read_text(encoding="utf-8").count("exact event") == 1
+                    assert "Summaries:" in transcript.read_text(encoding="utf-8")
                     manager.vault.append_session_block = original_append
             finally:
                 manager.close()

@@ -16,7 +16,6 @@ from .models import MemoryCandidate
 from .security import check_text
 from .utils import slugify
 
-
 _PREFERENCE_RE = re.compile(
     r"\b(?:always|never|from now on|prefer(?:ably)?|don't|do not)\b.{0,160}",
     re.I,

@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from memory_hub.capture import ObservationBuffer
 from memory_hub.session_capture import consolidate_buffered_session
 
@@ -28,9 +30,9 @@ class SessionCaptureTests(unittest.TestCase):
                                "tool": "Edit", "files": ["a.py"], "output_summary": "changed a.py"})
                 manager = FakeManager()
                 result = consolidate_buffered_session(buffer, manager, "s1", writer="codex", write_mode="review")
-                self.assertEqual(result["status"], "queued")
-                self.assertEqual(manager.calls[0][1], "review")
-                self.assertEqual(buffer.for_session("s1")[0]["status"], "completed")
+                assert result["status"] == "queued"
+                assert manager.calls[0][1] == "review"
+                assert buffer.for_session("s1")[0]["status"] == "completed"
             finally:
                 buffer.close()
 
@@ -41,8 +43,8 @@ class SessionCaptureTests(unittest.TestCase):
                 buffer.append({"observation_id": "one", "session_id": "s1", "output_summary": "work"})
                 manager = FakeManager("duplicate")
                 result = consolidate_buffered_session(buffer, manager, "s1", writer="codex", write_mode="auto")
-                self.assertEqual(result["status"], "duplicate")
-                self.assertEqual(buffer.pending_sessions(), [])
+                assert result["status"] == "duplicate"
+                assert buffer.pending_sessions() == []
             finally:
                 buffer.close()
 
@@ -60,14 +62,14 @@ class SessionCaptureTests(unittest.TestCase):
                         return {"status": "stored"}
 
                 manager = FailingManager()
-                with self.assertRaises(RuntimeError):
+                with pytest.raises(RuntimeError):
                     consolidate_buffered_session(buffer, manager, "s1", writer="codex", write_mode="auto")
                 result = consolidate_buffered_session(
                     buffer, manager, "s1", writer="codex", write_mode="auto"
                 )
-                self.assertEqual(result["status"], "stored")
-                self.assertEqual(manager.calls[0][0]["checkpoint_id"], manager.calls[1][0]["checkpoint_id"])
-                self.assertEqual(buffer.pending_sessions(), [])
+                assert result["status"] == "stored"
+                assert manager.calls[0][0]["checkpoint_id"] == manager.calls[1][0]["checkpoint_id"]
+                assert buffer.pending_sessions() == []
             finally:
                 buffer.close()
 
@@ -87,7 +89,7 @@ class SessionCaptureTests(unittest.TestCase):
                     return original_mark_status(*args, **kwargs)
 
                 buffer.mark_status = fail_ack
-                with self.assertRaises(RuntimeError):
+                with pytest.raises(RuntimeError):
                     consolidate_buffered_session(buffer, manager, "s1", writer="codex", write_mode="auto")
                 buffer.mark_status = original_mark_status
                 buffer.conn.execute(
@@ -98,10 +100,10 @@ class SessionCaptureTests(unittest.TestCase):
                 result = consolidate_buffered_session(
                     buffer, manager, "s1", writer="codex", write_mode="auto"
                 )
-                self.assertEqual(result["status"], "duplicate")
-                self.assertEqual(manager.calls[0][0]["checkpoint_id"], manager.calls[1][0]["checkpoint_id"])
-                self.assertEqual(result["batch_id"], manager.calls[0][0]["checkpoint_id"])
-                self.assertEqual(buffer.pending_sessions(), [])
+                assert result["status"] == "duplicate"
+                assert manager.calls[0][0]["checkpoint_id"] == manager.calls[1][0]["checkpoint_id"]
+                assert result["batch_id"] == manager.calls[0][0]["checkpoint_id"]
+                assert buffer.pending_sessions() == []
             finally:
                 buffer.close()
 
@@ -115,10 +117,10 @@ class SessionCaptureTests(unittest.TestCase):
                 result = consolidate_buffered_session(
                     buffer, manager, "s1", writer="codex", write_mode="auto"
                 )
-                self.assertEqual(result["status"], "stored")
-                self.assertEqual(result["recovered"], 1)
-                self.assertEqual(buffer.for_session("s1")[0]["status"], "completed")
-                self.assertGreaterEqual(buffer.for_session("s1")[0]["attempts"], 4)
+                assert result["status"] == "stored"
+                assert result["recovered"] == 1
+                assert buffer.for_session("s1")[0]["status"] == "completed"
+                assert buffer.for_session("s1")[0]["attempts"] >= 4
             finally:
                 buffer.close()
 
@@ -140,9 +142,9 @@ class SessionCaptureTests(unittest.TestCase):
                     result = consolidate_buffered_session(
                         buffer, manager, "s1", writer="codex", write_mode="auto"
                     )
-                self.assertEqual(result["summary"]["project"], "widget-app")
+                assert result["summary"]["project"] == "widget-app"
                 payload = manager.calls[0][0]
-                self.assertIn("widget-app", payload["transcript_path"])
+                assert "widget-app" in payload["transcript_path"]
             finally:
                 buffer.close()
 
@@ -157,8 +159,8 @@ class SessionCaptureTests(unittest.TestCase):
                 buffer.mark_status(first_page, "completed")
                 result = consolidate_buffered_session(buffer, FakeManager("stored"), "s1",
                                                        writer="codex", write_mode="auto")
-                self.assertEqual(result["observations"], 1)
-                self.assertEqual(buffer.pending_sessions(), [])
+                assert result["observations"] == 1
+                assert buffer.pending_sessions() == []
             finally:
                 buffer.close()
 

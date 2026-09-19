@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from memory_hub.utils import file_lock, safe_join
+
 
 class SafeJoinTests(unittest.TestCase):
     def setUp(self):
@@ -15,7 +18,7 @@ class SafeJoinTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_parent_traversal_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             safe_join(self.root, "../outside.md")
 
     def test_absolute_path_is_confined_to_root(self):
@@ -23,10 +26,10 @@ class SafeJoinTests(unittest.TestCase):
         # against the resolved root, since safe_join resolves internally and a
         # temp dir may itself be a symlink/junction (e.g. CI runners' TEMP).
         p = safe_join(self.root, "/topics/thing.md")
-        self.assertTrue(str(p).startswith(str(self.root.resolve())))
+        assert str(p).startswith(str(self.root.resolve()))
 
     def test_backslash_traversal_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             safe_join(self.root, "..\\..\\outside.md")
 
 class StaleLockTests(unittest.TestCase):
@@ -51,7 +54,7 @@ class StaleLockTests(unittest.TestCase):
 
         with file_lock(self.target, timeout=2.0):
             pass  # must not raise TimeoutError
-        self.assertFalse(lock.exists())
+        assert not lock.exists()
 
 if __name__ == "__main__":
     unittest.main()

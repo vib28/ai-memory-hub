@@ -5,18 +5,18 @@ import logging
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from .models import MemoryRecord
-from .utils import (
-    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
-    normalize_relative, sanitize_secrets, text_hash,
-)
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
+from .utils import (
+    text_hash,
+    utc_timestamp,
+)
 from .vault import session_embedding_chunks
 
+if TYPE_CHECKING:
+    from .models import MemoryRecord
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ class MemoryIndex:
                 list(session_ids),
             )
         writes = ((memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text))
-                  for (memory_id, text), vector in zip(inputs, vectors))
+                  for (memory_id, text), vector in zip(inputs, vectors, strict=False))
         sql = "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)"
         self.conn.executemany(sql, list(writes))
 
@@ -248,7 +248,7 @@ class MemoryIndex:
             return
         self._delete_embeddings(record.memory_id, manage_transaction=manage_transaction)
         writes = ((memory_id, json.dumps(vector), self.embedding_provider.model, text_hash(text))
-                 for (memory_id, text), vector in zip(inputs, vectors))
+                 for (memory_id, text), vector in zip(inputs, vectors, strict=False))
         sql = "INSERT OR REPLACE INTO memory_embeddings(memory_id,vector_json,model,content_hash) VALUES(?,?,?,?)"
         if manage_transaction:
             with self.conn:

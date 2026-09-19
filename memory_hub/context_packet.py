@@ -39,17 +39,20 @@ import re
 import sys
 import threading
 from datetime import datetime, timezone
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
 from .utils import (
-    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
-    normalize_relative, sanitize_secrets, atomic_write, file_lock,
-    one_line, read_json, slugify,
+    atomic_write,
+    file_lock,
+    one_line,
+    read_json,
+    slugify,
+    utc_timestamp,
 )
 
 log = logging.getLogger("ai_memory_hub.context_packet")
@@ -67,10 +70,8 @@ _STOPWORDS = {
     "check", "checking", "checked", "checks", "start", "started", "starting", "starts",
     "server", "servers", "client", "clients", "system", "systems", "setup", "setups",
     "configure", "configuring", "configured", "configuration",
-    "get", "getting", "got", "gets", "got",
-    "let", "lets", "letting", "lets",
-    "know", "knowing", "known", "knows",
-    "like", "likely", "unlike", "likes",
+    "get", "getting", "got", "gets", "let", "lets", "letting", "know", "knowing", "known", "knows",
+    "likely", "unlike", "likes",
     "look", "looking", "looked", "looks",
     "find", "finding", "found", "finds",
     "tell", "telling", "told", "tells",
@@ -81,7 +82,7 @@ _STOPWORDS = {
     "call", "calling", "called", "calls",
     "try", "trying", "tried", "tries",
     "keep", "keeping", "kept", "keeps",
-    "let", "want", "wanting", "wanted", "wants",
+    "wanting", "wanted", "wants",
     "thing", "things", "something", "anything", "nothing",
     "way", "ways", "part", "parts",
     "good", "great", "well", "better", "best",

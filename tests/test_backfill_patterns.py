@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "backfill_patterns.py"
 TEMPLATE = ROOT / "vault_template"
@@ -33,23 +32,23 @@ class BackfillPatternTests(unittest.TestCase):
     def run_script(self, *args, env=None):
         command = [sys.executable, str(SCRIPT), "--vault", str(self.vault), *args]
         result = subprocess.run(command, capture_output=True, text=True, env=env)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
     def test_dry_run_writes_nothing(self):
         result = self.run_script("--dry-run")
-        self.assertEqual(result["status"], "dry_run")
-        self.assertEqual(result["would_propose"], 1)
-        self.assertFalse((self.vault / "preferences.md").exists())
+        assert result["status"] == "dry_run"
+        assert result["would_propose"] == 1
+        assert not (self.vault / "preferences.md").exists()
 
     def test_review_mode_uses_public_tool_and_is_idempotent(self):
         env = os.environ.copy()
         env["MEMORY_WRITE_MODE"] = "review"
         first = self.run_script(env=env)
         second = self.run_script(env=env)
-        self.assertEqual(first["queued"], 1)
-        self.assertEqual(second["queued"], 0)
-        self.assertEqual(second["skipped"], 1)
+        assert first["queued"] == 1
+        assert second["queued"] == 0
+        assert second["skipped"] == 1
 
     def test_malformed_pattern_fails_without_fallback(self):
         (self.vault / "patterns.md").write_text(
@@ -58,8 +57,8 @@ class BackfillPatternTests(unittest.TestCase):
         )
         command = [sys.executable, str(SCRIPT), "--vault", str(self.vault)]
         result = subprocess.run(command, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("preference rule", result.stdout)
+        assert result.returncode == 2
+        assert "preference rule" in result.stdout
 
 
 if __name__ == "__main__":

@@ -20,8 +20,7 @@ from typing import Any
 
 from ._env import int_env
 from .app_config import bootstrap_environment
-from .utils import clean_list, one_line, parse_iso_datetime, read_json, safe_join, slugify
-
+from .utils import clean_list, one_line, parse_iso_datetime, safe_join, slugify
 
 logger = logging.getLogger(__name__)
 

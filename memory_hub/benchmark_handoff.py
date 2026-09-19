@@ -15,10 +15,8 @@ import json
 import re
 import statistics
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
 
 BENCHMARK_VERSION = "handoff-replay-v1"
 TASK_TYPES = ("feature", "debugging", "interrupted")
@@ -205,7 +203,7 @@ def _distribution(values: list[float | int]) -> dict[str, float | int | None]:
     }
 
 
-def _savings(off: float | int | None, on: float | int | None) -> dict[str, Any]:
+def _savings(off: float | None, on: float | None) -> dict[str, Any]:
     if off is None or on is None:
         return {"absolute": None, "percent": None, "status": "N/A: comparable usage unavailable"}
     absolute = off - on
@@ -359,9 +357,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "Status: **replay complete; live two-tool certification not run**.",
         "",
-        "This report uses synthetic fixtures, a deterministic clarification responder and the "
+        ("This report uses synthetic fixtures, a deterministic clarification responder and the "
         f"named common tokenizer `{report['configuration']['common_tokenizer']}`. Provider usage "
-        "is unavailable and is never treated as zero. No live vault or paid call was used.",
+        "is unavailable and is never treated as zero. No live vault or paid call was used."),
         "",
         "```mermaid",
         "flowchart LR",
@@ -381,20 +379,20 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "## Aggregate replay metrics",
         "",
-        "| Metric | OFF median | ON median | Savings (OFF − ON) | Percent |\n"
-        "|---|---:|---:|---:|---:|",
+        ("| Metric | OFF median | ON median | Savings (OFF − ON) | Percent |\n"
+        "|---|---:|---:|---:|---:|"),
         f"| Destination-stage common tokens | {aggregate['off']['destination_stage_tokens']} | {aggregate['on']['destination_stage_tokens']} | {aggregate['savings']['destination_stage']['absolute']} | {aggregate['savings']['destination_stage']['percent']}% |",
         f"| Whole-workflow common tokens | {aggregate['off']['whole_workflow_tokens']} | {aggregate['on']['whole_workflow_tokens']} | {aggregate['savings']['whole_workflow']['absolute']} | {aggregate['savings']['whole_workflow']['percent']}% |",
         "",
-        f"Destination-stage spread (min–max): OFF {aggregate['off']['destination_stage_tokens_spread']['min']}–{aggregate['off']['destination_stage_tokens_spread']['max']}; "
-        f"ON {aggregate['on']['destination_stage_tokens_spread']['min']}–{aggregate['on']['destination_stage_tokens_spread']['max']}.",
-        f"Whole-workflow spread (min–max): OFF {aggregate['off']['whole_workflow_tokens_spread']['min']}–{aggregate['off']['whole_workflow_tokens_spread']['max']}; "
-        f"ON {aggregate['on']['whole_workflow_tokens_spread']['min']}–{aggregate['on']['whole_workflow_tokens_spread']['max']}.",
-        f"Replay latency spread (min–max ms): OFF {aggregate['off']['latency_ms']['min']}–{aggregate['off']['latency_ms']['max']}; "
-        f"ON {aggregate['on']['latency_ms']['min']}–{aggregate['on']['latency_ms']['max']}.",
+        (f"Destination-stage spread (min–max): OFF {aggregate['off']['destination_stage_tokens_spread']['min']}–{aggregate['off']['destination_stage_tokens_spread']['max']}; "
+        f"ON {aggregate['on']['destination_stage_tokens_spread']['min']}–{aggregate['on']['destination_stage_tokens_spread']['max']}."),
+        (f"Whole-workflow spread (min–max): OFF {aggregate['off']['whole_workflow_tokens_spread']['min']}–{aggregate['off']['whole_workflow_tokens_spread']['max']}; "
+        f"ON {aggregate['on']['whole_workflow_tokens_spread']['min']}–{aggregate['on']['whole_workflow_tokens_spread']['max']}."),
+        (f"Replay latency spread (min–max ms): OFF {aggregate['off']['latency_ms']['min']}–{aggregate['off']['latency_ms']['max']}; "
+        f"ON {aggregate['on']['latency_ms']['min']}–{aggregate['on']['latency_ms']['max']}."),
         "",
-        f"Completion rate: OFF {aggregate['off']['completion_rate']}; ON {aggregate['on']['completion_rate']}. "
-        f"Essential-fact retention: OFF {aggregate['off']['fact_retention_rate']}; ON {aggregate['on']['fact_retention_rate']}.",
+        (f"Completion rate: OFF {aggregate['off']['completion_rate']}; ON {aggregate['on']['completion_rate']}. "
+        f"Essential-fact retention: OFF {aggregate['off']['fact_retention_rate']}; ON {aggregate['on']['fact_retention_rate']}."),
         "These are deterministic replay estimates, not a demonstrated provider-token saving.",
         "",
         "## Limits and gate",

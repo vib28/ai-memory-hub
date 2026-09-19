@@ -5,12 +5,18 @@ import threading
 import unittest
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
+from memory_hub.dashboard import (
+    HTML,
+    DashboardHandler,
+    _pending_rows_for_dashboard,
+    memory_rows_for_dashboard,
+)
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryCandidate
-from memory_hub.dashboard import HTML, DashboardHandler, memory_rows_for_dashboard, _pending_rows_for_dashboard
+
 
 class DashboardFeatureTests(unittest.TestCase):
     def setUp(self):
@@ -32,11 +38,11 @@ class DashboardFeatureTests(unittest.TestCase):
             subject="response-format",
             writer="chatgpt",
         ))
-        self.assertEqual(queued["status"], "queued")
+        assert queued["status"] == "queued"
         pid = queued["proposal"]["proposal_id"]
         approved = self.manager.approve(pid)
-        self.assertEqual(approved["status"], "stored")
-        self.assertEqual(len(self.manager.list_pending()), 0)
+        assert approved["status"] == "stored"
+        assert len(self.manager.list_pending()) == 0
 
     def test_proposal_history_includes_non_pending_outcomes(self):
         queued = self.manager.queue(MemoryCandidate(
@@ -45,12 +51,12 @@ class DashboardFeatureTests(unittest.TestCase):
         ))
         self.manager.reject(queued["proposal"]["proposal_id"])
         history = self.manager.list_proposal_history()
-        self.assertEqual(history[0]["status"], "rejected")
-        self.assertEqual(self.manager.list_pending(), [])
-        self.assertIn("/api/pending?history=1", HTML)
-        self.assertIn("Review &amp; history", HTML)
-        self.assertIn("reviewStatuses=['pending','rejected','approved']", HTML)
-        self.assertNotIn("Possible update", HTML)
+        assert history[0]["status"] == "rejected"
+        assert self.manager.list_pending() == []
+        assert "/api/pending?history=1" in HTML
+        assert "Review &amp; history" in HTML
+        assert "reviewStatuses=['pending','rejected','approved']" in HTML
+        assert "Possible update" not in HTML
 
     def test_pending_session_proposal_exposes_structured_payload(self):
         """#38: a queued session_write's review-queue row should carry its
@@ -61,25 +67,25 @@ class DashboardFeatureTests(unittest.TestCase):
             "investigated": ["Read the docs"], "learned": ["The gap was real"],
             "completed": ["Shipped the fix"], "next_steps": ["Write tests"],
         }, write_mode="review")
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
         rows = _pending_rows_for_dashboard(self.manager.list_pending())
-        self.assertEqual(len(rows), 1)
+        assert len(rows) == 1
         payload = rows[0]["payload"]
-        self.assertEqual(payload["type"], "session")
-        self.assertEqual(payload["data"]["investigated"], ["Read the docs"])
-        self.assertEqual(payload["data"]["next_steps"], ["Write tests"])
+        assert payload["type"] == "session"
+        assert payload["data"]["investigated"] == ["Read the docs"]
+        assert payload["data"]["next_steps"] == ["Write tests"]
 
     def test_pending_pattern_proposal_exposes_structured_payload(self):
         result = self.manager.propose_pattern_match(
             "regression", "A prior change caused a regression.",
             "Add a regression check.", "demo-subject", write_mode="review", writer="claude",
         )
-        self.assertEqual(result["status"], "queued")
+        assert result["status"] == "queued"
         rows = _pending_rows_for_dashboard(self.manager.list_pending())
-        self.assertEqual(len(rows), 1)
+        assert len(rows) == 1
         payload = rows[0]["payload"]
-        self.assertEqual(payload["type"], "pattern")
-        self.assertEqual(payload["project_fact_text"], "A prior change caused a regression.")
+        assert payload["type"] == "pattern"
+        assert payload["project_fact_text"] == "A prior change caused a regression."
 
     def test_ordinary_proposal_has_no_payload_backward_compatible(self):
         """Every proposal that existed before #38, and every non-session/
@@ -90,14 +96,14 @@ class DashboardFeatureTests(unittest.TestCase):
             subject="plain", writer="chatgpt",
         ))
         rows = _pending_rows_for_dashboard(self.manager.list_pending())
-        self.assertEqual(len(rows), 1)
-        self.assertIsNone(rows[0]["payload"])
-        self.assertEqual(rows[0]["text"], "An ordinary preference.")
+        assert len(rows) == 1
+        assert rows[0]["payload"] is None
+        assert rows[0]["text"] == "An ordinary preference."
 
     def test_pending_rows_never_raise_on_malformed_payload(self):
         rows = [{"payload": "{not valid json"}, {"payload": None}, {}]
         result = _pending_rows_for_dashboard(rows)
-        self.assertEqual([r["payload"] for r in result], [None, None, None])
+        assert [r["payload"] for r in result] == [None, None, None]
 
     def test_edit(self):
         stored = self.manager.propose(MemoryCandidate(
@@ -109,8 +115,8 @@ class DashboardFeatureTests(unittest.TestCase):
         ))
         mid = stored["memory"]["memory_id"]
         updated = self.manager.edit(mid, "Prefers Python for automation scripts.")
-        self.assertEqual(updated["status"], "updated")
-        self.assertEqual(self.manager.index.by_id(mid)["text"], "Prefers Python for automation scripts.")
+        assert updated["status"] == "updated"
+        assert self.manager.index.by_id(mid)["text"] == "Prefers Python for automation scripts."
 
     def test_conflict_resolution(self):
         a = self.manager.propose(MemoryCandidate(
@@ -128,26 +134,26 @@ class DashboardFeatureTests(unittest.TestCase):
             writer="chatgpt",
         ))
         conflicts = self.manager.conflicts()
-        self.assertTrue(conflicts)
+        assert conflicts
         result = self.manager.resolve_conflict(b["memory"]["memory_id"])
-        self.assertEqual(result["status"], "resolved")
-        self.assertEqual(self.manager.index.by_id(a["memory"]["memory_id"])["tag"], "superseded")
+        assert result["status"] == "resolved"
+        assert self.manager.index.by_id(a["memory"]["memory_id"])["tag"] == "superseded"
 
     def test_dashboard_marks_only_the_newest_group_entry(self):
-        self.assertIn("r.is_most_recent?' · Latest in group':''", HTML)
-        self.assertIn("esc(r.date)", HTML)
+        assert "r.is_most_recent?' · Latest in group':''" in HTML
+        assert "esc(r.date)" in HTML
         # Grouping key/label moved server-side into _dashboard_group() (#35), so
         # they cover shared-file kinds (preference, profile) resolved through the
         # entity-aliases.md registry, not just project. The JS now consumes the
         # server-computed fields directly rather than recomputing its own key.
-        self.assertIn("new Set(rows.map(r=>r.group_key))", HTML)
-        self.assertIn("r.subject||r.group_label", HTML)
+        assert "new Set(rows.map(r=>r.group_key))" in HTML
+        assert "r.subject||r.group_label" in HTML
 
     def test_dashboard_exposes_composable_date_filter(self):
         for control in ('date-on', 'date-from', 'date-to', 'clear-date', 'date-filter-status'):
-            self.assertIn(f'id="{control}"', HTML)
-        self.assertIn('function dateFilter()', HTML)
-        self.assertIn('matchesDate(r,date)', HTML)
+            assert f'id="{control}"' in HTML
+        assert 'function dateFilter()' in HTML
+        assert 'matchesDate(r,date)' in HTML
 
     def test_dashboard_recency_uses_the_full_canonical_project_group(self):
         with patch("memory_hub.manager.datetime") as mock_dt:
@@ -165,12 +171,12 @@ class DashboardFeatureTests(unittest.TestCase):
                 subject="widget-app-ui", writer="chatgpt", entity_id="widget-app",
             ))["memory"]
         all_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
-        self.assertEqual(all_rows[older["memory_id"]]["path"], all_rows[newer["memory_id"]]["path"])
-        self.assertFalse(all_rows[older["memory_id"]]["is_most_recent"])
-        self.assertTrue(all_rows[newer["memory_id"]]["is_most_recent"])
+        assert all_rows[older["memory_id"]]["path"] == all_rows[newer["memory_id"]]["path"]
+        assert not all_rows[older["memory_id"]]["is_most_recent"]
+        assert all_rows[newer["memory_id"]]["is_most_recent"]
         older_search = memory_rows_for_dashboard(self.manager, "Vintageonly")
-        self.assertEqual(len(older_search), 1)
-        self.assertFalse(older_search[0]["is_most_recent"])
+        assert len(older_search) == 1
+        assert not older_search[0]["is_most_recent"]
 
     def test_dashboard_groups_linked_preferences_by_resolved_entity(self):
         """#35: preference has no per-file identity to group by (every subject
@@ -192,19 +198,17 @@ class DashboardFeatureTests(unittest.TestCase):
                 tag="preference", subject="git-safety-checks", writer="codex",
             ))["memory"]
         before_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
-        self.assertNotEqual(
-            before_rows[older["memory_id"]]["group_key"], before_rows[newer["memory_id"]]["group_key"])
+        assert before_rows[older["memory_id"]]["group_key"] != before_rows[newer["memory_id"]]["group_key"]
 
         self.manager.entity_alias_link("preference", "git-safety-checks", "git-safety", apply=True)
         after_rows = {row["memory_id"]: row for row in memory_rows_for_dashboard(self.manager)}
-        self.assertEqual(
-            after_rows[older["memory_id"]]["group_key"], after_rows[newer["memory_id"]]["group_key"])
-        self.assertEqual(after_rows[older["memory_id"]]["group_label"], "git-safety")
-        self.assertFalse(after_rows[older["memory_id"]]["is_most_recent"])
-        self.assertTrue(after_rows[newer["memory_id"]]["is_most_recent"])
+        assert after_rows[older["memory_id"]]["group_key"] == after_rows[newer["memory_id"]]["group_key"]
+        assert after_rows[older["memory_id"]]["group_label"] == "git-safety"
+        assert not after_rows[older["memory_id"]]["is_most_recent"]
+        assert after_rows[newer["memory_id"]]["is_most_recent"]
         # Nothing about the underlying entries changed -- only the grouping view.
-        self.assertEqual(after_rows[older["memory_id"]]["subject"], "git-safety")
-        self.assertEqual(after_rows[newer["memory_id"]]["subject"], "git-safety-checks")
+        assert after_rows[older["memory_id"]]["subject"] == "git-safety"
+        assert after_rows[newer["memory_id"]]["subject"] == "git-safety-checks"
 
 class DashboardOriginProtectionTests(unittest.TestCase):
     def setUp(self):
@@ -238,7 +242,7 @@ class DashboardOriginProtectionTests(unittest.TestCase):
 
     def test_post_without_launch_token_is_rejected(self):
         status, _ = self._post("/api/conflict/resolve", {"Host": f"127.0.0.1:{self.httpd.server_address[1]}"})
-        self.assertEqual(status, 403)
+        assert status == 403
 
     def test_post_with_foreign_origin_is_rejected(self):
         headers = {
@@ -247,7 +251,7 @@ class DashboardOriginProtectionTests(unittest.TestCase):
             "Origin": "http://evil.example",
         }
         status, _ = self._post("/api/conflict/resolve", headers)
-        self.assertEqual(status, 403)
+        assert status == 403
 
     def test_get_with_foreign_host_is_rejected(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1])
@@ -256,7 +260,7 @@ class DashboardOriginProtectionTests(unittest.TestCase):
         status = resp.status
         resp.read()
         conn.close()
-        self.assertEqual(status, 403)
+        assert status == 403
 
     def test_post_with_correct_token_and_host_is_accepted(self):
         headers = {
@@ -264,8 +268,8 @@ class DashboardOriginProtectionTests(unittest.TestCase):
             "X-Launch-Token": "test-token",
         }
         status, body = self._post("/api/conflict/resolve", headers, {"keep_id": "does-not-exist"})
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["status"], "not_found")
+        assert status == 200
+        assert json.loads(body)["status"] == "not_found"
 
 if __name__ == "__main__":
     unittest.main()

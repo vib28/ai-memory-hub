@@ -9,16 +9,16 @@ from .extractor import extract_from_transcript
 from .github_export import configure, run_once
 from .history import commit_vault_change, history_status, initialize_history
 from .hooks import (
-    install_hook,
     install_claude_hook,
     install_codex_hook,
     install_hermes_hook,
+    install_hook,
     install_nested_hook,
     install_toml_hook,
-    uninstall_hook,
     uninstall_claude_hook,
     uninstall_codex_hook,
     uninstall_hermes_hook,
+    uninstall_hook,
     uninstall_nested_hook,
     uninstall_toml_hook,
 )
@@ -122,8 +122,8 @@ def _capabilities():
     if _CAPABILITIES_IMPORTS is None:
         from .capabilities import (
             ALL_EVENTS,
-            EVENT_LABELS,
             CLIENT_PROFILES,
+            EVENT_LABELS,
             check_encryption_status,
             check_mcp_connectivity,
             gather_capabilities,
@@ -275,7 +275,7 @@ def _print_doctor_report(report: dict) -> None:
     mcp = report["mcp"]
     enc = report["encryption"]
     all_events = cap["all_events"]
-    event_labels = cap["event_labels"]
+    cap["event_labels"]
 
     print("=" * 72)
     print("AI Memory Hub — doctor report")
@@ -304,7 +304,7 @@ def _print_doctor_report(report: dict) -> None:
         print(f"  error: {mcp['error']}")
 
     # Encryption / secrets
-    print(f"\n[Security]")
+    print("\n[Security]")
     print(f"  encryption at rest:    {enc.get('encryption_at_rest', False)}")
     print(f"  secret detection:      {'active' if enc.get('secret_detection_active') else 'INACTIVE'}")
     print(f"  secret patterns:       {enc.get('secret_pattern_count', 0)}")
@@ -329,10 +329,10 @@ def _print_doctor_report(report: dict) -> None:
             print(f"    last capture: {buf.get('last_capture', '?')}")
             print(f"    pending:      {buf['pending_buffer_depth']}")
         else:
-            print(f"    buffer:      no observations yet")
+            print("    buffer:      no observations yet")
 
     # Event support matrix
-    print(f"\n[Event Support Matrix]")
+    print("\n[Event Support Matrix]")
     print(f"  {'Client':<16}", end="")
     for ev in all_events:
         short = ev[:6]

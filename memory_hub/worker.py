@@ -24,11 +24,12 @@ from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
 from .transcript import TranscriptStore, transcript_enabled
 from .utils import (
-    utc_timestamp, utc_timestamp_naive, vault_key, read_json,
-    normalize_relative, sanitize_secrets, atomic_write, parse_iso_datetime,
+    atomic_write,
+    parse_iso_datetime,
     read_json,
+    utc_timestamp,
+    vault_key,
 )
-
 
 FINAL_EVENTS = {"session-end"}
 # A quota/rate-limit cut-off or an explicit interrupt is the end of what this host

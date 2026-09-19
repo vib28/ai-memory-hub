@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .app import main
 
+
 def icon_image():
     from PIL import Image, ImageDraw
     img = Image.new("RGB", (64, 64), "white")

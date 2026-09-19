@@ -7,38 +7,20 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from memory_hub.capabilities import (
     ALL_EVENTS,
-    EVENT_LABELS,
     CLIENT_PROFILES,
-    _compute_buffer_stats,
-    _looks_managed,
+    _check_hermes_settings,
     _check_json_settings,
     _check_toml_settings,
-    _check_hermes_settings,
-    check_hook_status,
-    check_mcp_connectivity,
+    _compute_buffer_stats,
+    _looks_managed,
     check_encryption_status,
+    check_mcp_connectivity,
     gather_capabilities,
 )
 from memory_hub.capture import ObservationBuffer
-from memory_hub.events import (
-    SESSION_START,
-    USER_PROMPT_SUBMIT,
-    PRE_TOOL_USE,
-    POST_TOOL_USE,
-    POST_TOOL_USE_FAILURE,
-    STOP,
-    STOP_FAILURE,
-    INTERRUPT,
-    PRE_COMPACT,
-    POST_COMPACTION,
-    SESSION_HEARTBEAT,
-    SUBAGENT_STOP,
-    SESSION_END,
-)
 from memory_hub.dashboard import DashboardHandler
 from memory_hub.manager import MemoryManager
 
@@ -54,7 +36,7 @@ class BufferStatsTests(unittest.TestCase):
 
     def test_empty_buffer_returns_empty_dict(self):
         stats = _compute_buffer_stats(self.buf)
-        self.assertEqual(stats, {})
+        assert stats == {}
 
     def test_single_source_stats(self):
         self.buf.append({
@@ -76,12 +58,12 @@ class BufferStatsTests(unittest.TestCase):
             "input_summary": "end",
         })
         stats = _compute_buffer_stats(self.buf)
-        self.assertIn("claude", stats)
-        self.assertEqual(stats["claude"]["total_observations"], 3)
-        self.assertEqual(stats["claude"]["supported_event_count"], 3)
-        self.assertEqual(stats["claude"]["pending_buffer_depth"], 3)
-        self.assertIn("events", stats["claude"])
-        self.assertEqual(stats["claude"]["events"]["session-start"], 1)
+        assert "claude" in stats
+        assert stats["claude"]["total_observations"] == 3
+        assert stats["claude"]["supported_event_count"] == 3
+        assert stats["claude"]["pending_buffer_depth"] == 3
+        assert "events" in stats["claude"]
+        assert stats["claude"]["events"]["session-start"] == 1
 
     def test_multiple_sources(self):
         self.buf.append({
@@ -93,20 +75,20 @@ class BufferStatsTests(unittest.TestCase):
             "input_summary": "s",
         })
         stats = _compute_buffer_stats(self.buf)
-        self.assertEqual(len(stats), 2)
-        self.assertIn("claude", stats)
-        self.assertIn("codex", stats)
+        assert len(stats) == 2
+        assert "claude" in stats
+        assert "codex" in stats
 
 
 class ManagedDetectionTests(unittest.TestCase):
     def test_managed_key_marker(self):
-        self.assertTrue(_looks_managed({"statusMessage": "AI Memory Hub capture"}))
-        self.assertTrue(_looks_managed({"name": "ai-memory-hub-context"}))
+        assert _looks_managed({"statusMessage": "AI Memory Hub capture"})
+        assert _looks_managed({"name": "ai-memory-hub-context"})
 
     def test_not_managed(self):
-        self.assertFalse(_looks_managed({"statusMessage": "other"}))
-        self.assertFalse(_looks_managed({"command": "ai-memory-hook"}))
-        self.assertFalse(_looks_managed({}))
+        assert not _looks_managed({"statusMessage": "other"})
+        assert not _looks_managed({"command": "ai-memory-hook"})
+        assert not _looks_managed({})
 
 
 class CheckJsonSettingsTests(unittest.TestCase):
@@ -119,8 +101,8 @@ class CheckJsonSettingsTests(unittest.TestCase):
 
     def test_missing_file(self):
         result = _check_json_settings(self.path)
-        self.assertFalse(result["installed"])
-        self.assertEqual(result["events"], [])
+        assert not result["installed"]
+        assert result["events"] == []
 
     def test_installed_claude_format(self):
         self.path.write_text(json.dumps({
@@ -134,8 +116,8 @@ class CheckJsonSettingsTests(unittest.TestCase):
             }
         }, indent=2), encoding="utf-8")
         result = _check_json_settings(self.path)
-        self.assertTrue(result["installed"])
-        self.assertIn("PostToolUse", result["events"])
+        assert result["installed"]
+        assert "PostToolUse" in result["events"]
 
     def test_installed_codex_format(self):
         self.path.write_text(json.dumps({
@@ -149,7 +131,7 @@ class CheckJsonSettingsTests(unittest.TestCase):
             }
         }, indent=2), encoding="utf-8")
         result = _check_json_settings(self.path)
-        self.assertTrue(result["installed"])
+        assert result["installed"]
 
     def test_no_managed_hooks(self):
         self.path.write_text(json.dumps({
@@ -162,7 +144,7 @@ class CheckJsonSettingsTests(unittest.TestCase):
             }
         }, indent=2), encoding="utf-8")
         result = _check_json_settings(self.path)
-        self.assertFalse(result["installed"])
+        assert not result["installed"]
 
 
 class CheckTomlSettingsTests(unittest.TestCase):
@@ -175,7 +157,7 @@ class CheckTomlSettingsTests(unittest.TestCase):
 
     def test_missing_file(self):
         result = _check_toml_settings(self.path)
-        self.assertFalse(result["installed"])
+        assert not result["installed"]
 
     def test_installed_toml(self):
         self.path.write_text(
@@ -186,8 +168,8 @@ class CheckTomlSettingsTests(unittest.TestCase):
             encoding="utf-8",
         )
         result = _check_toml_settings(self.path)
-        self.assertTrue(result["installed"])
-        self.assertIn("post-tool-use", result["events"])
+        assert result["installed"]
+        assert "post-tool-use" in result["events"]
 
 
 class CheckHermesSettingsTests(unittest.TestCase):
@@ -200,7 +182,7 @@ class CheckHermesSettingsTests(unittest.TestCase):
 
     def test_missing_file(self):
         result = _check_hermes_settings(self.path)
-        self.assertFalse(result["installed"])
+        assert not result["installed"]
 
     def test_installed_hermes(self):
         self.path.write_text(
@@ -212,8 +194,8 @@ class CheckHermesSettingsTests(unittest.TestCase):
             encoding="utf-8",
         )
         result = _check_hermes_settings(self.path)
-        self.assertTrue(result["installed"])
-        self.assertIn("post_tool_call", result["events"])
+        assert result["installed"]
+        assert "post_tool_call" in result["events"]
 
 
 class GatherCapabilitiesTests(unittest.TestCase):
@@ -232,23 +214,23 @@ class GatherCapabilitiesTests(unittest.TestCase):
 
     def test_basic_structure(self):
         cap = gather_capabilities(str(self.vault), self.buf)
-        self.assertIn("generated_at", cap)
-        self.assertIn("all_events", cap)
-        self.assertIn("event_labels", cap)
-        self.assertIn("clients", cap)
-        self.assertIn("worker", cap)
-        self.assertEqual(len(cap["clients"]), len(CLIENT_PROFILES))
+        assert "generated_at" in cap
+        assert "all_events" in cap
+        assert "event_labels" in cap
+        assert "clients" in cap
+        assert "worker" in cap
+        assert len(cap["clients"]) == len(CLIENT_PROFILES)
 
     def test_event_labels_complete(self):
         cap = gather_capabilities(str(self.vault), self.buf)
         for ev in ALL_EVENTS:
-            self.assertIn(ev, cap["event_labels"])
+            assert ev in cap["event_labels"]
 
     def test_client_keys_match_profiles(self):
         cap = gather_capabilities(str(self.vault), self.buf)
         profile_keys = [p[0] for p in CLIENT_PROFILES]
         client_keys = [c["key"] for c in cap["clients"]]
-        self.assertEqual(client_keys, profile_keys)
+        assert client_keys == profile_keys
 
     def test_includes_buffer_stats(self):
         self.buf.append({
@@ -257,31 +239,31 @@ class GatherCapabilitiesTests(unittest.TestCase):
         })
         cap = gather_capabilities(str(self.vault), self.buf)
         claude = next(c for c in cap["clients"] if c["key"] == "claude")
-        self.assertEqual(claude["buffer"]["total_observations"], 1)
+        assert claude["buffer"]["total_observations"] == 1
 
     def test_no_observations_returns_zeroed_buffer(self):
         cap = gather_capabilities(str(self.vault), self.buf)
         for client in cap["clients"]:
-            self.assertEqual(client["buffer"]["total_observations"], 0)
-            self.assertEqual(client["buffer"]["pending_buffer_depth"], 0)
+            assert client["buffer"]["total_observations"] == 0
+            assert client["buffer"]["pending_buffer_depth"] == 0
 
 
 class McpConnectivityTests(unittest.TestCase):
     def test_imports_and_returns_dict(self):
         result = check_mcp_connectivity()
-        self.assertIn("status", result)
-        self.assertIn("tool_count", result)
-        self.assertIn("tools", result)
-        self.assertIsInstance(result["tools"], list)
+        assert "status" in result
+        assert "tool_count" in result
+        assert "tools" in result
+        assert isinstance(result["tools"], list)
 
 
 class EncryptionStatusTests(unittest.TestCase):
     def test_returns_expected_keys(self):
         result = check_encryption_status()
-        self.assertIn("encryption_at_rest", result)
-        self.assertIn("secret_detection_active", result)
-        self.assertIn("secret_pattern_count", result)
-        self.assertIsInstance(result["encryption_at_rest"], bool)
+        assert "encryption_at_rest" in result
+        assert "secret_detection_active" in result
+        assert "secret_pattern_count" in result
+        assert isinstance(result["encryption_at_rest"], bool)
 
 
 class DashboardCapabilitiesEndpointTests(unittest.TestCase):
@@ -317,11 +299,11 @@ class DashboardCapabilitiesEndpointTests(unittest.TestCase):
             "X-Launch-Token": "test-token",
         })
         resp = conn.getresponse()
-        self.assertEqual(resp.status, 200)
+        assert resp.status == 200
         body = json.loads(resp.read())
         conn.close()
-        self.assertIn("clients", body)
-        self.assertIn("generated_at", body)
+        assert "clients" in body
+        assert "generated_at" in body
 
     def test_capabilities_endpoint_forbids_without_token(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.port)
@@ -329,7 +311,7 @@ class DashboardCapabilitiesEndpointTests(unittest.TestCase):
             "Host": f"127.0.0.1:{self.port}",
         })
         resp = conn.getresponse()
-        self.assertEqual(resp.status, 403)
+        assert resp.status == 403
         resp.read()
         conn.close()
 
@@ -344,7 +326,7 @@ class DashboardCapabilitiesEndpointTests(unittest.TestCase):
         conn.close()
         client_keys = {c["key"] for c in body["clients"]}
         expected = {p[0] for p in CLIENT_PROFILES}
-        self.assertEqual(client_keys, expected)
+        assert client_keys == expected
 
 
 class DoctorCliTests(unittest.TestCase):
@@ -353,14 +335,14 @@ class DoctorCliTests(unittest.TestCase):
         parser = build_parser()
         # Just make sure --clients parses without error.
         args = parser.parse_args(["doctor", "--clients"])
-        self.assertTrue(args.clients)
-        self.assertFalse(args.json)
+        assert args.clients
+        assert not args.json
 
     def test_doctor_json_flag(self):
         from memory_hub.cli import build_parser
         parser = build_parser()
         args = parser.parse_args(["doctor", "--clients", "--json"])
-        self.assertTrue(args.json)
+        assert args.json
 
 
 if __name__ == "__main__":

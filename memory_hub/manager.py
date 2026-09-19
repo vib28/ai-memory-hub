@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
-import re
 import os
+import re
+import shutil
 import threading
 import uuid
-import json
-import shutil
 from collections import Counter
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -41,17 +41,49 @@ def load_session_manifest(vault_path: Path) -> dict:
     return value
 
 
+import functools
+import itertools
+import operator
+
+from .embeddings import LocalEmbeddingProvider
 from .entities import load_entity_aliases, resolve_subject
 from .index import MemoryIndex
-from .embeddings import LocalEmbeddingProvider
-from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KINDS, MemoryCandidate, MemoryRecord
+from .models import (
+    ALLOWED_KINDS,
+    ALLOWED_TAGS,
+    ALLOWED_WRITERS,
+    SINGLETON_KINDS,
+    MemoryCandidate,
+    MemoryRecord,
+)
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import utc_timestamp_naive, utc_timestamp, atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, normalize_relative
-from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
-                    parse_records, _parse_records_from_content, dump_frontmatter, ensure_metadata,
-                    SESSION_RE, SESSION_ID_RE, SESSION_META_RE)
+from .utils import (
+    atomic_write,
+    file_lock,
+    is_truthy,
+    normalize_relative,
+    normalize_text,
+    one_line,
+    slugify,
+    text_hash,
+    utc_timestamp_naive,
+)
+from .vault import (
+    ENTRY_RE,
+    FILE_PER_ENTITY_KINDS,
+    RESERVED_FILENAMES,
+    SESSION_ID_RE,
+    SESSION_META_RE,
+    SESSION_RE,
+    Vault,
+    _parse_records_from_content,
+    dump_frontmatter,
+    ensure_metadata,
+    parse_frontmatter,
+    parse_records,
+)
 
 # Kinds that route every subject into one shared file, so there is no
 # per-subject file to carry id/aliases frontmatter -- identity for these is
@@ -316,7 +348,7 @@ class MemoryManager:
         project = f"[[{slugify(data['project'])}]]" if data.get("project") else "None"
         lines = [f"## {slug}", f"**Model:** {data['model']}", f"**Session title:** {data['title']}",
                  f"**Date:** {data['date']}", f"**Project:** {project}", f"**Tags:** {tags}", ""]
-        for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps")):
+        for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps"), strict=False):
             lines.append(f"### {heading}")
             lines.extend(f"- {item}" for item in data[key])
             lines.append("")
@@ -518,7 +550,7 @@ class MemoryManager:
         if not security.safe:
             return {"status": "rejected", "reason": security.reason}
         subject = slugify(f"{data['model']}-{data['title']}-{data['date']}")
-        candidate = MemoryCandidate(" ".join(sum((data[k] for k in ("investigated", "learned", "completed", "next_steps")), [])),
+        candidate = MemoryCandidate(" ".join(functools.reduce(operator.iadd, (data[k] for k in ("investigated", "learned", "completed", "next_steps")), [])),
                                     "session", "stated", subject, data["model"])
         # Sessions are a log kind, so near-matches must still both be stored — but an
         # identical payload is a retry (client timeout, or a crash sweep re-firing a
@@ -583,7 +615,7 @@ class MemoryManager:
         if data.get("project"):
             parts = []
             # SESSION_SECTIONS maps to investigated/learned/completed/next_steps in order
-            for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps")):
+            for heading, key in zip(SESSION_SECTIONS, ("investigated", "learned", "completed", "next_steps"), strict=False):
                 values = "; ".join(data[key]) if data[key] else "-"
                 parts.append(f"**{heading}:** {values}")
             project_text = f"Session summary [[{slug}]]: " + " ".join(parts) + "."
@@ -734,13 +766,12 @@ class MemoryManager:
         compensating action is a best-effort single attempt that must not
         recurse, so a permanently failing index still returns promptly.
         """
-        last_exc = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 self.index.set_pending_status(proposal_id, status)
                 return
-            except Exception as exc:
-                last_exc = exc
+            except Exception:
+                pass
         # Compensating action: best-effort single attempt. Must not recurse.
         try:
             self.index.set_pending_status(proposal_id, "failed")
@@ -833,7 +864,7 @@ class MemoryManager:
             return {"status": "rejected", "reason": security.reason}
         new_text = one_line(new_text)
         p = self.vault.resolve(old["path"])
-        from .utils import utc_timestamp_naive, utc_timestamp, file_lock, atomic_write
+        from .utils import atomic_write, file_lock, utc_timestamp_naive
         with file_lock(p):
             content = p.read_text(encoding="utf-8")
             lines = content.splitlines()
@@ -1284,7 +1315,7 @@ class MemoryManager:
         for kind, subjects in sorted(by_kind_subject.items()):
             ordered = sorted(subjects)
             # After sorting, only adjacent pairs can be prefix-overlapping (zip optimization)
-            for left, right in zip(ordered, ordered[1:]):
+            for left, right in itertools.pairwise(ordered):
                     if kind in SHARED_FILE_KINDS and registry.get(kind, {}).get(left) is not None \
                             and resolve_subject(registry, kind, left) == resolve_subject(registry, kind, right):
                         linked_entities.append({
@@ -1302,7 +1333,7 @@ class MemoryManager:
         for record in records:
             if record.kind in SINGLETON_KINDS:
                 by_kind_records.setdefault(record.kind, []).append(record)
-        for kind, kind_records in sorted(by_kind_records.items()):
+        for _kind, kind_records in sorted(by_kind_records.items()):
             tokens_by_id = {
                 record.memory_id: self._lexical_audit_tokens(record.text)
                 for record in kind_records
@@ -1346,7 +1377,7 @@ class MemoryManager:
             if not base.exists():
                 continue
             stems = sorted(p.stem for p in base.glob("*.md"))
-            for left, right in zip(stems, stems[1:]):
+            for left, right in itertools.pairwise(stems):
                 if right.startswith(left + "-") or left.startswith(right + "-"):
                     possible_file_splits.append({
                         "kind": kind,

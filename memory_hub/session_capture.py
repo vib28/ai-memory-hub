@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .capture import ObservationBuffer
 from .consolidator import consolidate_session
 from .models import ALLOWED_WRITERS
 from .transcript import transcript_enabled, transcript_path_for
+
+if TYPE_CHECKING:
+    from .capture import ObservationBuffer
 
 
 def _batch_metadata(session_id: str, rows: list[dict[str, Any]], buffer: ObservationBuffer,

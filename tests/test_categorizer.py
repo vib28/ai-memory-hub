@@ -92,8 +92,8 @@ class CategorizerTests(unittest.TestCase):
             if key.startswith("MEMORY_LLM"):
                 os.environ.pop(key)
         candidates = extract_memory_candidates(LABELED[0]["rows"], project="widget-app", writer="claude")
-        self.assertTrue(candidates)
-        self.assertEqual(candidates[0].kind, "preference")
+        assert candidates
+        assert candidates[0].kind == "preference"
 
     def test_precision_on_labeled_fixture_set(self):
         true_pos = false_pos = false_neg = 0
@@ -106,8 +106,8 @@ class CategorizerTests(unittest.TestCase):
             false_neg += len(gold - kinds)
         precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) else 1.0
         recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) else 1.0
-        self.assertGreaterEqual(len(LABELED), 20)
-        self.assertGreaterEqual(precision, 0.9, f"precision={precision:.3f} recall={recall:.3f}")
+        assert len(LABELED) >= 20
+        assert precision >= 0.9, f"precision={precision:.3f} recall={recall:.3f}"
         print(f"categorizer precision={precision:.3f} recall={recall:.3f} "
               f"tp={true_pos} fp={false_pos} fn={false_neg}")
 
@@ -115,7 +115,7 @@ class CategorizerTests(unittest.TestCase):
         rows = [_row(observation_id="sec", event="user-prompt-submit", tool="prompt",
                      prompt="always store the api_key=sk-abcdefghijklmnopqrstuvwxyz123456")]
         candidates = extract_memory_candidates(rows, project="widget-app", writer="claude")
-        self.assertEqual(candidates, [])
+        assert candidates == []
 
     def test_evidence_ids_and_idempotent_queue(self):
         clear_cache()
@@ -128,15 +128,15 @@ class CategorizerTests(unittest.TestCase):
                                             project="widget-app")
             second = apply_from_observations(manager, rows, write_mode="review", writer="claude",
                                              project="widget-app")
-            self.assertTrue(first)
-            self.assertIn(first[0]["status"], {"queued", "queued_as_update"})
-            self.assertTrue(first[0]["evidence_ids"])
+            assert first
+            assert first[0]["status"] in {"queued", "queued_as_update"}
+            assert first[0]["evidence_ids"]
             proposal = first[0]["proposal"]
-            self.assertEqual(proposal.get("kind"), "preference")
+            assert proposal.get("kind") == "preference"
             blob = str(proposal.get("provenance") or proposal.get("payload") or "")
-            self.assertTrue(any(item in blob for item in first[0]["evidence_ids"]))
-            self.assertTrue(all(item["status"] in {"already_pending", "duplicate", "queued"} for item in second))
-            self.assertTrue(any(item["status"] in {"already_pending", "duplicate"} for item in second))
+            assert any(item in blob for item in first[0]["evidence_ids"])
+            assert all(item["status"] in {"already_pending", "duplicate", "queued"} for item in second)
+            assert any(item["status"] in {"already_pending", "duplicate"} for item in second)
             manager.close()
 
 

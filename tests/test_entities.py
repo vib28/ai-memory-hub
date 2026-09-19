@@ -7,7 +7,7 @@ from memory_hub.entities import load_entity_aliases, resolve_subject
 
 class EntityAliasRegistryTests(unittest.TestCase):
     def test_missing_file_returns_empty(self):
-        self.assertEqual(load_entity_aliases(Path(tempfile.mkdtemp()) / "nope.md"), {})
+        assert load_entity_aliases(Path(tempfile.mkdtemp()) / "nope.md") == {}
 
     def test_seed_template_parses_as_empty(self):
         """Regression guard: an earlier draft of this template embedded its
@@ -17,7 +17,7 @@ class EntityAliasRegistryTests(unittest.TestCase):
         with a fake 'git-safety' alias already registered. The example must
         stay indented, never at column 0, or this test catches it again."""
         seed = Path(__file__).resolve().parent.parent / "vault_template" / "entity-aliases.md"
-        self.assertEqual(load_entity_aliases(seed), {})
+        assert load_entity_aliases(seed) == {}
 
     def test_load_and_resolve_roundtrip(self):
         path = Path(tempfile.mkdtemp()) / "entity-aliases.md"
@@ -30,14 +30,14 @@ class EntityAliasRegistryTests(unittest.TestCase):
             encoding="utf-8",
         )
         registry = load_entity_aliases(path)
-        self.assertEqual(resolve_subject(registry, "preference", "git-safety-checks"), "git-safety")
-        self.assertEqual(resolve_subject(registry, "preference", "confirm-destructive-ops"), "git-safety")
-        self.assertEqual(resolve_subject(registry, "preference", "git-safety"), "git-safety")
-        self.assertEqual(resolve_subject(registry, "profile", "primary-development-os"), "primary-os")
+        assert resolve_subject(registry, "preference", "git-safety-checks") == "git-safety"
+        assert resolve_subject(registry, "preference", "confirm-destructive-ops") == "git-safety"
+        assert resolve_subject(registry, "preference", "git-safety") == "git-safety"
+        assert resolve_subject(registry, "profile", "primary-development-os") == "primary-os"
         # An unregistered subject resolves to itself, and kinds don't leak into
         # each other's alias sets.
-        self.assertEqual(resolve_subject(registry, "preference", "unrelated-subject"), "unrelated-subject")
-        self.assertEqual(resolve_subject(registry, "profile", "git-safety-checks"), "git-safety-checks")
+        assert resolve_subject(registry, "preference", "unrelated-subject") == "unrelated-subject"
+        assert resolve_subject(registry, "profile", "git-safety-checks") == "git-safety-checks"
 
 
 if __name__ == "__main__":

@@ -98,20 +98,19 @@ class DetachedConsolidationTests(PipelineFixture):
         response = self._hook({**base, "hook_event_name": "SessionEnd", "reason": "prompt_input_exit"},
                               "--client", "claude")
         hook_seconds = time.monotonic() - started
-        self.assertEqual(response["status"], "accepted")
-        self.assertEqual(response["consolidation"][0]["status"], "spawned")
-        self.assertLess(hook_seconds, 5.0, "the hook itself must return quickly")
+        assert response["status"] == "accepted"
+        assert response["consolidation"][0]["status"] == "spawned"
+        assert hook_seconds < 5.0, "the hook itself must return quickly"
 
-        self.assertTrue(_wait_for(lambda: self._manifest() is not None),
-                        "detached worker never produced a manifest")
+        assert _wait_for(lambda: self._manifest() is not None), "detached worker never produced a manifest"
         manifest = self._manifest()
         groups = list(manifest["groups"].values())
-        self.assertEqual(len(groups), 1)
+        assert len(groups) == 1
         entry = groups[0]["entries"][-1]
-        self.assertEqual(entry["entry_type"], "final")
-        self.assertEqual(entry["project"], "widget-app")
-        self.assertEqual(entry["source_client"], "claude")
-        self.assertTrue(entry["path"].startswith("/sessions/widget-app/claude"))
+        assert entry["entry_type"] == "final"
+        assert entry["project"] == "widget-app"
+        assert entry["source_client"] == "claude"
+        assert entry["path"].startswith("/sessions/widget-app/claude")
 
         # The next client, in the same repository, gets the checkpoint at SessionStart.
         result = subprocess.run(
@@ -121,24 +120,24 @@ class DetachedConsolidationTests(PipelineFixture):
         )
         output = json.loads(result.stdout)
         context = output["hookSpecificOutput"]["additionalContext"]
-        self.assertEqual(output["status"], "ok")
-        self.assertIn("Add a date filter", context)
-        self.assertIn("Added the filter and its tests", context)
-        self.assertIn("git commit", context)
-        self.assertIn("12 passed", context)
+        assert output["status"] == "ok"
+        assert "Add a date filter" in context
+        assert "Added the filter and its tests" in context
+        assert "git commit" in context
+        assert "12 passed" in context
 
     def test_continued_stop_does_not_spawn(self):
         response = self._hook({"session_id": "s", "cwd": str(self.repo), "hook_event_name": "Stop",
                                "stop_hook_active": True, "last_assistant_message": "..."}, "--client", "claude")
-        self.assertNotIn("consolidation", response)
+        assert "consolidation" not in response
 
     def test_duplicate_delivery_spawns_once(self):
         payload = {"session_id": "s", "cwd": str(self.repo), "hook_event_name": "SessionEnd",
                    "event_id": "same-event", "reason": "other"}
         first = self._hook(payload, "--client", "claude")
         second = self._hook(payload, "--client", "claude")
-        self.assertEqual(first["consolidation"][0]["status"], "spawned")
-        self.assertNotIn("consolidation", second)
+        assert first["consolidation"][0]["status"] == "spawned"
+        assert "consolidation" not in second
 
     def test_spawn_is_skipped_without_a_vault_and_never_raises(self):
         saved = os.environ.pop("AI_MEMORY_VAULT", None)
@@ -147,7 +146,7 @@ class DetachedConsolidationTests(PipelineFixture):
         finally:
             if saved is not None:
                 os.environ["AI_MEMORY_VAULT"] = saved
-        self.assertEqual(result["status"], "skipped")
+        assert result["status"] == "skipped"
 
     def test_inline_consolidation_can_be_disabled(self):
         os.environ["MEMORY_INLINE_CONSOLIDATION"] = "false"
@@ -155,7 +154,7 @@ class DetachedConsolidationTests(PipelineFixture):
             result = spawn_detached_consolidation("x", vault=self.vault, buffer_path=self.buffer_path)
         finally:
             os.environ.pop("MEMORY_INLINE_CONSOLIDATION", None)
-        self.assertEqual(result["status"], "skipped")
+        assert result["status"] == "skipped"
 
 
 class CatchUpTests(PipelineFixture):
@@ -181,15 +180,15 @@ class CatchUpTests(PipelineFixture):
         self._buffer_rows("unrelated", cwd=str(other))
         result = build_handoff(self.vault, payload={"session_id": "codex-new", "cwd": str(self.repo)},
                                client="codex")
-        self.assertEqual(result["catch_up"]["status"], "ok")
-        self.assertEqual(result["catch_up"]["processed"], 1)
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("work on killed-claude", result["packet"])
-        self.assertNotIn("unrelated", result["packet"])
+        assert result["catch_up"]["status"] == "ok"
+        assert result["catch_up"]["processed"] == 1
+        assert result["status"] == "ok"
+        assert "work on killed-claude" in result["packet"]
+        assert "unrelated" not in result["packet"]
         # The unrelated project's evidence is untouched, not consumed.
         buffer = ObservationBuffer(self.buffer_path)
         try:
-            self.assertEqual(buffer.pending_sessions(), ["unrelated"])
+            assert buffer.pending_sessions() == ["unrelated"]
         finally:
             buffer.close()
 
@@ -197,21 +196,21 @@ class CatchUpTests(PipelineFixture):
         os.environ.update({k: v for k, v in self.env.items() if k.startswith(("AI_MEMORY", "MEMORY_"))})
         self._buffer_rows("resumed", cwd=str(self.repo))
         result = catch_up_pending(self.vault, cwd=str(self.repo), exclude_session="resumed")
-        self.assertEqual(result["status"], "clean")
+        assert result["status"] == "clean"
 
     def test_catch_up_deadline_leaves_the_rest_pending_and_reports_it(self):
         os.environ.update({k: v for k, v in self.env.items() if k.startswith(("AI_MEMORY", "MEMORY_"))})
         for index in range(4):
             self._buffer_rows(f"old-{index}", cwd=str(self.repo))
         result = catch_up_pending(self.vault, cwd=str(self.repo), deadline_seconds=0.1)
-        self.assertGreaterEqual(result["processed"] + result["pending"], 4)
-        self.assertLess(result["elapsed_seconds"], 5)
+        assert result["processed"] + result["pending"] >= 4
+        assert result["elapsed_seconds"] < 5
 
     def test_unscoped_cwd_only_touches_unscoped_evidence(self):
         os.environ.update({k: v for k, v in self.env.items() if k.startswith(("AI_MEMORY", "MEMORY_"))})
         self._buffer_rows("project-work", cwd=str(self.repo))
         result = catch_up_pending(self.vault, cwd=str(Path.home()))
-        self.assertEqual(result["processed"], 0)
+        assert result["processed"] == 0
 
 
 class CutoffTriggerTests(unittest.TestCase):
@@ -257,12 +256,12 @@ class CutoffTriggerTests(unittest.TestCase):
             result = worker.run_once()
         finally:
             worker.close()
-        self.assertEqual(result["processed"][0]["trigger"], "cutoff")
+        assert result["processed"][0]["trigger"] == "cutoff"
         payload = self.calls[0][0]
-        self.assertEqual(payload["entry_type"], "final")
-        self.assertEqual(payload["state"], "provisional")
-        self.assertFalse(payload["host_session_finalized"])
-        self.assertTrue(any("rate_limit" in item for item in payload["next_steps"]))
+        assert payload["entry_type"] == "final"
+        assert payload["state"] == "provisional"
+        assert not payload["host_session_finalized"]
+        assert any("rate_limit" in item for item in payload["next_steps"])
 
     def test_interrupt_is_a_provisional_final(self):
         self._append("PostToolUse", tool_name="Bash", tool_input={"command": "pytest"}, tool_response="1 passed")
@@ -272,8 +271,8 @@ class CutoffTriggerTests(unittest.TestCase):
             result = worker.run_once()
         finally:
             worker.close()
-        self.assertEqual(result["processed"][0]["trigger"], "cutoff")
-        self.assertEqual(self.calls[0][0]["state"], "provisional")
+        assert result["processed"][0]["trigger"] == "cutoff"
+        assert self.calls[0][0]["state"] == "provisional"
 
     def test_heartbeats_alone_never_checkpoint_but_do_close_idle(self):
         old = (datetime.now(timezone.utc) - timedelta(seconds=400)).isoformat()
@@ -285,8 +284,8 @@ class CutoffTriggerTests(unittest.TestCase):
             second = worker.run_once()
         finally:
             worker.close()
-        self.assertEqual(first["processed"], [])
-        self.assertEqual(second["processed"][0]["trigger"], "idle")
+        assert first["processed"] == []
+        assert second["processed"][0]["trigger"] == "idle"
 
     def test_compaction_checkpoint_is_accepted_not_provisional(self):
         self._append("UserPromptSubmit", prompt="refactor")
@@ -296,8 +295,8 @@ class CutoffTriggerTests(unittest.TestCase):
             worker.run_once()
         finally:
             worker.close()
-        self.assertEqual(self.calls[0][0]["state"], "accepted")
-        self.assertEqual(self.calls[0][0]["entry_type"], "checkpoint")
+        assert self.calls[0][0]["state"] == "accepted"
+        assert self.calls[0][0]["entry_type"] == "checkpoint"
 
     def test_force_checkpoints_undue_sessions_and_deadline_skips(self):
         self._append("UserPromptSubmit", prompt="just started")
@@ -308,9 +307,9 @@ class CutoffTriggerTests(unittest.TestCase):
             skipped = worker.run_once(session_ids=["s"], force=True, deadline_seconds=0.0)
         finally:
             worker.close()
-        self.assertEqual(untouched["processed"], [])
-        self.assertEqual(forced["processed"][0]["trigger"], "forced")
-        self.assertEqual(skipped["skipped_for_deadline"], ["s"])
+        assert untouched["processed"] == []
+        assert forced["processed"][0]["trigger"] == "forced"
+        assert skipped["skipped_for_deadline"] == ["s"]
 
 
 if __name__ == "__main__":

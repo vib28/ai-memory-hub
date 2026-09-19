@@ -6,7 +6,7 @@ import json
 import re
 
 from .utils import atomic_write, file_lock
-from .vault import ENTRY_RE, SESSION_RE, SESSION_ID_RE
+from .vault import ENTRY_RE, SESSION_ID_RE, SESSION_RE
 
 METADATA_PATH = '/dashboard-metadata.md'
 

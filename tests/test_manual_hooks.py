@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memory_hub.hooks import (install_hook, uninstall_hook, HookConfigError)
+from memory_hub.hooks import install_hook, uninstall_hook
 
 
 class ManualHookTests(unittest.TestCase):
@@ -28,13 +28,13 @@ class ManualHookTests(unittest.TestCase):
             command="C:/Tools/ai-memory-hub/.venv/Scripts/ai-memory-hook.exe",
             args=["--client", "opencode"],
         )
-        self.assertEqual(result["status"], "installed")
+        assert result["status"] == "installed"
         config = json.loads(self.settings.read_text(encoding="utf-8"))
-        self.assertIn("hooks", config)
-        self.assertIn("PostToolUse", config["hooks"])
+        assert "hooks" in config
+        assert "PostToolUse" in config["hooks"]
         hook_entry = config["hooks"]["PostToolUse"][0]
-        self.assertEqual(hook_entry["ai_memory_hub_managed"], True)
-        self.assertEqual(hook_entry["command"], "C:/Tools/ai-memory-hub/.venv/Scripts/ai-memory-hook.exe")
+        assert hook_entry["ai_memory_hub_managed"]
+        assert hook_entry["command"] == "C:/Tools/ai-memory-hub/.venv/Scripts/ai-memory-hook.exe"
 
     def test_manual_hook_install_preserves_existing_content(self):
         """Manual hook must not disturb existing settings."""
@@ -49,8 +49,8 @@ class ManualHookTests(unittest.TestCase):
             args=["--client", "opencode"],
         )
         config = json.loads(self.settings.read_text(encoding="utf-8"))
-        self.assertEqual(config["theme"], "dark")
-        self.assertEqual(config["model"], "claude-sonnet-4-20250514")
+        assert config["theme"] == "dark"
+        assert config["model"] == "claude-sonnet-4-20250514"
 
     def test_manual_hook_uninstall_removes_only_managed(self):
         """Remove only the manual hook entry, leave others."""
@@ -71,11 +71,11 @@ class ManualHookTests(unittest.TestCase):
             args=["--client", "opencode"],
         )
         result = uninstall_hook(self.settings, command="ai-memory-hook.exe")
-        self.assertEqual(result["status"], "removed")
+        assert result["status"] == "removed"
         config = json.loads(self.settings.read_text(encoding="utf-8"))
         # User hook preserved
-        self.assertEqual(len(config["hooks"]["PostToolUse"]), 1)
-        self.assertEqual(config["hooks"]["PostToolUse"][0]["command"], "user-pre-hook")
+        assert len(config["hooks"]["PostToolUse"]) == 1
+        assert config["hooks"]["PostToolUse"][0]["command"] == "user-pre-hook"
 
     def test_manual_hook_is_idempotent(self):
         """Installing twice produces no duplicate entries."""
@@ -83,10 +83,10 @@ class ManualHookTests(unittest.TestCase):
         args = ["--client", "opencode"]
         install_hook(self.settings, event="PostToolUse", command=command, args=args)
         result = install_hook(self.settings, event="PostToolUse", command=command, args=args)
-        self.assertEqual(result["status"], "already_installed")
+        assert result["status"] == "already_installed"
         config = json.loads(self.settings.read_text(encoding="utf-8"))
         managed = [h for h in config["hooks"]["PostToolUse"] if h.get("ai_memory_hub_managed")]
-        self.assertEqual(len(managed), 1)
+        assert len(managed) == 1
 
     def test_manual_hook_single_managed_entry_per_event(self):
         """The simple JSON format supports one managed hook per event.
@@ -109,9 +109,9 @@ class ManualHookTests(unittest.TestCase):
         config = json.loads(self.settings.read_text(encoding="utf-8"))
         managed = [h for h in config["hooks"]["PostToolUse"] if h.get("ai_memory_hub_managed")]
         # Only one managed entry per event in simple JSON format
-        self.assertEqual(len(managed), 1)
+        assert len(managed) == 1
         # The second install replaced the first (command stays the same exe, args are replaced)
-        self.assertEqual(managed[0]["command"], "ai-memory-hook.exe")
+        assert managed[0]["command"] == "ai-memory-hook.exe"
 
     def test_manual_hook_different_events(self):
         """A single client can have hooks on multiple lifecycle events."""
@@ -128,19 +128,19 @@ class ManualHookTests(unittest.TestCase):
             args=["--client", "opencode"],
         )
         config = json.loads(self.settings.read_text(encoding="utf-8"))
-        self.assertIn("PostToolUse", config["hooks"])
-        self.assertIn("SessionStart", config["hooks"])
-        self.assertTrue(any(h.get("ai_memory_hub_managed") for h in config["hooks"]["PostToolUse"]))
-        self.assertTrue(any(h.get("ai_memory_hub_managed") for h in config["hooks"]["SessionStart"]))
+        assert "PostToolUse" in config["hooks"]
+        assert "SessionStart" in config["hooks"]
+        assert any(h.get("ai_memory_hub_managed") for h in config["hooks"]["PostToolUse"])
+        assert any(h.get("ai_memory_hub_managed") for h in config["hooks"]["SessionStart"])
 
     def test_manual_hook_uninstall_nonexistent_is_safe(self):
         """Removing a hook that was never installed is a safe no-op."""
         self.settings.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
         result = uninstall_hook(self.settings, command="ai-memory-hook.exe")
-        self.assertEqual(result["status"], "not_found")
+        assert result["status"] == "not_found"
         # No backup should be created when nothing changes
         backups = list(self.settings.parent.glob("settings.json.bak-*"))
-        self.assertEqual(len(backups), 0)
+        assert len(backups) == 0
 
     def test_manual_hook_backup_created_on_install(self):
         """Backup file is created before modifying settings."""
@@ -152,7 +152,7 @@ class ManualHookTests(unittest.TestCase):
             args=["--client", "opencode"],
         )
         backups = list(self.settings.parent.glob("settings.json.bak-*"))
-        self.assertEqual(len(backups), 1)
+        assert len(backups) == 1
 
 
 if __name__ == "__main__":

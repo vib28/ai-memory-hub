@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -19,14 +20,19 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import logging
-
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
-from .utils import atomic_write, clean_list, one_line, read_json, safe_join, slugify, vault_key, utc_timestamp
-
+from .utils import (
+    atomic_write,
+    clean_list,
+    one_line,
+    read_json,
+    slugify,
+    utc_timestamp,
+    vault_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -212,8 +218,8 @@ def render_issue_block(group_id: str, payloads: list[dict[str, Any]], links: dic
         f"<!-- {_group_marker(group_id)} -->",
         "# AI Memory Hub session log",
         "",
-        "This is a sanitized publication mirror of accepted local checkpoint summaries. "
-        "The local Markdown vault remains canonical; this issue is not a raw transcript.",
+        ("This is a sanitized publication mirror of accepted local checkpoint summaries. "
+        "The local Markdown vault remains canonical; this issue is not a raw transcript."),
         "",
         f"**Project:** {project}  ",
         f"**Work group:** `{_safe_text(group_id, 200)}`",
@@ -335,7 +341,7 @@ class ExportOutbox:
             )
 
     def mark_failed(self, markers: list[str], error: str) -> None:
-        placeholders = ",".join(f"?" for _ in markers)
+        placeholders = ",".join("?" for _ in markers)
         rows = self.conn.execute(f"SELECT marker,attempts FROM exports WHERE marker IN ({placeholders})", markers).fetchall() if markers else []
         stamp_dt = datetime.now(timezone.utc)
         stamp = stamp_dt.isoformat(timespec="seconds")
@@ -464,7 +470,7 @@ class GitHubPublisher:
         comments = self.client.list_comments(issue_number)
         links: dict[str, str] = {}
         comment_records: dict[str, dict[str, Any]] = {}
-        for row, payload in zip(all_rows, payloads):
+        for row, payload in zip(all_rows, payloads, strict=False):
             marker = payload["marker"]
             if marker not in claimed_markers:
                 if row.get("remote_comment_url"):

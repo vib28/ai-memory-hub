@@ -1,16 +1,22 @@
 import http.client
 import json
 import os
-from pathlib import Path
 import re
 import threading
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from memory_hub.app import running_instance, run
-from memory_hub.dashboard import (DEFAULT_DASHBOARD_PORT, create_server, default_dashboard_host,
-                                  default_dashboard_port, memory_rows_for_dashboard, load_html)
+from memory_hub.app import run, running_instance
+from memory_hub.dashboard import (
+    DEFAULT_DASHBOARD_PORT,
+    create_server,
+    default_dashboard_host,
+    default_dashboard_port,
+    load_html,
+    memory_rows_for_dashboard,
+)
 from memory_hub.dashboard_data import detail, metadata, save_metadata
 from memory_hub.manager import MemoryManager
 from memory_hub.models import MemoryRecord
@@ -62,7 +68,7 @@ def test_metadata_survives_reindex_and_keeps_source(manager):
     assert detail(manager, first)["tags"] == ["work"]
 
 
-@pytest.mark.parametrize("tags,links", [(["bad tag"], []), ("not a list", []),
+@pytest.mark.parametrize(("tags", "links"), [(["bad tag"], []), ("not a list", []),
     ([], ["missing-id"]), (["x" * 65], []), ([3], []), ([], [4])])
 def test_metadata_rejects_invalid_input(manager, tags, links):
     memory_id = session(manager)
@@ -202,7 +208,7 @@ def test_dashboard_port_and_host_are_environment_driven():
 def luminance(hex_color):
     parts = [int(hex_color[i:i+2], 16) / 255 for i in (1, 3, 5)]
     linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in parts]
-    return sum(a * b for a, b in zip(linear, (.2126, .7152, .0722)))
+    return sum(a * b for a, b in zip(linear, (.2126, .7152, .0722), strict=False))
 
 
 def contrast(a, b):
@@ -237,7 +243,8 @@ def test_theme_controls_and_safe_renderer_packaged():
     assert "localStorage.setItem('memory-hub-appearance'" in html
     assert "function inline(text){return esc(text)" in html
     assert "b.type='button'" in html
-    assert "__CSS__" not in html and "__JS__" not in html
+    assert "__CSS__" not in html
+    assert "__JS__" not in html
 def test_javascript_interactions_without_browser():
     import shutil
     import subprocess

@@ -17,9 +17,12 @@ for the reviewed, reversible way to add an entry.
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .utils import slugify
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SECTION_RE = re.compile(
     r"^## (?P<kind>[a-z]+): (?P<entity_id>[a-zA-Z0-9_-]+)\s*$\n(?P<body>.*?)(?=^## |\Z)",

@@ -4,11 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import threading
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 from .app_config import bootstrap_environment
 from .dashboard import create_server, default_dashboard_port
@@ -50,6 +50,7 @@ def run(vault, port=None, tray=True, open_browser=True):
         if tray:
             try:
                 import pystray
+
                 from .tray import icon_image
                 icon = pystray.Icon('ai-memory-hub', icon_image(), 'AI Memory Hub',
                     pystray.Menu(

@@ -7,8 +7,8 @@ step turns observations into the existing four-section ``session_write`` contrac
 from __future__ import annotations
 
 import argparse
-import json
 import fnmatch
+import json
 import os
 import sqlite3
 import sys
@@ -19,12 +19,20 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .app_config import bootstrap_environment
-from .events import AFTER_AGENT_EVENTS, CONSOLIDATION_EVENTS, FAILURE_EVENTS, HOST_META_FIELDS, PROMPT_EVENTS, PROMPT_FIELDS, ASSISTANT_FIELDS
+from .events import (
+    ASSISTANT_FIELDS,
+    CONSOLIDATION_EVENTS,
+    HOST_META_FIELDS,
+    PROMPT_FIELDS,
+)
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import (utc_timestamp, utc_timestamp_naive, vault_key, read_json,
-            normalize_relative, sanitize_secrets, is_truthy, to_kebab, truncated_text)
 from .security import SECRET_PATTERNS, check_text
-
+from .utils import (
+    is_truthy,
+    to_kebab,
+    truncated_text,
+    utc_timestamp,
+)
 
 DEFAULT_MAX_TEXT = 4000
 DEFAULT_MAX_FILES = 100

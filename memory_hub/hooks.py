@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .utils import atomic_write, one_line, utc_timestamp
-
+from .utils import atomic_write, utc_timestamp
 
 MANAGED_KEY = "ai_memory_hub_managed"
 TOML_MARKER = "# ai-memory-hub managed hook"

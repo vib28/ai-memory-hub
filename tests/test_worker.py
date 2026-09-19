@@ -59,11 +59,11 @@ class WorkerTests(unittest.TestCase):
             result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
         finally:
             worker.close()
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["processed"][0]["trigger"], "token-budget")
-        self.assertEqual(manager.calls[0][1], "auto")
-        self.assertEqual(manager.calls[0][0]["entry_type"], "checkpoint")
-        self.assertEqual(self.buffer.pending_sessions(), [])
+        assert result["status"] == "ok"
+        assert result["processed"][0]["trigger"] == "token-budget"
+        assert manager.calls[0][1] == "auto"
+        assert manager.calls[0][0]["entry_type"] == "checkpoint"
+        assert self.buffer.pending_sessions() == []
 
     def test_stop_flush_is_provisional_and_not_final(self):
         self.config = WorkerConfig(**{**self.config.__dict__, "token_budget": 10000})
@@ -75,9 +75,9 @@ class WorkerTests(unittest.TestCase):
         finally:
             worker.close()
         payload = manager.calls[0][0]
-        self.assertEqual(payload["state"], "provisional")
-        self.assertEqual(payload["entry_type"], "checkpoint")
-        self.assertFalse(payload["host_session_finalized"])
+        assert payload["state"] == "provisional"
+        assert payload["entry_type"] == "checkpoint"
+        assert not payload["host_session_finalized"]
 
     def test_session_end_flush_is_final_and_marks_host_end(self):
         self.config = WorkerConfig(**{**self.config.__dict__, "token_budget": 10000})
@@ -89,9 +89,9 @@ class WorkerTests(unittest.TestCase):
         finally:
             worker.close()
         payload = manager.calls[0][0]
-        self.assertEqual(payload["entry_type"], "final")
-        self.assertEqual(payload["state"], "accepted")
-        self.assertTrue(payload["host_session_finalized"])
+        assert payload["entry_type"] == "final"
+        assert payload["state"] == "accepted"
+        assert payload["host_session_finalized"]
 
     def test_time_trigger_flushes_older_evidence(self):
         # Age must sit strictly between flush_seconds (60) and idle_seconds (300) — old
@@ -105,7 +105,7 @@ class WorkerTests(unittest.TestCase):
             result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, 30, tzinfo=timezone.utc))
         finally:
             worker.close()
-        self.assertEqual(result["processed"][0]["trigger"], "time")
+        assert result["processed"][0]["trigger"] == "time"
 
     def test_idle_trigger_is_reachable_at_shipped_defaults(self):
         """#71: with the real shipped WorkerConfig defaults (flush_seconds=60 <
@@ -122,8 +122,8 @@ class WorkerTests(unittest.TestCase):
             result = worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
         finally:
             worker.close()
-        self.assertEqual(result["processed"][0]["trigger"], "idle")
-        self.assertEqual(manager.calls[0][0]["state"], "provisional")
+        assert result["processed"][0]["trigger"] == "idle"
+        assert manager.calls[0][0]["state"] == "provisional"
 
     def test_idle_closure_is_provisional_and_new_evidence_reopens_session(self):
         self.config = WorkerConfig(**{
@@ -140,10 +140,10 @@ class WorkerTests(unittest.TestCase):
             second = worker.run_once(now=datetime(2026, 9, 9, 12, 3, tzinfo=timezone.utc))
         finally:
             worker.close()
-        self.assertEqual(first["processed"][0]["trigger"], "idle")
-        self.assertEqual(manager.calls[0][0]["state"], "provisional")
-        self.assertEqual(second["processed"][0]["trigger"], "turn")
-        self.assertNotEqual(manager.calls[0][0]["checkpoint_id"], manager.calls[1][0]["checkpoint_id"])
+        assert first["processed"][0]["trigger"] == "idle"
+        assert manager.calls[0][0]["state"] == "provisional"
+        assert second["processed"][0]["trigger"] == "turn"
+        assert manager.calls[0][0]["checkpoint_id"] != manager.calls[1][0]["checkpoint_id"]
 
     def test_model_failure_is_visible_and_rows_remain_retryable(self):
         self.append()
@@ -154,10 +154,10 @@ class WorkerTests(unittest.TestCase):
             finally:
                 worker.close()
             health = read_health(self.config.vault)
-        self.assertEqual(result["status"], "degraded")
-        self.assertEqual(self.buffer.for_session("session-1")[0]["status"], "failed")
-        self.assertEqual(health["status"], "degraded")
-        self.assertIn("local model unavailable", health["last_error"])
+        assert result["status"] == "degraded"
+        assert self.buffer.for_session("session-1")[0]["status"] == "failed"
+        assert health["status"] == "degraded"
+        assert "local model unavailable" in health["last_error"]
 
     def test_degraded_run_does_not_erase_last_success_at(self):
         """#72: a transient failure must not overwrite the last known-good timestamp
@@ -170,15 +170,15 @@ class WorkerTests(unittest.TestCase):
             try:
                 worker.run_once(now=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc))
                 good_health = read_health(self.config.vault)
-                self.assertIsNotNone(good_health["last_success_at"])
+                assert good_health["last_success_at"] is not None
                 self.append()
                 worker.manager = FakeManager(error=RuntimeError("transient"))
                 worker.run_once(now=datetime(2026, 9, 9, 12, 2, tzinfo=timezone.utc))
             finally:
                 worker.close()
             degraded_health = read_health(self.config.vault)
-        self.assertEqual(degraded_health["status"], "degraded")
-        self.assertEqual(degraded_health["last_success_at"], good_health["last_success_at"])
+        assert degraded_health["status"] == "degraded"
+        assert degraded_health["last_success_at"] == good_health["last_success_at"]
 
     def test_health_file_is_written_when_configured(self):
         self.append()
@@ -189,9 +189,9 @@ class WorkerTests(unittest.TestCase):
             finally:
                 worker.close()
             health = read_health(self.config.vault)
-        self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["backlog"], 0)
-        self.assertEqual(json.loads(self.health.read_text(encoding="utf-8"))["status"], "ok")
+        assert health["status"] == "ok"
+        assert health["backlog"] == 0
+        assert json.loads(self.health.read_text(encoding="utf-8"))["status"] == "ok"
 
     def test_health_not_rewritten_when_unchanged(self):
         """#108: identical health payloads must not trigger a redundant file write."""
@@ -205,7 +205,7 @@ class WorkerTests(unittest.TestCase):
                 second_mtime = self.health.stat().st_mtime_ns
             finally:
                 worker.close()
-        self.assertEqual(first_mtime, second_mtime)
+        assert first_mtime == second_mtime
 
 
 if __name__ == "__main__":
@@ -219,16 +219,17 @@ class WorkerHealthPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             from memory_hub.worker import worker_health_path
-            self.assertEqual(worker_health_path(vault), vault / ".ai-memory-hub" / "worker-health.json")
+            assert worker_health_path(vault) == vault / ".ai-memory-hub" / "worker-health.json"
 
     def test_explicit_env_override_still_wins(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
                 "os.environ", {"MEMORY_WORKER_HEALTH": str(Path(tmp) / "custom.json")}):
             from memory_hub.worker import worker_health_path
-            self.assertEqual(worker_health_path(Path(tmp) / "vault"), Path(tmp) / "custom.json")
+            assert worker_health_path(Path(tmp) / "vault") == Path(tmp) / "custom.json"
 
     def test_legacy_home_file_is_read_until_rewritten(self):
         import json as _json
+
         from memory_hub.worker import legacy_worker_health_path
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
@@ -237,12 +238,12 @@ class WorkerHealthPathTests(unittest.TestCase):
             legacy.parent.mkdir(parents=True, exist_ok=True)
             legacy.write_text(_json.dumps({"status": "ok", "backlog": 3}), encoding="utf-8")
             health = read_health(vault)
-            self.assertEqual(health["status"], "ok")
-            self.assertEqual(health["health_path"], str(legacy))
+            assert health["status"] == "ok"
+            assert health["health_path"] == str(legacy)
 
     def test_suite_is_isolated_from_ambient_configuration(self):
         # conftest.py scrubs MEMORY_*/AI_MEMORY_* and redirects HOME to tmp (#88).
         import os
-        self.assertFalse([k for k in os.environ if k.startswith(("MEMORY_", "AI_MEMORY_"))])
-        self.assertNotEqual(Path.home(), Path(os.environ.get("REAL_HOME_SENTINEL", "")))
-        self.assertTrue(str(Path.home()).startswith(tempfile.gettempdir()[:3]))
+        assert not [k for k in os.environ if k.startswith(("MEMORY_", "AI_MEMORY_"))]
+        assert Path.home() != Path(os.environ.get("REAL_HOME_SENTINEL", ""))
+        assert str(Path.home()).startswith(tempfile.gettempdir()[:3])

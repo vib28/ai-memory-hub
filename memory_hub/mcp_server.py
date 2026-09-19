@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,13 +10,12 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from .app_config import bootstrap_environment
+from .capture import ObservationBuffer, default_buffer_path
+from .history import commit_vault_change
 from .manager import AUTO_POLICY, MemoryManager
 from .models import MemoryCandidate
-from .capture import ObservationBuffer, default_buffer_path
 from .session_capture import consolidate_buffered_session
-from .history import commit_vault_change
 from .utils import is_truthy
-from dataclasses import dataclass, field, asdict
 
 # ---------------------------------------------------------------------------
 # Data classes

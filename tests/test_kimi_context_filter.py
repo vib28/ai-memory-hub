@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from memory_hub.context_packet import _tokens, _related_rows, _MIN_CONTENT_TOKEN_LEN
+from memory_hub.context_packet import _related_rows
 
 
 class KimiNoisyPromptTests(unittest.TestCase):
@@ -33,8 +33,8 @@ class KimiNoisyPromptTests(unittest.TestCase):
         related = _related_rows(memories, kimi_prompt, project="ai-memory-hub")
         # No memory about embeddings or business skillchains should match
         ids = {row["memory_id"] for row in related}
-        self.assertNotIn("m1", ids, "embedding work memory matched on generic verbs")
-        self.assertNotIn("m2", ids, "business direction memory matched on generic verbs")
+        assert "m1" not in ids, "embedding work memory matched on generic verbs"
+        assert "m2" not in ids, "business direction memory matched on generic verbs"
 
     def test_legitimate_overlap_still_matches(self):
         memories = [
@@ -45,16 +45,16 @@ class KimiNoisyPromptTests(unittest.TestCase):
         prompt = "why does git-bash break my PowerShell backslashes and how do I fix the filter decision?"
         related = _related_rows(memories, prompt, project="widget-app")
         ids = {row["memory_id"] for row in related}
-        self.assertIn("m2", ids, "legitimate bash-backslash memory should match")
-        self.assertIn("m1", ids, "legitimate filter memory should match on 'filter'")
+        assert "m2" in ids, "legitimate bash-backslash memory should match"
+        assert "m1" in ids, "legitimate filter memory should match on 'filter'"
 
     def test_empty_prompt_returns_nothing(self):
         memories = [self._memory("m1", "some text")]
-        self.assertEqual(_related_rows(memories, "", project=None), [])
+        assert _related_rows(memories, "", project=None) == []
 
     def test_only_stopwords_returns_nothing(self):
         memories = [self._memory("m1", "some text about installations and running")]
-        self.assertEqual(_related_rows(memories, "run install check start", project=None), [])
+        assert _related_rows(memories, "run install check start", project=None) == []
 
 
 if __name__ == "__main__":
