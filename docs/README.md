@@ -1,112 +1,104 @@
 # Documentation
 
-Use the [dashboard guide](DASHBOARD.md) for the unified launcher, full memory reader,
-four color modes and editable tag/link lookups.
+Find the guide that matches where you are right now.
 
-Start with [AI Memory Hub](../README.md) for what the project does and what is still planned.
+| I want to… | Start here |
+|---|---|
+| Understand what this project does | [Project README](../README.md) |
+| Install and connect my first AI client | [Installation](INSTALLATION.md) |
+| Open the dashboard and review memories | [Dashboard](DASHBOARD.md) |
+| Learn how to search, propose, and approve memory | [Usage](USAGE.md) |
+| Configure write mode, models, and environment | [Configuration](CONFIGURATION.md) |
+| Set up automatic session continuity | [Automatic continuity](automatic-session-continuity.md) |
+| Fix something that isn't working | [Troubleshooting](TROUBLESHOOTING.md) |
+| Read short answers to common questions | [FAQ](FAQ.md) |
+| Understand the code and contribute | [Architecture](../ARCHITECTURE.md) · [Contributing](../CONTRIBUTING.md) |
 
-## Choose your path
+## By user journey
 
-```mermaid
-flowchart TD
-    Start[New to the project?] --> Install[Install and verify review mode]
-    Install --> Memory{Need shared durable memory?}
-    Memory -->|yes| Operate[Use search, propose, review and approve]
-    Memory -->|not yet| Read[Read architecture and boundaries]
-    Operate --> Continuity{Need automatic session continuity?}
-    Continuity -->|no| Dashboard[Use dashboard and backups]
-Continuity -->|yes| Capture[Enable capture, worker and handoff separately]
-    Capture --> Transcript{Need exact local transcript?}
-    Transcript -->|yes| Raw[Enable default-off transcript companion]
-    Capture --> Publish{Need a remote session record?}
-    Publish -->|no| Dashboard
-    Publish -->|yes| Export[Approve sanitized GitHub export]
-```
+### 1. Setup — get running in minutes
 
-The recommended learning order is deliberately conservative: prove one harmless review
-proposal first, then enable only the capability you understand. A connected MCP client
-can use shared memory without capture; capture can run without startup handoff; local
-handoff can run without GitHub; and GitHub is never required for local continuity.
+| Step | Guide | What you'll do |
+|---|---|---|
+| 1 | [Installation](INSTALLATION.md) | Clone the repo, create a vault, connect an AI client |
+| 2 | [Client connections](CLIENTS.md) | Verify your host (Claude, Codex, Gemini, Qwen, Kimi, Hermes) |
+| 3 | [Configuration](CONFIGURATION.md) | Choose review or auto write mode; set optional models |
+| 4 | [Dashboard](DASHBOARD.md) | Start the local launcher and open the browser workspace |
 
-## Capability status at a glance
+> **Tip:** Prove one harmless review proposal before enabling any optional pipeline.
 
-| Capability | Status on this branch | Read next |
-| --- | --- | --- |
-| Shared MCP memory and Markdown vault | Available | [Installation](INSTALLATION.md), [Usage](USAGE.md) |
-| Review queue and dashboard | Available | [Dashboard](DASHBOARD.md) |
-| Optional embeddings and local chat model | Available when configured | [Configuration](CONFIGURATION.md) |
-| Lifecycle capture and supervised worker | Available behind explicit setup | [Clients](CLIENTS.md), [Usage](USAGE.md) |
-| Full verbatim session transcript | Available behind `MEMORY_TRANSCRIPT_ENABLED=true`; local-only and sensitive | [Full transcripts](full-session-transcripts.md), [Configuration](CONFIGURATION.md) |
-| Claude/Codex model-free startup handoff | Available behind explicit setup; supported fixtures only | [Clients](CLIENTS.md), [Continuity](automatic-session-continuity.md) |
-| Sanitized GitHub session outbox | Available behind explicit destination approval | [Configuration](CONFIGURATION.md) |
-| Live cross-tool token/cost certification | Not complete | [Benchmark protocol](session-handoff-benchmark.md), [#62](https://github.com/vib28/ai-memory-hub/issues/62) |
-
-## Concepts used throughout the guides
-
-- **Vault:** the ordinary Markdown directory containing accepted memory.
-- **Writer:** provenance such as `claude` or `codex`; it is not an access-control list.
-- **Review mode:** proposals wait for dashboard approval. It does not govern every
-  administrative CLI write.
-- **Auto mode:** validated proposals can be accepted without dashboard approval.
-- **Capture:** bounded lifecycle evidence stored in a local queue before summarization.
-- **Checkpoint:** an accepted or pending periodic session state; it may be provisional.
-- **Final:** an explicit host-session end result, not merely an idle timeout.
-- **Handoff:** bounded local checkpoint context injected at supported startup events.
-- **Outbox:** retryable GitHub delivery state; it is separate from accepted Markdown.
-- **Transcript:** an opt-in chronological Obsidian object containing supported raw
-  provider events; it is separate from bounded capture, search and remote export.
-
-If a guide uses one of these terms differently, treat that as a documentation bug and
-check the configuration reference before changing a live vault.
-
-```mermaid
-flowchart TD
-    Guide[User guides] --> Install[Install and connect]
-    Guide --> Operate[Use and troubleshoot]
-    Guide --> Plan[Roadmaps and benchmarks]
-    Guide --> Contribute[Develop and audit]
-```
-
-## Install and operate
+### 2. Daily use — review, search, and organize memory
 
 | Guide | Purpose |
-| --- | --- |
-| [Installation](INSTALLATION.md) | Set up the environment and vault |
-| [Client connections](CLIENTS.md) | Connect an AI tool and verify its configuration |
-| [Configuration](CONFIGURATION.md) | Environment variables, write modes and optional models |
-| [Usage](USAGE.md) | Review, search, sessions, imports, identity and undo |
-| [Full session transcripts](full-session-transcripts.md) | Exact event envelope, links, retention and privacy boundary |
-| [Troubleshooting](TROUBLESHOOTING.md) | Diagnose common failures without losing data |
-| [FAQ](FAQ.md) | Short answers to common questions |
+|---|---|
+| [Usage](USAGE.md) | Propose, review, search, import, link projects, and undo |
+| [Dashboard](DASHBOARD.md) | Unified launcher, full-memory reader, tag and link lookups |
+| [Full session transcripts](full-session-transcripts.md) | Opt-in exact event record; disabled by default |
 
-## Understand and contribute
+### 3. Continuity — automatic session capture and handoff
 
-- [Architecture](../ARCHITECTURE.md): module map, storage and boundaries.
-- [Contributing](../CONTRIBUTING.md): development checks and issue workflow.
-- [Quick start](../QUICK_START.md): short Windows entry point.
-- [Setup guide](../INSTALLATION_GUIDE.md): guided route through the installation references.
+| Guide | Purpose |
+|---|---|
+| [Automatic session continuity](automatic-session-continuity.md) | Capture, worker, checkpoint, and cross-client startup handoff |
+| [Continuity closeout](continuity-closeout.md) | Evidence record for the completed local pipeline |
 
-## Plans and historical records
+**Supported hosts:** Claude Code · Codex CLI · Gemini CLI · Qwen Code · Kimi Code · Hermes Agent
 
-These retain their existing structured tracking format:
+**Pipeline status (this branch):**
 
-- [Implementation roadmap](local-memory-plan.md).
-- [Automatic session continuity](automatic-session-continuity.md).
-- [Open issue priority order](issue-priority-order.md): the canonical execution sequence
-  for the current open issues.
-- [Two-tool handoff benchmark](session-handoff-benchmark.md).
-- [Latest no-paid-call replay report](benchmark-results/handoff-replay-v1.md): synthetic
-  protocol evidence, not live provider billing or task certification.
-- [Vault documentation standards](vault-documentation-standards.md).
+| Capability | Status |
+|---|---|
+| Shared MCP memory and Markdown vault | ✅ Available |
+| Review queue and dashboard | ✅ Available |
+| Optional embeddings and local chat model | ✅ Available when configured |
+| Lifecycle capture and supervised worker | ✅ Available behind explicit setup |
+| Full verbatim session transcript | ✅ Available behind `MEMORY_TRANSCRIPT_ENABLED=true` |
+| Claude/Codex model-free startup handoff | ✅ Available behind explicit setup |
+| Sanitized GitHub session outbox | ✅ Available behind explicit destination approval |
+| Live cross-tool token/cost certification | ⏳ Not complete — see [benchmark protocol](session-handoff-benchmark.md) |
 
-[FIXLOG](../FIXLOG.md) and [release notes](../RELEASE_NOTES_v0.2.md) record historical work.
+### 4. Recovery — diagnose and fix problems
+
+| Guide | Purpose |
+|---|---|
+| [Troubleshooting](TROUBLESHOOTING.md) | Missing tools, locked files, configuration drift |
+| [FAQ](FAQ.md) | Do I need Obsidian? Can tools share memory? What does handoff restore? |
+
+### 5. Development — understand, extend, and measure
+
+| Guide | Purpose |
+|---|---|
+| [Architecture](../ARCHITECTURE.md) | Module map, storage layout, and boundaries |
+| [Contributing](../CONTRIBUTING.md) | Development checks and issue workflow |
+| [Quick start](../QUICK_START.md) | Short Windows entry point |
+| [Setup guide](../INSTALLATION_GUIDE.md) | Guided route through the installation references |
+| [Local memory plan](local-memory-plan.md) | Implementation roadmap and issue tracking |
+| [Issue priority order](issue-priority-order.md) | Canonical execution sequence for open issues |
+| [Vault documentation standards](vault-documentation-standards.md) | Template quality and per-kind entry rules |
+| [Two-tool handoff benchmark](session-handoff-benchmark.md) | Replay protocol for paired context-passing measurement |
+| [Benchmark results](benchmark-results/handoff-replay-v1.md) | Synthetic protocol evidence — not live billing certification |
+
+## Quick concepts
+
+| Term | Meaning |
+|---|---|
+| **Vault** | The ordinary Markdown directory holding accepted memory |
+| **Writer** | Provenance label such as `claude` or `codex`; not an access-control list |
+| **Review mode** | Proposals wait for dashboard approval before acceptance |
+| **Auto mode** | Validated proposals accepted without dashboard approval |
+| **Capture** | Bounded lifecycle evidence stored before summarization |
+| **Checkpoint** | An accepted or pending periodic session state |
+| **Handoff** | Bounded local checkpoint context injected at supported startup events |
+| **Outbox** | Retryable GitHub delivery state; separate from accepted Markdown |
+| **Transcript** | Opt-in chronological event record; separate from bounded capture |
+
+If a guide uses one of these terms differently, treat it as a documentation bug.
 
 ## Writing conventions
 
 User guides use descriptive headings, relative repository links, language-tagged code
-blocks and alerts for meaningful cautions. Commands and expected output stay separate.
-Use a table for repeated comparisons, not as a replacement for every paragraph.
+blocks, and alerts for meaningful cautions. Commands and expected output stay separate.
+Tables summarize repeated comparisons; they don't replace every paragraph.
 
 Follow [GitHub's writing and formatting guidance](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github).
-Do not change issue/roadmap templates, client prompts or vault-record formats merely
-to restyle a user guide. A formatting pass is not permission to change runtime behavior.
+Do not change issue templates, client prompts, or vault-record formats merely to restyle a guide.

@@ -1,7 +1,6 @@
-# Memory workspace
+# Memory workspace dashboard
 
-The dashboard runs on your computer. It does not need a model server, a cloud account,
-Node.js or a separate frontend installation.
+The dashboard is a local web application that reads your AI Memory Hub vault. It does not need a model server, a cloud account, Node.js, or a separate frontend install — just the repository and your vault.
 
 ```mermaid
 flowchart LR
@@ -11,69 +10,92 @@ flowchart LR
     Browser --> Vault[Canonical vault and rebuildable index]
 ```
 
+---
+
 ## Start once
 
-From the repository folder:
+From the repository folder, run:
 
 ~~~powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\start-memory-hub.ps1 -VaultPath $memoryVault
 ~~~
 
-This opens the browser dashboard and, when supported by your desktop, its tray icon.
-Keep the terminal open. Quit through the tray menu or press Ctrl+C in the terminal.
-Launching again with the same vault and port reopens the running application.
-A port occupied by another vault or application produces an error; it is never killed.
+This opens the browser dashboard and (when supported) the system tray icon. Keep the terminal open. Quit through the tray menu or press **Ctrl+C**.
 
-Both older script names, start-dashboard.ps1 and start-tray.ps1, forward to this launcher.
-You do not need to run both.
+Running the same command again with the same vault and port reopens the running application instead of starting a duplicate. If the port is occupied by another vault or app, an error is shown — the launcher never kills an unrelated process.
 
-For a desktop without a working tray:
+### Without a working tray
 
 ~~~powershell
 .\start-memory-hub.ps1 -VaultPath $memoryVault -NoTray
 ~~~
 
-The portable Python entry point is:
+### Portable entry point
 
 ~~~sh
 ai-memory-app --vault "/path/to/vault" --no-tray
 ~~~
 
-Windows setup installs the Python dependencies and bundled interface assets. Linux/macOS
-may have additional native tray requirements; browser-only mode avoids the tray.
-Those operating systems have not been exercised in this change.
+> **Note:** Older script names `start-dashboard.ps1` and `start-tray.ps1` still work and forward to the unified launcher. You only need one.
 
-## Read memories
+---
 
-The left navigation chooses Library, Review & history, Conflicts or Vault health.
-The middle pane searches the entire indexed library and filters by memory type or
-user-added tag. Select a result to open its full content on the right.
+## Feature overview
 
-Sessions retain their original sections and line breaks. Writer, date, classification,
-file path and memory ID remain visible. **View original Markdown** shows the exact
-stored record or session block. Search previews are deliberately short; the reading
-pane is not truncated. A missing source record produces an error, not invented content.
+The dashboard has five views in the left navigation rail:
 
-### Filter by date
+| View | Purpose |
+| --- | --- |
+| **Library** | Search, filter, and read every memory in the vault |
+| **Review & history** | Approve or reject queued session and pattern proposals |
+| **Conflicts** | Resolve conflicting facts by choosing the current one |
+| **Vault health** | Compare files and the search index without modifying records |
+| **Settings** | Edit any vault configuration value |
 
-The Library includes an optional date filter alongside text, type, and tag
-filters. Use **On date** for one calendar day, or **From** and **To** for an
-inclusive range. Stored timestamps are compared by their `YYYY-MM-DD` date
-portion, so a session recorded at any time on a selected day is included.
+---
 
-The date controls compose with the other filters and only change the visible
-list; they never rewrite canonical Markdown or dashboard metadata. **Clear
-dates** removes the date constraint while leaving the other filters unchanged.
-Invalid ranges or conflicting single-day/range inputs show an explanation and
-return no matches until corrected.
+## Library view
 
-Use **Refresh data** after another tool changes the indexed library. A file changed
-outside AI Memory Hub may need reindexing before its new records enter the library.
+The Library is the main workspace. It has three regions:
 
-## Choose a color mode
+```
+┌──────────────────┬───────────────────────┬────────────────────┐
+│ Filters & search │ Memory list           │ Reader             │
+│                  │                       │                    │
+│ [Search…]        │ ▾ card                │ ## Memory title    │
+│ Kind: [All ▾]    │   kind · date         │ writer · date      │
+│ Tag: [All ▾]    │   preview text…       │                    │
+│ Date controls    │   writer · tag        │ Full memory text   │
+│                  │                       │ in readable layout │
+│                  │ ▾ card                │                    │
+│                  │ …                     │ Tags · Links       │
+│                  │                       │ Source Markdown    │
+└──────────────────┴───────────────────────┴────────────────────┘
+```
 
-Two header toggles provide four combinations:
+### Search and filters
+
+- **Find a memory** — searches subjects, content, writers, paths, and tags.
+- **Memory type** — filter by kind (profile, preference, project, person, topic, decision, session).
+- **Tag** — filter by any user-added tag.
+- **Date filter** — choose a single day or a date range. Stored timestamps are compared by their `YYYY-MM-DD` date portion.
+
+Use **Refresh data** after another tool changes the indexed library. A file changed outside the dashboard may need reindexing first.
+
+### Reading a memory
+
+Select a card to open its full content in the reader pane:
+
+- Writer, date, classification, file path, and memory ID are always visible.
+- Session memories show their original headings and line breaks — not a flattened summary.
+- **View original Markdown** shows the exact stored record.
+
+---
+
+## Color modes
+
+Two header toggles provide four palette combinations:
 
 | Dark mode | Colorblind | Appearance |
 | --- | --- | --- |
@@ -82,54 +104,82 @@ Two header toggles provide four combinations:
 | Off | On | Colorblind light |
 | On | On | Colorblind dark |
 
-The first visit follows the operating system's light/dark preference. Later visits
-remember your explicit choice in this browser. This browser preference is not a memory
-and does not move between AI clients.
+The first visit follows the operating system's light/dark preference. Later visits remember your explicit choice in this browser. This browser preference is **not** a memory and does not move between AI clients.
 
-Muted backgrounds avoid large areas of pure white or black. Automated palette checks
-cover text at 4.5:1 and principal control boundaries at 3:1. Labels accompany statuses;
-selected items have an inset marker and border. Colorblind modes use blue/neutral
-accents and amber warning text rather than relying on red/green distinctions.
-These checks are not a full accessibility certification or a medical claim about eye strain.
+Colorblind modes shift the accent from teal to blue and replace red danger text with amber, so meaning never depends on red/green discrimination. All palettes are checked to WCAG standards:
 
-## Edit tags and connections
+- Body text contrast: **≥ 4.5:1**
+- Control boundary contrast: **≥ 3:1**
 
-Choose **Edit tags & links** on a memory.
+Status meaning is always shown as text labels, never by color alone.
 
-1. Type a tag to find an existing suggestion or add a new tag.
-2. Search for a memory by subject, content or ID, then select it.
-3. Remove an unwanted selection with its × button.
+---
+
+## Tags and links
+
+Choose **Edit tags & links** on any memory to open the organization editor.
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Organize this memory                                 │
+│                                                      │
+│ Find or create a tag                                 │
+│ [type to filter or create]                           │
+│  • #existing-tag · Select existing tag               │
+│  • + Create tag #new-tag                             │
+│                                                      │
+│ Selected tags                                        │
+│  [#tag1 ×]  [#tag2 ×]                                │
+│                                                      │
+│ Find a memory to link                                │
+│ [type to search by subject, text, or ID]             │
+│  ▾ linked memory card                                │
+│  ▾ linked memory card                                │
+│                                                      │
+│ Selected links                                       │
+│  [↗ subject · kind ×]  [↗ subject · kind ×]          │
+│                                                      │
+│                              [Cancel]  [Save changes]│
+└──────────────────────────────────────────────────────┘
+```
+
+### How it works
+
+1. **Find or create a tag** — type to filter existing tags or enter a new name (letters, numbers, underscores, hyphens; up to 64 characters).
+2. **Find a memory to link** — search by subject, content, or ID, then select it.
+3. Remove any selection with its **×** button.
 4. Choose **Save changes**.
 
-Links point to stable memory IDs. **Linked from** shows reverse connections automatically.
-Existing source tags are labeled **source**, and source wiki-links appear separately.
-The organization editor does not rewrite those source elements or change a memory's
-classification, such as preference or superseded.
+### What is saved and what is not
 
-User-added organization is stored in **dashboard-metadata.md** in the vault. Back up
-this file alongside your other Markdown. It survives a search-index rebuild. A stale
-save is refused so another tab's newer tags or links are not overwritten. If a linked
-record was removed, its link is shown as unavailable; nothing is silently merged.
+- **User-added** tags and links are stored in `dashboard-metadata.md` inside the vault.
+- **Source tags** and **wiki-links** found in the original Markdown remain visible separately and are never rewritten.
+- **Linked from** shows reverse connections automatically — no need to edit both sides.
+- Links point to stable memory IDs. If a linked record was removed, its link is shown as unavailable; nothing is silently merged.
+- A stale save is rejected so another tab's newer tags or links are not overwritten.
 
-**Edit text** remains available for ordinary one-line records. Session content itself
-is read-only here; edit its canonical Markdown with appropriate care and reindex.
-**Forget** asks for confirmation and deletes the record; it is not a reversible grouping action.
+> **Edit text** is still available for ordinary one-line records. Session content itself is read-only in the dashboard — edit its canonical Markdown directly and reindex.
+
+> **Forget** asks for confirmation and deletes the record. It is not a reversible grouping action.
+
+---
 
 ## Review and health
 
-Review/history preserves structured session and pattern proposals. Approve or reject
-pending proposals; other recorded statuses remain visible as history.
-Conflicts lets you explicitly choose a current fact and supersede the other conflicting
-records. Vault health compares files and index without changing records.
+**Review & history** preserves structured session and pattern proposals:
+
+- **Approve** or **reject** pending proposals.
+- Other recorded statuses remain visible as history.
+
+**Conflicts** lets you explicitly choose a current fact and supersede the other conflicting records.
+
+**Vault health** compares files and the search index without changing records — useful after manual edits or external tool changes.
+
+---
 
 ## Settings
 
-Choose **Settings** in the left rail to change any of the values documented in
-[Configuration](CONFIGURATION.md), grouped the same way as this vault's data: Vault &
-Identity, Write Mode, Capture, Transcript, Worker, Dashboard, LLM & Embeddings, and
-GitHub Export.
-
-Each field shows a small label naming where its current value comes from:
+Choose **Settings** in the left rail to change any value documented in [Configuration](CONFIGURATION.md). Each field shows a small label naming where its current value comes from:
 
 | Label | Meaning |
 | --- | --- |
@@ -137,19 +187,12 @@ Each field shows a small label naming where its current value comes from:
 | `ENV` | An environment variable is currently supplying this value. |
 | `FILE` | This vault's `config.json` is currently supplying this value. |
 
-**Save changed settings** writes only the fields you actually edited to
-`<vault>/.ai-memory-hub/config.json` — an unrelated field showing `ENV` (a deliberate
-one-off override in your current terminal, say) is never swept into the file just
-because you saved something else on the same page. A saved change takes effect the next
-time the affected process starts; restart the worker, dashboard or exporter, or
-reconnect the client, to pick it up. GitHub export's destination approval
-(`-EnableGitHubExport`) and client hooks/handoff/session-auto installation remain
-`connect-ai-tools.ps1`'s job — those touch a client's own files or Windows startup
-entries, not this vault's configuration.
+**Save changed settings** writes only the fields you actually edited to `<vault>/.ai-memory-hub/config.json`. An unrelated field showing `ENV` is never swept into the file just because you saved something else on the same page.
+
+A saved change takes effect the next time the affected process starts — restart the worker, dashboard, exporter, or reconnect the client.
+
+---
 
 ## Verification
 
-The tracked [redesign plan](dashboard-redesign-plan.md) and
-[issue #64](https://github.com/vib28/ai-memory-hub/issues/64) record implementation,
-automated checks and any outstanding verification. A temporary demo vault is not your
-real memory vault.
+The tracked [redesign plan](dashboard-redesign-plan.md) and [issue #64](https://github.com/vib28/ai-memory-hub/issues/64) record implementation details, automated checks, and any outstanding verification. A temporary demo vault is not your real memory vault.

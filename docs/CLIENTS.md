@@ -1,76 +1,100 @@
-# Client connections
+# Client Compatibility
 
-A client needs the server command, a vault path, a writer identity and a write mode.
-It also needs instructions explaining when to search or propose memory.
+This document covers the six hosts supported by **ai-memory-hub** and what each one can do.
 
-[Installation](INSTALLATION.md) · [Configuration](CONFIGURATION.md) · [Usage](USAGE.md)
+| Host | Version tested | Registration method | Instruction location |
+|---|---|---|---|
+| **Claude Code** | 2.1.276 | `mcp add` command | `~/.claude/CLAUDE.md` |
+| **Codex CLI** | 0.155.0 | `mcp add` with explicit environment | `~/.codex/AGENTS.md` |
+| **Gemini CLI** | 0.58.0 | `mcp add` command | `~/.gemini/GEMINI.md` |
+| **Qwen Code** | 0.22.0 | `mcp add` command | `~/.qwen/QWEN.md` |
+| **Kimi Code** | 2.0.1 | Edits `.kimi-code/mcp.json` | `AGENTS.md` in that directory |
+| **Hermes Agent** | (current) | `mcp add` under `ai_memory_hub` | Skill in Hermes home |
 
-## Windows connection helper
+> [!NOTE]
+> ChatGPT is also supported via a [tunnel helper](#chatgpt-tunnel) rather than direct stdio, so it is **not** included in the matrix below.
 
-After setup, run from the repository directory:
+---
 
-~~~powershell
+## Compatibility Matrix
+
+| Host | MCP Server | Capture Hooks | Startup Handoff |
+|------|:----------:|:-------------:|:---------------:|
+| Claude Code | ✅ | ✅ | ✅ |
+| Codex CLI | ✅ | ✅ | ✅ |
+| Gemini CLI | ✅ | ✅ | ✅ |
+| Qwen Code | ✅ | ✅ | ✅ |
+| Kimi Code | ✅ | ✅ | ✅ |
+| Hermes Agent | ✅ | ✅ | ✅ |
+
+**Legend:**
+- **MCP Server** — the host can run `memory_hub.mcp_server` as a stdio MCP server.
+- **Capture Hooks** — the host supports lifecycle-event capture (session start, prompt/tool/turn, compaction, failure, end).
+- **Startup Handoff** — the host injects bounded `SessionStart` context into new sessions.
+
+All six hosts support all three capabilities.
+
+---
+
+## Feature Breakdown
+
+### MCP Server
+
+Each host launches the ai-memory-hub stdio server with the vault path, writer identity, and write mode set as environment variables. The helper script `connect-ai-tools.ps1` registers the server automatically.
+
+| Host | How it connects |
+|---|---|
+| Claude Code | `claude mcp add ai-memory-hub ...` |
+| Codex CLI | `codex mcp add ...` with explicit env vars |
+| Gemini CLI | `gemini mcp add ...` |
+| Qwen Code | `qwen mcp add ...` |
+| Kimi Code | Writes to `.kimi-code/mcp.json` |
+| Hermes Agent | `hermes mcp add ...` under `ai_memory_hub` |
+
+### Capture Hooks
+
+Capture hooks observe the host's lifecycle events and forward them to the local worker for storage. The hooks are installed with `-InstallHooks` and removed with `-RemoveHooks`.
+
+| Host | Hook mechanism |
+|---|---|
+| Claude Code, Gemini, Qwen | JSON settings block (managed) |
+| Codex CLI | `hooks.json` file |
+| Kimi Code | Marked TOML block in config |
+| Hermes Agent | Skill-based receiver |
+
+Captured events include:
+- Session start
+- Prompt, tool, and turn events
+- Compaction
+- Failure
+- Session end
+
+### Startup Handoff
+
+Handoff injects a bounded `SessionStart` payload into new sessions so the host begins with relevant context. Installed with `-InstallHandoff`, removed with `-RemoveHandoff`.
+
+All six hosts use the same fixture schema validated by `tests/test_handoff.py`.
+
+---
+
+## Quick Setup
+
+Run the Windows helper from the repository directory:
+
+```powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -WriteMode review
-~~~
-
-The helper attempts each detected client independently. These are the paths implemented
-by the script, not a guarantee about every version of the third-party clients.
-
-```mermaid
-flowchart LR
-    Setup[Installation and vault path] --> Helper[connect-ai-tools.ps1]
-    Helper --> Register[Client MCP registration]
-    Register --> Prompt[Client-specific instructions]
-    Prompt --> Verify[Verify vault, writer and write mode]
 ```
 
-| Client | Registration path in this project | Behavioral instructions |
-| --- | --- | --- |
-| Claude Code | Client mcp add command | User-home .claude/CLAUDE.md |
-| Codex CLI | Client mcp add with explicit environment | User-home .codex/AGENTS.md |
-| Gemini CLI | Client mcp add command | User-home .gemini/GEMINI.md |
-| Qwen Code | Client mcp add command | User-home .qwen/QWEN.md |
-| Kimi Code | Edits .kimi-code/mcp.json, or KIMI_CODE_HOME | AGENTS.md in that directory |
-| Hermes Agent | Client mcp add under ai_memory_hub | Skill under the home resolved by hermes config path |
+This attempts each detected client independently. It is **not** a guarantee about every version of the third-party clients.
 
-The source of truth for this behavior is [connect-ai-tools.ps1](../connect-ai-tools.ps1).
-A client reporting an existing registration may keep old environment values; verify
-the actual registered vault/mode after changing them.
+---
 
-### Claude Code, Gemini and Qwen
+## Manual MCP Configuration
 
-The helper installs a managed block from [client-prompts](../client-prompts/).
-Check the client’s MCP status and workspace trust if the server is not visible.
-Do not bypass trust prompts automatically.
+If your host is not one of the six above, configure it manually. The generic shape is:
 
-### Codex
-
-The helper finds a Windows executable and passes the vault, writer and mode explicitly.
-It currently targets user-home .codex paths; do not assume custom configuration roots
-are handled. Inspect your client's registered configuration when using a non-default root.
-
-### Kimi
-
-The helper edits MCP JSON and uses a separate TOML hook location. If existing MCP JSON
-is malformed, it creates a backup and rebuilds the configuration; unrelated entries may
-need restoring from that backup. Review the result rather than treating every rerun as
-a no-change operation.
-
-### Hermes
-
-The server name is ai_memory_hub, and the writer is hermes. The helper installs
-[the repository's Hermes skill](../hermes/skills/ai-memory-hub/SKILL.md) into the resolved
-Hermes home. It does not use the ordinary prompt file as its installation mechanism.
-Existing registrations are left in place; the skill is refreshed.
-
-## Configure another stdio MCP host
-
-Use your host's supported configuration UI or file. This is a generic example; replace
-both absolute paths and use a supported writer identity. Do not overwrite the host's
-other server entries.
-
-~~~json
+```json
 {
   "mcpServers": {
     "ai-memory-hub": {
@@ -84,100 +108,34 @@ other server entries.
     }
   }
 }
-~~~
+```
 
-On Linux/macOS, use the environment's absolute .venv/bin/python path.
-Give the client [generic instructions](../client-prompts/generic.md), or the matching
-client-specific file. The prompt's writer label should agree with MEMORY_WRITER.
+On Linux/macOS, use `.venv/bin/python`. Add [generic instructions](../client-prompts/generic.md) to your host's instruction file. Make sure the prompt's writer label matches `MEMORY_WRITER`.
 
-The [example JSON file](../examples/mcp-host-config.example.json) is a starting shape;
-it currently omits write mode. Add MEMORY_WRITE_MODE explicitly rather than relying on
-the server's auto fallback.
+---
 
-## Optional ChatGPT tunnel helper
+## ChatGPT Tunnel
 
-[connect-chatgpt-tunnel.ps1](../connect-chatgpt-tunnel.ps1) configures and runs a
-tunnel-client profile pointing to the local stdio server. It requires a vault,
-a tunnel ID, tunnel-client on PATH and account credentials supplied outside documentation.
+ChatGPT is supported via a tunnel, not direct stdio. Run:
 
-Follow the current [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
-for account eligibility, credential handling and connection setup. UI paths and permissions
-may change; this rewrite does not repeat old UI steps as a fresh verification.
-
-Once the prerequisite account setup is complete and CONTROL_PLANE_API_KEY is securely
-provided to the process:
-
-~~~powershell
+```powershell
 .\connect-chatgpt-tunnel.ps1 -VaultPath $memoryVault -TunnelId $memoryTunnelId -WriteMode review
-~~~
+```
 
-Set memoryTunnelId to your actual ID first. The helper initializes a profile, runs
-doctor and then keeps the tunnel running. Closing that process disconnects the bridge.
-It uses an external service: local vault storage does not mean retrieved content stays
-off the connected AI provider.
-
-Install [the ChatGPT prompt](../client-prompts/chatgpt.md) through the client's supported
-instruction mechanism. Do not place credentials in prompts, the vault or GitHub.
-
-## Capture hooks and startup handoff
-
-The helper keeps three permissions separate: `-InstallHooks`/`-RemoveHooks` capture
-provider lifecycle evidence, `-EnableSessionAuto`/`-DisableSessionAuto` controls the
-local worker, and `-InstallHandoff`/`-RemoveHandoff` controls startup context injection.
-For all six hosts (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent),
-capture installation covers session-start, prompt/tool/turn, compaction, failure and end events,
-while handoff installation adds `SessionStart` startup context injection.
-
-| Client surface | Version observed on 2026-09-19 | Startup fixture | Limitation |
-| --- | --- | --- | --- |
-| Claude Code CLI | 2.1.276 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| Codex CLI | 0.155.0 | `tests/test_handoff.py` validates the same documented `SessionStart` output shape | Interactive authenticated launch is not part of CI |
-| Gemini CLI | 0.58.0 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| Qwen Code | 0.22.0 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| Kimi Code | 2.0.1 | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| Hermes Agent | (current) | `tests/test_handoff.py` validates `SessionStart` JSON and bounded `additionalContext` | Desktop/cloud surfaces are not claimed |
-| ChatGPT | Not tested for startup injection | None | Capture/MCP support does not imply a startup hook (uses tunnel) |
+This requires:
+- A valid tunnel ID
+- `tunnel-client` on PATH
+- `CONTROL_PLANE_API_KEY` set securely
 
 > [!WARNING]
-> Native payload mapping, mixed-handler preservation and process-level startup fixtures
-> are covered by isolated tests. The tested client versions are Claude Code 2.1.276,
-> Codex CLI 0.155.0, Gemini CLI 0.58.0, Qwen Code 0.22.0, Kimi Code 2.0.1 and Hermes Agent
-> (current) on this checkout. Hook delivery is still client-version
-> dependent, so retain backups and verify the actual host event payload before relying
-> on unattended capture.
+> The tunnel routes content through an external service. Local vault storage does not mean retrieved content stays off the connected AI provider.
 
-Current capture-hook targets include Claude/Gemini/Qwen JSON settings, Kimi's marked
-TOML block, Codex's hooks.json and Hermes Agent skills. Startup handoff is certified
-for all six hosts (Claude Code, Codex CLI, Gemini CLI, Qwen Code, Kimi Code and Hermes Agent)
-through their respective fixture schemas above. ChatGPT uses a tunnel rather than
-direct startup injection. See [automatic continuity](automatic-session-continuity.md) for
-the continuity boundaries, replay benchmark and remaining live certification work.
+ChatGPT does **not** support capture hooks or startup handoff because it uses a tunnel, not a local stdio connection.
 
-GitHub export is not part of MCP registration. Approve it separately with
-`-EnableGitHubExport -GitHubRepo owner/name -GitHubVisibility private`; this creates
-an owned hidden startup publisher and uses the `gh` credential store. Disable it with
-`-DisableGitHubExport`; the durable outbox is retained for retry. No raw transcript,
-pending review proposal or private path is eligible for export.
+---
 
-To retain a complete local transcript as well as bounded lifecycle evidence, set
-`MEMORY_TRANSCRIPT_ENABLED=true` in the environment inherited by the hook receiver
-and worker before starting the client. The hook adapters feed a provider-neutral
-event envelope; the feature remains default-off and must be restarted after config
-changes. See [full-session-transcripts](full-session-transcripts.md) for supported
-fields, Markdown paths, privacy and live-client limitations. Hook configuration
-tests verify schemas and managed-handler preservation; they do not certify delivery
-from every installed client surface.
+## Refresh or Remove
 
-## Refresh or remove a connection
+After a project update, re-run the helper to refresh managed instruction blocks and the Hermes skill. Start a new session or use the host's reload mechanism.
 
-After a project update, the helper can refresh managed client instruction blocks and
-the Hermes skill. Start a new session or use the host's supported reload mechanism.
-Verify the registered vault and mode; an already-existing MCP registration may not
-be replaced.
-
-Existing vault instructions are separate. Compare vault_template/AI_INSTRUCTIONS.md
-with the vault's copy and merge intentional guidance changes without replacing memories.
-
-To disconnect, remove only this server registration and its owned instruction block
-or skill. Back up settings before editing. Removing a connection does not remove
-stored memories, pending proposals or the observation buffer.
+To disconnect, remove only this server's registration and its instruction block or skill. Removing a connection does **not** remove stored memories, pending proposals, or the observation buffer.

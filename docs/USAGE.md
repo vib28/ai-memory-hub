@@ -1,234 +1,180 @@
 # Usage
 
-Use shared memory for durable facts and decisions, not as a dump of every conversation.
+> How to do common things with AI Memory Hub.
 
-[Documentation](README.md) · [Configuration](CONFIGURATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
+[Documentation](README.md) · [Installation](INSTALLATION.md) · [Configuration](CONFIGURATION.md) · [Dashboard](DASHBOARD.md) · [Troubleshooting](TROUBLESHOOTING.md) · [FAQ](FAQ.md)
 
-## Everyday workflow
+---
 
-1. A connected AI searches when stored context is relevant.
-2. It proposes a durable preference, decision or project fact.
-3. In review mode, you approve or reject the proposal in the dashboard.
-4. Accepted content becomes readable Markdown and searchable memory.
-
-The client prompts encourage these calls automatically, but model instructions are not
-a guaranteed event-driven capture service. [Automatic session continuity](automatic-session-continuity.md)
-is available as a separate opt-in workflow: native capture, leased queue claims,
-bounded context selection, the local worker and supported Claude/Codex handoff are
-implemented. Installed-client coverage and live benchmark certification remain explicit
-limitations.
+## Quick start
 
 ```mermaid
-flowchart TD
-    Search[Search relevant memory] --> Propose[Propose durable fact or session]
-    Propose --> Review{Write mode}
-    Review -->|review| Approve[User approves in dashboard]
-    Review -->|auto| Accept[Validation and deduplication]
-    Approve --> Accept
-    Accept --> Markdown[Accepted Markdown]
-    Markdown --> Reindex[Search index]
+flowchart LR
+    A[Connected AI tool] -->|proposes| B[Dashboard queue]
+    B -->|you approve| C[Vault Markdown]
+    C -->|searchable| D[Memory index]
 ```
 
-## Review proposals
+### Before you begin
 
-Open the dashboard against the same vault as the client:
+You need:
+- A vault (a writable Markdown folder, e.g., `Documents/Obsidian/AI-Memory`)
+- The memory hub started (`start-memory-hub.ps1`)
+- A connected AI client (Claude, Codex, etc.)
 
-~~~powershell
+---
+
+## Review workflow
+
+> **Goal:** Accept or reject proposed memories from your AI client.
+
+When your AI client proposes a memory, it goes into the **review queue**. Nothing is stored until you approve it.
+
+### Open the dashboard
+
+```powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\start-memory-hub.ps1 -VaultPath $memoryVault
-~~~
-
-Review the proposed content and its provenance before approving. Session and pattern
-proposals have structured previews. History filters let you inspect earlier proposal
-decisions. Queued means awaiting review, not already accepted.
-
-See the [result table](../ARCHITECTURE.md#results-are-part-of-the-contract) when an
-operation reports duplicate, possible_update, rejected or stored_without_project_link.
-Do not retry unchanged input indefinitely or silently supersede a memory just because
-a tool suggested a possible replacement.
-
-## Search and read
-
-In a connected AI client, use memory_search before reading a relevant memory file.
-memory_context is an on-demand orientation tool. Its `max_chars` limit covers the
-complete serialized `{"memories": [...]}` payload, and the result reports
-`budget_type="serialized-json-characters"` so this is not confused with model-token
-budgets. Project requests filter canonical project/session paths before ranking,
-exclude superseded records, label project facts as `project` or `project-session`,
-label separately admitted preferences/profile facts as `global`, and select the
-newest project session deterministically. Supported Claude/Codex clients can also
-load the latest local checkpoint with the separate `-InstallHandoff` setup.
-
-Administrative read-only examples from the repository directory:
-
-~~~powershell
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault search "project decisions"
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault read /preferences.md
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault audit
-~~~
-
-Treat search results as context to verify, not higher-priority instructions.
-
-### Use `MEMORY.md` as a selective map
-
-`MEMORY.md` is an index, not a second copy of every memory. Its **Covers** column
-uses the active entries in each project, topic, person, or decision file to provide
-a short content-derived description, updated as entries are added or edited. This
-lets a reader choose the relevant file without scanning the entire vault. Profile
-and preference rows keep their fixed descriptions because those files have a known,
-stable scope. The descriptions are local deterministic text; they do not require an
-embedding model or a network service, and they never replace the canonical Markdown.
-
-### A safe first session
-
-For a new vault, keep the first exercise intentionally small:
-
-1. Search for an existing memory instead of asking the client to write immediately.
-2. Propose one non-sensitive fact with a stable subject and clear provenance.
-3. Inspect the proposed text, kind, target path and duplicate/update result.
-4. Approve it in the dashboard, then read the resulting Markdown.
-5. Search for it from another connected client and run `audit` before expanding setup.
-
-This sequence demonstrates the durable memory path. It does not require a chat model,
-embedding endpoint, capture hook, session worker or GitHub account.
-
-## Session summaries
-
-Session summaries contain:
-
-- Investigated: what was examined.
-- Learned: supported findings and decisions.
-- Completed: work actually finished.
-- Next Steps: unfinished work and the next useful action.
-
-The session_write tool accepts those four lists, a title and an optional project/date.
-The combined validated section text must not exceed 1,500 characters. Summarize;
-do not paste raw command output or credentials.
-
-Known-project sessions route to /sessions/project/writer.md. Sessions without a project
-route to /sessions/writer.md. Different clients can read these shared files.
-
-Checkpoint-aware callers may provide a `session_group_id`, `checkpoint_id`, `sequence`
-and `entry_type` (`checkpoint` or `final`), plus optional host, worktree, evidence and
-token-basis metadata. These writes add machine-readable metadata to the session block
-and persist a versioned manifest at `/sessions/session-manifest.json`. Set
-`host_session_finalized=true` when the current host session ends; this does not finalize
-a cross-client work group. Replaying an existing checkpoint ID is idempotent. Ordinary
-session writes remain backward-compatible and do not create a manifest.
-
-### Optional full transcript object
-
-When an exact audit trail is needed, enable `MEMORY_TRANSCRIPT_ENABLED=true` before
-starting the hook receiver and worker. This is intentionally separate from the
-bounded capture queue and is off by default. It writes a local Obsidian object under
-`/transcripts/`, records user/agent/tool/system/structured events with generated and
-capture timestamps, and links each checkpoint/final summary back to the transcript.
-The transcript links back to the summary blocks and the manifest records its path
-and event coverage. See [full-session-transcripts.md](full-session-transcripts.md)
-for the envelope, retention and privacy contract.
-
-```mermaid
-sequenceDiagram
-    participant H as SessionStart/lifecycle hook
-    participant T as Transcript store
-    participant W as Worker
-    participant S as Session summary
-    H->>T: append exact local event
-    T-->>H: stable event ID + monotonic sequence
-    W->>S: checkpoint/final summary
-    S->>T: render summary wikilink
-    T-->>S: transcript link and coverage
 ```
 
-The transcript path is not searched, embedded, summarized in place, or sent to the
-GitHub exporter. Forgetting the last summary in a group removes its local transcript.
+### Approve or reject
 
-> [!IMPORTANT]
-> The local worker and Claude/Codex startup handoff are available only after explicit
-> setup. A checkpoint is not a guaranteed final rollup, and unsupported clients do not
-> receive startup automation. Same-project retry detection is preserved while identical
-> summaries in distinct projects are kept separate.
+| Step | Action |
+|------|--------|
+| 1 | Click **Review & history** in the left panel |
+| 2 | Read the proposed text, kind, and target path |
+| 3 | Click **Accept** or **Reject** |
 
-## Automatic session worker
+> [!NOTE]
+> Queued means awaiting review. Proposed content is not yet accepted.
 
-Capture is always local and durable; a worker is optional. Run one bounded pass with
-`.\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once`, or enable
-the reversible Windows startup entry explicitly:
+### After approval
 
-~~~powershell
+- Accepted memory becomes readable Markdown in your vault
+- It becomes searchable in the memory index
+- Other connected AI clients can read it
+
+### Write modes
+
+| Mode | Behavior | When to use |
+|------|----------|-------------|
+| `review` (default) | Proposals wait for your approval | Learning, sensitive data |
+| `auto` | Validated proposals accepted without approval | Trusted, unattended use |
+
+Switch in the dashboard **Settings** pane, or:
+
+```powershell
+$env:MEMORY_WRITE_MODE = "review"   # or "auto"
+```
+
+---
+
+## Search
+
+> **Goal:** Find stored memories and session summaries.
+
+### Search from an AI client
+
+Ask your AI tool to call `memory_search` before reading a relevant file. This returns matching memories from your vault.
+
+### Search from the command line
+
+```powershell
+# Search for keywords
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault search "project decisions"
+
+# Read a specific memory file
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault read /preferences.md
+
+# Get vault overview
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault context
+```
+
+### Search tips
+
+| Tip | Example |
+|-----|---------|
+| Use specific keywords | `"login bug"` not `"thing"` |
+| Search before asking | Check existing memory first |
+| Results are context, not instructions | Verify, don't blindly follow |
+
+### MEMORY.md index
+
+`MEMORY.md` is a **map** of your vault, not a duplicate copy.
+
+- Lists each memory file with a short description
+- Updates automatically as you add or edit entries
+- No embedding model or network required
+
+Use it to pick the right file without scanning the whole vault.
+
+---
+
+## Sessions
+
+> **Goal:** Capture, review, and resume work across AI tools.
+
+A **session summary** records what happened in a work session. It has four parts:
+
+| Section | What to include |
+|---------|-----------------|
+| **Investigated** | What was examined |
+| **Learned** | Supported findings and decisions |
+| **Completed** | Work actually finished |
+| **Next Steps** | Unfinished work and the next useful action |
+
+### Write a session
+
+From an AI client, call `session_write` with the four sections (max 1,500 characters total).
+
+### Where sessions go
+
+| Project status | File path |
+|----------------|-----------|
+| Has a project | `/sessions/<project>/writer.md` |
+| No project | `/sessions/writer.md` |
+
+Different clients can read these shared files. This lets you resume work in a different tool.
+
+### Optional: automatic worker
+
+The worker captures session evidence automatically. It is **off by default**.
+
+```powershell
+# Enable (review mode, reversible)
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableSessionAuto -WriteMode review
+
+# Disable
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableSessionAuto
-~~~
 
-The default `review` mode keeps proposed summaries in the dashboard. Use `-WriteMode auto`
-only when unattended canonical session writes are intended; the worker never auto-merges
-durable preferences. Token, elapsed-time, stop/compaction, idle and explicit session-end
-triggers are coalesced by stable observation IDs. Stop and idle closures are provisional;
-only an explicit session-end creates a final entry. Model or GitHub downtime leaves rows in
-the retryable capture buffer with visible health at `/api/worker-health`. Credential-like
-evidence is redacted, built-in sensitive paths are excluded, and terminal rows follow
-`MEMORY_CAPTURE_RETENTION_DAYS`; pending unsummarized evidence is retained by default.
-If full transcripts are enabled, the worker also renders unattached transcript
-events and reports transcript retention/rendering in its health record. Raw payloads
-are not covered by the bounded observation redaction contract, so review the privacy
-warning before enabling them.
+# Run one manual pass (no changes to startup)
+.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once
+```
 
-Install the model-free startup reader separately when the client supports SessionStart:
+> [!WARNING]
+> The worker never auto-merges durable preferences. It only proposes checkpoint summaries.
 
-~~~powershell
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
-~~~
+### Worker behavior matrix
 
-It reads the latest committed local checkpoint without waiting for MCP, embeddings,
-the chat model or GitHub. Retrieved text is wrapped as quoted evidence, bounded by
-`MEMORY_HANDOFF_MAX_CHARS` (default 6000), and marked with checkpoint age and pending
-evidence when the state is provisional or not final.
+| Setting | Result |
+|---------|--------|
+| `review` | Checkpoint proposals enter the dashboard queue |
+| `auto` | Validated proposals accepted unattended |
+| No chat model | Evidence-only fallback, retryable |
+| Idle/stop trigger | Provisional checkpoint (may reopen) |
+| Explicit session-end | Final entry with metadata |
 
-## Optional GitHub session export
+---
 
-After local checkpointing and startup handoff are working, approve publication separately:
+## Imports
 
-~~~powershell
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport `
-  -GitHubRepo "owner/repository" -GitHubVisibility private
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableGitHubExport
-~~~
+> **Goal:** Bulk-import session summaries from a JSON file.
 
-The exporter publishes accepted checkpoint/final sections through an outbox. It
-reconciles stable markers after timeouts, retries rate limits/offline failures, and
-preserves user-owned issue content. Review mode and GitHub export approval are
-independent: pending proposals are never exported. GitHub is not required for local
-handoff, and no bug issue is closed because a session was published.
+### Prepare your data
 
-## Audit identities without merging
+Create a JSON file with an array of summaries:
 
-~~~powershell
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault project-audit
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault subject-audit
-~~~
-
-A candidate is something to inspect, not proof that two entries should be merged.
-`subject-audit` reports exact duplicates, subject-prefix variants, possible file
-splits, optional embedding candidates, and a conservative `lexical_candidates`
-fallback for singleton-fact kinds (`preference` and `profile`). It automatically
-derives per-kind token salience from active-record document frequency, considers
-tokens of length four or more, and omits tokens present in more than 75% of a
-corpus with at least four records. It then requires at least four shared salient
-tokens plus a token Dice score of 0.25. It works even when no local embedding
-endpoint is configured. Cumulative project, topic, decision and person logs are
-not sent through this tier. Use stable subjects and explicit entity IDs for related
-writes. The project-link and entity-alias-link commands preview by default;
---apply changes stored identity/linking.
-Read their help and the [identity boundary](../ARCHITECTURE.md#identity-and-duplicate-handling)
-before applying a decision.
-
-## Import historical session summaries
-
-Prepare a JSON file containing an array of summaries. This example is file content,
-not a PowerShell command:
-
-~~~json
+```json
 [
   {
     "title": "Review parser",
@@ -239,79 +185,151 @@ not a PowerShell command:
     "next_steps": ["Add a regression test"]
   }
 ]
-~~~
+```
 
-Preview, then submit using review mode:
+### Preview first
 
-~~~powershell
+```powershell
 $env:MEMORY_WRITE_MODE = "review"
-.\.venv\Scripts\python.exe scripts/import_sessions.py --vault $memoryVault --input sessions.json --writer codex --dry-run
-.\.venv\Scripts\python.exe scripts/import_sessions.py --vault $memoryVault --input sessions.json --writer codex
-~~~
+.venv\Scripts\python.exe scripts/import_sessions.py --vault $memoryVault --input sessions.json --writer codex --dry-run
+```
 
-Inspect each per-session result and the audit. A top-level completion label does not
-mean every session was accepted. Keep the source file until outcomes are verified.
+### Submit
 
-## Pattern backfill and session routing
+```powershell
+.venv\Scripts\python.exe scripts/import_sessions.py --vault $memoryVault --input sessions.json --writer codex
+```
 
-Pattern backfill examines project files using the configured regression pattern.
-It is not a general-purpose semantic cleanup of every memory:
+> [!TIP]
+> Keep the source file until you verify outcomes. A completion label does not mean every session was accepted.
 
-~~~powershell
-$env:MEMORY_WRITE_MODE = "review"
-.\.venv\Scripts\python.exe scripts/backfill_patterns.py --vault $memoryVault --dry-run
-~~~
-
-Remove --dry-run only after inspecting the candidates. The real run follows the public
-proposal policy and can queue proposals.
-
-For legacy session layouts, preview the existing-block migration:
-
-~~~powershell
-.\.venv\Scripts\python.exe scripts/migrate_session_routing.py --vault $memoryVault --dry-run
-~~~
-
-That migration relocates existing content directly. Back up first; it is not a review
-proposal. Do not run migrations merely because a session title looks duplicated.
-
-## Transcript extraction
-
-The ingest CLI extracts candidates through a configured language-model endpoint.
-It is an administrative direct-write path, not the review-safe session importer.
-Inspect [configuration](CONFIGURATION.md) and use a disposable vault first.
-The command is available through CLI help; it is not part of the safe first-run flow.
+---
 
 ## Undo and backup
 
+> **Goal:** Recover from mistakes and protect your data.
+
+### Enable Git history
+
 A dedicated vault can keep local Git history:
 
-~~~powershell
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault history-init
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault history-status
+```powershell
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault history-init
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault history-status
 git -C $memoryVault log --oneline
-~~~
+```
 
-Initialization sets a local Git identity and may create a baseline commit.
-Review a specific commit before reverting it; no blanket reset/delete command is needed.
-After restoring Markdown, rebuild search rows if required.
+### Revert a change
 
-Back up accepted Markdown, instruction/configuration files, pending review data and
-the observation database. Git history ignores SQLite files. Stop processes before
-copying live SQLite state, or use a consistent database backup mechanism.
+```powershell
+# View a specific commit
+git -C $memoryVault show <commit-id>
 
-Do not store vault history in a public source repository by accident.
+# Restore a file
+git -C $memoryVault checkout <commit-id> -- path/to/file.md
 
-## Rebuild search data
+# Rebuild search after restoring
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault reindex
+```
 
-For an intact database whose accepted-memory index is stale:
+### What to back up
 
-~~~powershell
-.\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault reindex
-~~~
+| Item | Include? |
+|------|----------|
+| Accepted Markdown | Yes |
+| Instruction/configuration files | Yes |
+| Pending review data | Yes |
+| Observation database | Yes |
+| Git history | Yes |
+| SQLite files | Stop processes first, or use a backup tool |
 
-This rebuilds accepted-memory search rows from Markdown. It does not recover lost
-pending proposals or unsummarized observations. If the database cannot open, follow
-[database recovery](TROUBLESHOOTING.md#database-will-not-open) before changing files.
+### What not to do
 
-See the [dashboard guide](DASHBOARD.md) for the single launcher, four color modes,
-full session reading and tag/link lookup editing.
+- Do **not** store vault history in a public repository
+- Do **not** run `reindex` expecting it to recover pending proposals or observations (it only rebuilds accepted-memory search rows from Markdown)
+
+> [!IMPORTANT]
+> Accepted-memory search rows are rebuildable from Markdown. Pending review payloads and unsummarized observations are **not** recoverable from Markdown alone. Back up the full vault folder.
+
+---
+
+## Audits
+
+> **Goal:** Find duplicates and identity issues without merging.
+
+### Project audit
+
+```powershell
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault project-audit
+```
+
+### Subject audit
+
+```powershell
+.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault subject-audit
+```
+
+> [!NOTE]
+> A candidate is something to **inspect**, not proof that two entries should be merged. No automatic semantic merge is intended.
+
+---
+
+## Optional features
+
+### GitHub session export
+
+Publish approved session summaries to a GitHub repository:
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport -GitHubRepo "owner/repository" -GitHubVisibility private
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableGitHubExport
+```
+
+| Rule | Meaning |
+|------|---------|
+| Source | Accepted checkpoint/final sections only |
+| Excluded | Raw transcripts, pending proposals, secrets |
+| Delivery | Local SQLite outbox with retry |
+
+### Full session transcripts
+
+Enable verbatim event recording (default off, local only):
+
+```powershell
+$env:MEMORY_TRANSCRIPT_ENABLED = "true"
+```
+
+Read the [transcripts guide](full-session-transcripts.md) before enabling. This is separate from bounded capture and is never sent to GitHub.
+
+### Startup handoff
+
+Resume work in supported clients (Claude Code, Codex CLI, Gemini, Qwen, Kimi, Hermes):
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
+```
+
+---
+
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| **Vault** | The Markdown directory containing accepted memory |
+| **Writer** | Provenance (e.g., `claude`, `codex`); not an access control |
+| **Review mode** | Proposals wait for dashboard approval |
+| **Auto mode** | Validated proposals accepted without approval |
+| **Checkpoint** | A periodic session state (may be provisional) |
+| **Final** | An explicit host-session end result |
+| **Handoff** | Bounded context injected at supported startup |
+| **Reindex** | Rebuild accepted-memory search rows from Markdown |
+
+---
+
+## What next?
+
+- [Dashboard guide](DASHBOARD.md) for the visual interface
+- [Configuration](CONFIGURATION.md) for environment variables
+- [Troubleshooting](TROUBLESHOOTING.md) for common issues
+- [FAQ](FAQ.md) for short answers

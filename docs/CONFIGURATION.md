@@ -1,300 +1,371 @@
-# Configuration
+# Configuration Reference
 
-Every setting below has two ways to reach a process: an environment variable, or the
-per-vault **Settings** pane in the dashboard (Workspace → Settings), which writes
-`<vault>/.ai-memory-hub/config.json`. Neither is loaded automatically by every process on
-its own — see [Two configuration paths](#two-configuration-paths) below.
+Everything you can configure in AI Memory Hub in one place — environment variables, write modes, and worker behavior.
 
-[Client setup](CLIENTS.md) · [Dashboard](DASHBOARD.md) · [Architecture](../ARCHITECTURE.md) · [Troubleshooting](TROUBLESHOOTING.md)
+---
+
+## At a Glance
 
 ```mermaid
 flowchart LR
-    Settings[Dashboard Settings pane] --> ConfigFile["&lt;vault&gt;/.ai-memory-hub/config.json"]
-    Env[Process environment] -.explicit override, always wins.-> Bootstrap
-    ConfigFile --> Bootstrap[bootstrap_environment at startup]
-    Bootstrap --> Server[MCP server / worker / dashboard / exporter]
-    Server --> Vault[AI_MEMORY_VAULT]
-    Server --> Policy[Write mode and policy]
-    Server --> Chat[Optional chat model]
-    Server --> Embed[Optional embedding model]
+    subgraph Configuration Sources
+        Dashboard[Dashboard Settings pane]
+        Env[Process environment variables]
+    end
+
+    Dashboard -->|"writes to"| ConfigFile["<vault>/.ai-memory-hub/config.json"]
+    Env -->|"explicit override, always wins"| Bootstrap["bootstrap_environment() at startup"]
+    ConfigFile --> Bootstrap
+    Bootstrap --> Server["MCP server / worker / dashboard / exporter"]
+    Server --> Vault["AI_MEMORY_VAULT"]
+    Server --> Policy["Write mode & policy"]
+    Server --> Chat["Optional chat model"]
+    Server --> Embed["Optional embedding model"]
 ```
 
-## Two configuration paths
+**Key idea:** There are two ways to configure any setting — through the dashboard's Settings pane (which saves to `config.json`) or by setting an environment variable directly. Environment variables always take precedence over `config.json`.
 
-**The dashboard's Settings pane** is the easiest path for most settings below: open the
-dashboard, choose **Settings** in the left rail, edit a field, and save. Each field shows
-where its current value comes from — `FILE` (the config file), `ENV` (an environment
-variable), or `DEFAULT`. Saving writes only the fields you actually changed to
-`config.json`; it never touches a field just because you saved a different one.
+---
 
-**An environment variable** set directly (`$env:NAME` in PowerShell, or a client's own
-MCP registration) always takes precedence over `config.json` for that one process — it's
-the escape hatch for a one-off override without touching the file. Every process that
-reads these settings calls `bootstrap_environment(vault)` once at startup, which fills in
-whatever `config.json` has for a variable *not already set* in that process's
-environment; it never overwrites an explicit one.
+## Two Ways to Configure
 
-Either way, a change takes effect only for processes **started after** the change. The
-MCP server reads its environment when the client launches it. The worker, handoff
-reader, dashboard and GitHub exporter are separate processes and read their own
-environment when they start. Restart the relevant process (or reconnect the client)
-after changing a setting.
+| Method | Best for | Where it lives |
+|--------|----------|----------------|
+| **Dashboard Settings pane** | Most settings, everyday use | `<vault>/.ai-memory-hub/config.json` |
+| **Environment variables** | One-off overrides, CI/CD, client registration | Your shell / MCP client config |
 
-## Server settings
+**How precedence works:** Every process calls `bootstrap_environment(vault)` at startup. This function uses `setdefault` semantics — it only sets values from `config.json` for variables **not already set** in the environment. Your explicit environment variable always wins.
 
-| Variable | Purpose | Current default |
-| --- | --- | --- |
-| AI_MEMORY_VAULT | Absolute vault directory | MCP server: memory-vault under its working directory |
-| MEMORY_WRITER | Provenance for the connected client | other |
-| MEMORY_WRITE_MODE | MCP proposal policy: review or auto | auto; invalid values also fall back to auto |
-| MEMORY_VAULT_HISTORY | Commit paths from successful MCP consolidation | false |
-| MEMORY_CAPTURE_DB | Local observation database | User-home .ai-memory-hub/observations.sqlite3 |
-| MEMORY_CAPTURE_RETENTION_DAYS | Days to retain terminal capture rows | 30; pending rows are preserved |
-| MEMORY_CAPTURE_EXCLUDE_PATHS | Comma-separated additional sensitive path globs | Built-in `.env`, key and credential paths |
-| MEMORY_TRANSCRIPT_ENABLED | Persist provider event payloads in a local transcript companion path | false |
-| MEMORY_TRANSCRIPT_DB | Operational SQLite path for opt-in transcript events | `<vault>/.ai-memory-hub/transcripts.sqlite3` |
-| MEMORY_TRANSCRIPT_RETENTION_DAYS | Days to retain transcript event rows; zero means retain until forget | 0 |
-| MEMORY_WORKER_TOKEN_BUDGET | Estimated captured-evidence tokens before a checkpoint | 4000 |
-| MEMORY_WORKER_FLUSH_SECONDS | Maximum age of the oldest pending row before a routine checkpoint | 60 |
-| MEMORY_WORKER_IDLE_SECONDS | Age of the newest pending row (checked before flush) at which a checkpoint closes provisional instead of routine | 300 |
-| MEMORY_WORKER_INTERVAL_SECONDS | Worker polling interval | 15 |
-| MEMORY_WORKER_BATCH_LIMIT | Maximum observations claimed per worker pass | 500 |
-| MEMORY_WORKER_HEALTH | Optional explicit worker-health JSON path | Per-vault default |
-| MEMORY_HANDOFF_MAX_CHARS | Maximum serialized startup evidence packet | 6000 |
-| MEMORY_TURN_MAX_CHARS | Maximum per-prompt delta packet | 1500 |
-| MEMORY_HANDOFF_CATCHUP_SECONDS | SessionStart catch-up budget | 2 |
-| MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS | Exporter polling interval | 30 |
-| MEMORY_GITHUB_EXPORT_CONFIG | Optional GitHub export configuration path | Per-vault user-home default |
-| MEMORY_GITHUB_OUTBOX | Optional GitHub export SQLite outbox path | Per-vault user-home default |
-| MEMORY_GITHUB_HEALTH | Optional GitHub exporter health JSON path | Per-vault user-home default |
-| MEMORY_LLM_BASE_URL | Chat-completions endpoint base | Unset |
-| MEMORY_LLM_MODEL | Consolidation/extraction model name | Unset |
-| MEMORY_LLM_API_KEY | Optional transcript-extractor authorization | Unset; not used by the consolidator |
-| MEMORY_EMBED_BASE_URL | Embeddings endpoint base | Unset, so embeddings are disabled |
-| MEMORY_EMBED_MODEL | Embedding model name | nomic-embed-text |
-| MEMORY_DASHBOARD_HOST | Dashboard bind address (loopback only; `127.0.0.1` or `localhost`) | 127.0.0.1 |
-| MEMORY_DASHBOARD_PORT | Dashboard/tray port, shared by `memory_hub.app`, `memory_hub.dashboard` and all three `start-*.ps1` launchers | 8765 |
-| GEMINI_CONFIG_DIR | Override for the Gemini CLI settings directory | `~/.gemini` |
-| QWEN_CONFIG_DIR | Override for the Qwen CLI settings directory | `~/.qwen` |
-| KIMI_CONFIG_DIR | Override for the Kimi Code settings directory | `~/.kimi` |
+**When do changes take effect?** Only for processes **started after** the change. The MCP server reads its environment when the client launches it. The worker, handoff reader, dashboard, and GitHub exporter are separate processes and each reads its own environment when it starts. Restart the relevant process after changing a setting.
 
-Every variable above except the last four appears as a field in the dashboard's Settings
-pane. `AI_MEMORY_VAULT` is the one exception with its own reason: it names *which*
-vault's `config.json` to read, so it can't sensibly live inside that same file — set it
-as an environment variable, or pass `--vault`/`-VaultPath` to whichever script you're
-running. `GEMINI_CONFIG_DIR`, `QWEN_CONFIG_DIR` and `KIMI_CONFIG_DIR` are read by
-`connect-ai-tools.ps1` directly, not by any Python process, so they stay environment-only
-too.
+> 💡 `AI_MEMORY_VAULT` is set as an environment variable (or `--vault` flag) — it can't live inside the same `config.json` that it points to.
 
-See [mcp_server.py](../memory_hub/mcp_server.py),
-[capture.py](../memory_hub/capture.py), [extractor.py](../memory_hub/extractor.py),
-[consolidator.py](../memory_hub/consolidator.py) and [embeddings.py](../memory_hub/embeddings.py).
+---
 
-## Optional full session transcripts
+## Complete Environment Variable Reference
 
-`MEMORY_TRANSCRIPT_ENABLED=true` is a separate, default-off opt-in for retaining
-raw user/agent/tool/system and structured provider events. Set it before starting
-the client hook receiver and the worker; restart both after changing it. The exact
-envelope, Markdown path, Obsidian links, retention behavior and privacy boundary are
-documented in [full-session-transcripts.md](full-session-transcripts.md).
+### Vault & Identity
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_MEMORY_VAULT` | `memory-vault/` under working directory | Absolute path to the vault directory |
+| `MEMORY_WRITER` | `claude` | Provenance tag for writes. Options: `chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `hermes`, `user`, `other` |
+
+### Write Mode & History
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_WRITE_MODE` | `review` | `review` queues proposals for approval; `auto` writes valid proposals directly |
+| `MEMORY_VAULT_HISTORY` | `false` | Commit a git history entry on every successful write (enables undo) |
+
+### Capture (Observation Buffer)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_CAPTURE_DB` | Per-vault default | Path to the local observation database (SQLite) |
+| `MEMORY_CAPTURE_RETENTION_DAYS` | `30` | Days to retain captured terminal rows (pending rows are always preserved) |
+| `MEMORY_CAPTURE_EXCLUDE_PATHS` | *(built-in excludes)* | Comma-separated additional sensitive path globs |
+
+### Transcript
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_TRANSCRIPT_ENABLED` | `false` | Persist raw provider event payloads to a local transcript companion object |
+| `MEMORY_TRANSCRIPT_DB` | `<vault>/.ai-memory-hub/transcripts.sqlite3` | Operational SQLite path for opt-in transcript events |
+| `MEMORY_TRANSCRIPT_RETENTION_DAYS` | `0` (keep until forgotten) | Days to retain transcript event rows |
+
+### Worker (Checkpoint Engine)
+
+| Variable | Default | Range | Description |
+|----------|---------|-------|-------------|
+| `MEMORY_WORKER_TOKEN_BUDGET` | `4000` | 100–1M | Estimated captured-evidence tokens before a checkpoint triggers |
+| `MEMORY_WORKER_FLUSH_SECONDS` | `60` | 1–86400 | Maximum age of the oldest pending row before a routine checkpoint |
+| `MEMORY_WORKER_IDLE_SECONDS` | `300` | 1–86400 | Age of the newest pending row at which a checkpoint closes as provisional |
+| `MEMORY_WORKER_INTERVAL_SECONDS` | `15` | 1–3600 | Worker polling interval |
+| `MEMORY_WORKER_BATCH_LIMIT` | `500` | 1–100K | Maximum observations claimed per worker pass |
+| `MEMORY_WORKER_HEALTH` | Per-vault default | — | Explicit path for worker health JSON |
+| `MEMORY_INLINE_CONSOLIDATION` | `true` | — | Spawn a detached checkpoint on session-end/stop/compaction |
+
+### Context Handoff (Injection Packets)
+
+| Variable | Default | Range | Description |
+|----------|---------|-------|-------------|
+| `MEMORY_HANDOFF_MAX_CHARS` | `6000` | 500–12K | Maximum serialized startup evidence packet size |
+| `MEMORY_TURN_MAX_CHARS` | `1500` | 200–12K | Maximum per-prompt delta packet size |
+| `MEMORY_HANDOFF_CATCHUP_SECONDS` | `2` | 0–30 | SessionStart catch-up budget (0 disables the pass) |
+
+### Dashboard
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_DASHBOARD_HOST` | `127.0.0.1` | Bind address (loopback only — `127.0.0.1` or `localhost`) |
+| `MEMORY_DASHBOARD_PORT` | `8765` | Dashboard/tray port |
+
+### LLM & Embeddings (Optional Local Models)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_LLM_BASE_URL` | Unset | Chat-completions endpoint base URL (OpenAI-compatible) |
+| `MEMORY_LLM_MODEL` | Unset | Consolidation/extraction model name |
+| `MEMORY_LLM_API_KEY` | Unset | Optional transcript-extractor authorization key |
+| `MEMORY_EMBED_BASE_URL` | Unset | Embeddings endpoint base URL (unset = disabled) |
+| `MEMORY_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
+
+### GitHub Export
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_GITHUB_EXPORT_INTERVAL_SECONDS` | `30` | Exporter polling interval |
+| `MEMORY_GITHUB_EXPORT_CONFIG` | Per-vault default | Export configuration path |
+| `MEMORY_GITHUB_OUTBOX` | Per-vault default | SQLite outbox path |
+| `MEMORY_GITHUB_HEALTH` | Per-vault default | Exporter health JSON path |
+
+### AI Tool Paths (connect-ai-tools.ps1 only)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_CONFIG_DIR` | `~/.gemini` | Override for Gemini CLI settings directory |
+| `QWEN_CONFIG_DIR` | `~/.qwen` | Override for Qwen CLI settings directory |
+| `KIMI_CONFIG_DIR` | `~/.kimi` | Override for Kimi Code settings directory |
+
+> ℹ️ `GEMINI_CONFIG_DIR`, `QWEN_CONFIG_DIR`, and `KIMI_CONFIG_DIR` are read by `connect-ai-tools.ps1` directly — not by any Python process. They stay environment-only.
+
+---
+
+## Write Modes
+
+The write mode controls what happens when an AI proposes a new memory.
 
 ```mermaid
 flowchart TD
-    Config[Transcript environment] --> Hook[Restarted client hook]
-    Hook --> Event[Raw provider envelope]
-    Event --> SQLite[Vault-local transcript SQLite]
-    SQLite --> MD[Chronological Obsidian transcript]
-    Summary[Checkpoint/final summary] --> Link[Bidirectional wikilinks]
-    Link --> MD
-    SQLite -. never implicit .-> Export[Sanitized GitHub export excludes raw payload]
+    Propose["AI proposes memory"] --> Validate["Validation & dedup"]
+    Validate --> Mode{Write mode?}
+    Mode -->|review| Queue["Queue for approval"]
+    Mode -->|auto| Accept["Accept directly"]
+    Queue --> Dashboard["Dashboard review UI"]
+    Dashboard --> Approve["You approve"]
+    Approve --> Write["Written to vault"]
+    Accept --> Write
 ```
 
-This option does not use `nomic-embed-text` to generate or rewrite transcript text.
-Embeddings remain a separate retrieval/audit role; a configured local chat model may
-still produce the compact summary. Raw transcript content remains local unless a
-future separately approved export feature explicitly changes that boundary.
+| Mode | Behavior |
+|------|----------|
+| **review** | Every proposed memory enters the dashboard queue. You approve or reject it manually. |
+| **auto** | Validated proposals are written directly to the vault without manual approval. |
 
-## Choose the write mode explicitly
+### Example: Starting in review mode
 
-~~~powershell
+```powershell
 $env:AI_MEMORY_VAULT = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 $env:MEMORY_WRITER = "codex"
 $env:MEMORY_WRITE_MODE = "review"
 .\.venv\Scripts\python.exe -m memory_hub.mcp_server
-~~~
+```
 
-This starts a stdio server waiting for an MCP client; it is not a web page.
-Usually the host launches it using [registered configuration](CLIENTS.md).
+### Example: Starting in auto mode with a local model
 
-Review queues proposals for approval. Auto attempts to store accepted proposals without
-that approval step. Both retain validation and duplicate/update handling.
-
-> [!WARNING]
-> The administrative CLI's propose, supersede and ingest commands call manager methods
-> directly and do not honor MCP review mode. Explicit deletion/linking and dashboard
-> approval are also separate actions. Review is not a blanket prohibition on all writes.
-
-Writer identities are chatgpt, claude, codex, gemini, kimi, qwen, cursor, hermes, user and
-other. A writer identifies provenance, not which clients may read the memory.
-
-## Optional local models
-
-Set the exact model identifier exposed by your local server. For a server configured
-with an OpenAI-compatible API under localhost port 1234:
-
-~~~powershell
+```powershell
+$env:AI_MEMORY_VAULT = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
+$env:MEMORY_WRITE_MODE = "auto"
 $env:MEMORY_LLM_BASE_URL = "http://127.0.0.1:1234/v1"
-$env:MEMORY_LLM_MODEL = "<loaded-chat-model>"
-$env:MEMORY_EMBED_BASE_URL = "http://127.0.0.1:1234/v1"
-$env:MEMORY_EMBED_MODEL = "<loaded-embedding-model>"
-~~~
+$env:MEMORY_LLM_MODEL = "qwen2.5-7b-instruct"
+.\.venv\Scripts\python.exe -m memory_hub.mcp_server
+```
 
-The bracketed model names are placeholders, not commands to run unchanged. The code
-adds /chat/completions or /embeddings to the base URL; do not include those suffixes twice.
+> ⚠️ The administrative CLI's `propose`, `supersede`, and `ingest` commands call manager methods directly and do **not** honor MCP review mode. Explicit deletion/linking and dashboard approval are separate actions.
 
-The endpoint is expected to be OpenAI-compatible. The base URL is not a security
-boundary: a remote URL sends the text selected for that operation to that service. Keep
-API keys in the process environment or the host's secret store, never in Markdown,
-`.env` files committed to source control, client prompts or GitHub comments.
+**Writer identities:** `chatgpt`, `claude`, `codex`, `gemini`, `kimi`, `qwen`, `cursor`, `hermes`, `user`, `other`. A writer identifies provenance — not which clients may read the memory.
 
-These settings intentionally define two different model roles:
+---
+
+## Worker Configuration
+
+The worker processes the observation buffer and turns captured evidence into memories.
+
+### Worker Triggers
+
+```mermaid
+flowchart LR
+    subgraph Triggers
+        Token["Token budget reached"]
+        Flush["Flush timer expired"]
+        Idle["Idle timeout reached"]
+    end
+
+    Token --> Routine["Routine checkpoint"]
+    Flush --> Routine
+    Idle --> Provisional["Provisional close"]
+
+    Final["Session-end event"] --> FinalCheck["Final checkpoint"]
+```
+
+| Trigger | When | Result |
+|---------|------|--------|
+| **Token budget** | Accumulated evidence exceeds `MEMORY_WORKER_TOKEN_BUDGET` tokens | Routine checkpoint |
+| **Flush timer** | Oldest pending row exceeds `MEMORY_WORKER_FLUSH_SECONDS` | Routine checkpoint |
+| **Idle timeout** | Newest pending row is older than `MEMORY_WORKER_IDLE_SECONDS` | Provisional close |
+| **Session end** | `session-end` event received | Final checkpoint |
+
+### Worker Safety Matrix
+
+| Condition | Result |
+|-----------|--------|
+| `review` mode | Proposals enter the dashboard queue for approval |
+| `auto` mode | Valid proposals are accepted automatically |
+| Chat model unavailable | Evidence-only fallback remains retryable; no invented success |
+| Capture database unavailable | Worker reports health failure; cannot reconstruct missing observations |
+| Idle or stop trigger | Provisional checkpoint; later evidence may reopen the group |
+| Explicit session-end | Final entry with host finalization metadata |
+
+### Running the Worker
+
+Enable with the connection helper:
+
+```powershell
+.\connect-ai-tools.ps1 -EnableSessionAuto
+```
+
+Check health without changing data (one-shot pass):
+
+```powershell
+.\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once
+```
+
+The persistent health file lives at `<vault>/.ai-memory-hub/worker-health.json`. Override with `MEMORY_WORKER_HEALTH`.
+
+### Inline Consolidation (Default On)
+
+`MEMORY_INLINE_CONSOLIDATION=true` (default) spawns a detached checkpoint worker on terminal events (session-end, stop, compaction) so checkpoints exist even without a resident worker. Turn it off only if you run the resident worker and want it to own all consolidation.
+
+---
+
+## Local Models
+
+Two independent model roles — configure one, both, or neither.
+
+```mermaid
+flowchart LR
+    subgraph Models
+        Chat["Chat model<br/>MEMORY_LLM_*"]
+        Embed["Embedding model<br/>MEMORY_EMBED_*"]
+    end
+
+    Chat --> Consolidate["Session consolidation"]
+    Chat --> Extract["Durable-memory extraction"]
+    Embed --> Search["Semantic search"]
+    Embed --> Audit["Duplicate/related audit"]
+```
 
 | Role | Settings | Responsibility | Safe failure behavior |
-| --- | --- | --- | --- |
-| Embedding model | `MEMORY_EMBED_BASE_URL`, `MEMORY_EMBED_MODEL` | Search, related-memory ranking and semantic audit candidates | Keyword search and lexical duplicate/update checks continue; it never deletes a memory by itself |
-| Local chat model | `MEMORY_LLM_BASE_URL`, `MEMORY_LLM_MODEL` | Session consolidation and durable-memory extraction | Consolidation uses the deterministic evidence-only fallback; extraction fails explicitly when no model is configured |
+|------|----------|----------------|----------------------|
+| **Chat model** | `MEMORY_LLM_BASE_URL`, `MEMORY_LLM_MODEL` | Session consolidation and durable-memory extraction | Deterministic evidence-only fallback for consolidation; extraction fails explicitly |
+| **Embedding model** | `MEMORY_EMBED_BASE_URL`, `MEMORY_EMBED_MODEL` | Search, related-memory ranking, semantic audit | Keyword search and lexical duplicate/update checks continue |
 
-Embedding granularity is kind-aware. Ordinary memories use one vector for the
-record. A session uses one vector for each non-empty Markdown section
-(`Investigated`, `Learned`, `Completed`, or `Next Steps`, plus any additional
-section headings), while keyword text and the indexed `MemoryRecord` remain the
-same flattened session content. Search and semantic audits resolve section
-matches back to the parent session ID, so callers never need to understand the
-synthetic section keys used inside the disposable SQLite vector table. Reindexing
-reads those sections from the canonical Markdown file and recreates the same
-vectors.
+### Example: Local Ollama server
 
-The recommended setup is a small embedding model such as `nomic-embed-text` plus a
-separate local chat model such as Qwen, Llama or Mistral. The chat model writes the
-four structured session sections and atomic memory candidates; the embedding model
-does not generate or rewrite memory text. Similarity is advisory: exact duplicates are
-blocked by deterministic checks, while close matches are surfaced as reviewable updates.
+```powershell
+$env:MEMORY_LLM_BASE_URL = "http://127.0.0.1:1234/v1"
+$env:MEMORY_LLM_MODEL = "qwen2.5-7b-instruct"
+$env:MEMORY_EMBED_BASE_URL = "http://127.0.0.1:1234/v1"
+$env:MEMORY_EMBED_MODEL = "nomic-embed-text"
+```
 
-Consolidation without a configured language model uses a deterministic fallback.
-Transcript extraction requires a configured language model. Embeddings are optional;
-search can use keyword matching alone.
+> 💡 The code appends `/chat/completions` or `/embeddings` to the base URL — don't include those suffixes twice.
 
-These URLs are not restricted to loopback by the provider code. Choosing a remote
-endpoint sends content there. Keep credentials out of example files and memory entries.
+> ⚠️ The endpoint is expected to be OpenAI-compatible. A remote URL sends the selected text to that service. Keep API keys in the process environment or a secret store — never in Markdown, committed `.env` files, client prompts, or GitHub comments.
 
-## Supervised local worker
+---
 
-Enable the worker explicitly with `connect-ai-tools.ps1 -EnableSessionAuto`. It reads
-`MEMORY_CAPTURE_DB`, uses `MEMORY_WRITE_MODE` (review is the worker default), and writes
-health to a per-vault file shown by the dashboard's `/api/worker-health` endpoint. A
-local chat model is optional: failures leave capture rows retryable and the fallback
-summary records evidence-only content. The worker never turns a session checkpoint into
-a durable preference automatically.
+## Vault History
 
-The worker's effective safety choices are easiest to understand as a matrix:
+Enable git-backed undo for the vault:
 
-| Worker setting | Result |
-| --- | --- |
-| `review` | Checkpoint/final proposals enter the dashboard queue; a person approves them |
-| `auto` | Validated checkpoint/final proposals can be accepted unattended |
-| Chat model unavailable | Evidence-only fallback remains retryable; no invented success is written |
-| Capture database unavailable | The worker reports health/failure; it cannot reconstruct missing observations |
-| Idle or stop trigger | Provisional checkpoint; later evidence may reopen the group |
-| Explicit session-end trigger | Final entry with host finalization metadata |
-
-Check health without changing data:
-
-~~~powershell
-.\.venv\Scripts\python.exe -m memory_hub.worker --vault $memoryVault --once
-~~~
-
-The one-shot result is printed to the terminal. The persistent health file lives inside
-the vault at `.ai-memory-hub/worker-health.json`, next to `config.json`; configure an
-explicit path with `MEMORY_WORKER_HEALTH` if you need a different location. A vault
-upgraded from an older release is still read from the previous user-home
-`.ai-memory-hub/worker-health-<vault-hash>.json` location until the next worker pass
-rewrites it. The dashboard worker-health endpoint is the better view when the launcher is already running.
-
-Project identity for capture and injection is resolved from `cwd` (git root, then
-package markers, then the directory name). Override the slug with
-`<vault>/.ai-memory-hub/projects.json` (`{"C:/absolute/path/to/repo": "canonical-slug"}`)
-or a `.ai-memory-project` file at the repository root. Remote git URLs are never used.
-
-## Optional vault history
-
-Initialize history on a dedicated vault before enabling consolidation commits:
-
-~~~powershell
+```powershell
 $memoryVault = Join-Path $env:USERPROFILE "Documents\Obsidian\AI-Memory"
 .\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault history-init
-~~~
+```
 
-Then pass MEMORY_VAULT_HISTORY=true to the MCP server and restart it.
-The connection helper does not expose every environment setting as a parameter;
-check the host's resulting server configuration.
+Then set `MEMORY_VAULT_HISTORY=true` and restart the MCP server.
 
-History does not automatically commit every kind of memory operation. It is not a
-backup of ignored pending-review databases or the external capture buffer.
-See [undo and backup](USAGE.md#undo-and-backup).
+History does not automatically commit every kind of memory operation — it is not a backup of pending-review databases or the external capture buffer. See [undo and backup](USAGE.md#undo-and-backup).
 
-## Startup handoff
+---
 
-The local handoff reader is independent from MCP, embeddings, the chat model and
-GitHub. Install it separately from capture and Windows session-auto registration:
+## Full Session Transcripts
 
-~~~powershell
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
-.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
-~~~
+`MEMORY_TRANSCRIPT_ENABLED=true` is a separate, default-off opt-in for retaining raw user/agent/tool/system and structured provider events. Set it before starting the client hook receiver and the worker; restart both after changing it.
 
-The helper installs a bounded context packet at startup for all six supported
-hosts — Claude Code 2.1.276, Codex CLI 0.155.0, Gemini CLI 0.58.0,
-Qwen Code 0.22.0, Kimi Code 2.0.1, and Hermes Agent (shell hooks) — with
-managed backups and a bounded `additionalContext` packet. The packet
-shows checkpoint age and a pending-evidence warning, and lists ambiguous work groups
-separately. GitHub publication is a separate explicit permission.
+```mermaid
+flowchart TD
+    Config["Transcript environment"] --> Hook["Restarted client hook"]
+    Hook --> Event["Raw provider envelope"]
+    Event --> SQLite["Vault-local transcript SQLite"]
+    SQLite --> MD["Chronological Obsidian transcript"]
+    Summary["Checkpoint/final summary"] --> Link["Bidirectional wikilinks"]
+    Link --> MD
+    SQLite -. never implicit .-> Export["Sanitized GitHub export excludes raw payload"]
+```
 
-## GitHub session export
+For full details on the envelope, retention behavior, and privacy boundary, see [full-session-transcripts.md](full-session-transcripts.md).
 
-GitHub publication records the approved repository and visibility, starts a hidden
-local outbox publisher, and never stores a GitHub token in the vault or configuration.
-The `gh` CLI supplies credentials when the publisher runs:
+---
 
-~~~powershell
+## GitHub Session Export
+
+GitHub publication records the approved repository and visibility, starts a hidden local outbox publisher, and never stores a GitHub token in the vault or configuration. The `gh` CLI supplies credentials when the publisher runs.
+
+### Setup
+
+```powershell
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -EnableGitHubExport `
   -GitHubRepo "owner/repository" -GitHubVisibility private
 .\connect-ai-tools.ps1 -VaultPath $memoryVault -DisableGitHubExport
-~~~
+```
 
-Only accepted checkpoint/final Markdown sections are exported. Raw transcripts,
-secrets, absolute/private paths and pending review proposals are excluded. The local
-SQLite outbox and health JSON retain queued work during outages. Disabling export stops
-the owned startup entry but retains the outbox for a later explicit re-enable.
+### Export Rules
 
-Export configuration is intentionally narrower than ordinary GitHub automation:
-
-| Export rule | Meaning |
-| --- | --- |
+| Rule | Meaning |
+|------|---------|
 | Destination | Must be an explicit `owner/name` repository |
-| Visibility | Must be explicitly approved as `public`, `private` or `internal` |
+| Visibility | Must be explicitly approved as `public`, `private`, or `internal` |
 | Source | Accepted checkpoint/final sections only |
-| Excluded | Raw transcripts, pending proposals, secrets and absolute/private paths |
-| Delivery | SQLite outbox with stable markers, retries and timeout reconciliation |
-| Credentials | The `gh` CLI credential store; tokens are not copied to the vault/config |
+| Excluded | Raw transcripts, pending proposals, secrets, and absolute/private paths |
+| Delivery | SQLite outbox with stable markers, retries, and timeout reconciliation |
+| Credentials | `gh` CLI credential store; tokens are not copied to vault/config |
 | Disable behavior | Startup registration stops; queued outbox data is retained |
 
-Inspect configuration and run one explicit delivery pass with the CLI:
+### Inspection & Manual Delivery
 
-~~~powershell
+```powershell
 .\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault github-export-config
 .\.venv\Scripts\python.exe -m memory_hub.cli --vault $memoryVault github-export --once
-~~~
+```
 
-The hidden startup publisher uses the same configuration but does not publish anything
-if export is disabled or destination approval is missing. GitHub is a delivery surface,
-not the canonical memory store.
+---
+
+## Startup Handoff
+
+The local handoff reader is independent from MCP, embeddings, the chat model, and GitHub. Install it separately:
+
+```powershell
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -InstallHandoff
+.\connect-ai-tools.ps1 -VaultPath $memoryVault -RemoveHandoff
+```
+
+Installs a bounded context packet at startup for all six supported hosts:
+- Claude Code 2.1.276+
+- Codex CLI 0.155.0+
+- Gemini CLI 0.58.0+
+- Qwen Code 0.22.0+
+- Kimi Code 2.0.1+
+- Hermes Agent (shell hooks)
+
+---
+
+## See Also
+
+- [Client setup](CLIENTS.md)
+- [Dashboard](DASHBOARD.md)
+- [Architecture](../ARCHITECTURE.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Full session transcripts](full-session-transcripts.md)

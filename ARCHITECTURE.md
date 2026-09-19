@@ -1,109 +1,406 @@
 # Architecture
 
-AI Memory Hub separates accepted Markdown memories from the tools, indexes and
+AI Memory Hub separates accepted Markdown memories from the tools, indexes, and
 operational queues used to create and retrieve them.
 
 [README](README.md) · [Configuration](docs/CONFIGURATION.md) ·
 [Developer guide](CONTRIBUTING.md) · [Roadmap](docs/local-memory-plan.md)
 
-## Repository map
+---
 
-~~~text
-memory_hub/
-  mcp_server.py       Public AI-client interface
-  manager.py         Validation, proposal policy and memory operations
-  vault.py           Markdown parsing, routing and file operations
-  index.py           SQLite search, embeddings and review queue
-  models.py          Memory types, writers and tags
-  security.py        Text validation and probable-secret checks
-  utils.py           Paths, locks, hashing and atomic file replacement
-  entities.py        Shared-file subject aliases
-  patterns.py        Pattern configuration
-  capture.py         Generic observation receiver and local queue
-  transcript.py      Opt-in raw event store and Obsidian transcript renderer
-  consolidator.py    Optional local-model summaries and fallback
-  session_capture.py Queue-to-summary bridge
-  worker.py          Optional supervised threshold/time/event checkpoint worker
-  history.py         Opt-in Git history
-  extractor.py       Transcript-to-candidate extraction
-  hooks.py           Client hook configuration helpers
-  cli.py             Administrative command line
-  dashboard.py       Shared local HTTP server, host/token guards and routes
-  dashboard_data.py  Canonical full-record reads and organization metadata
-  static/            Bundled HTML, CSS and JavaScript; no frontend build required
-  app.py             Single owner of browser dashboard and optional tray
-  tray.py            Compatibility entry point and tray artwork
+## Module Diagram
 
-client-prompts/       Instructions installed into AI clients
-vault_template/       Files copied when a vault is initialized
-hermes/skills/        Hermes-specific behavioral integration
-scripts/             Import, migration, backfill and benchmarks
-tests/               Automated checks
-docs/                User guides and separately governed plans
-~~~
+```mermaid
+flowchart LR
+    subgraph Clients["AI Clients"]
+        C1[Claude Code]
+        C2[Codex CLI]
+        C3[Gemini CLI]
+        C4[Hermes Agent]
+        C5[Kimi / Qwen]
+    end
 
-The Windows setup and connection scripts live at the repository root. They configure
-the optional worker's reversible startup entry; the worker itself remains a local
-process that never blocks capture.
+    subgraph Hooks["Lifecycle Hooks"]
+        HC[hook receiver<br/>capture.py]
+        HCTX[context packet<br/>context_packet.py]
+        HH[handoff<br/>handoff.py]
+    end
 
-## Runtime data flow
+    subgraph Pipeline["Capture Pipeline"]
+        CAP[Capture<br/>capture.py]
+        OBS[(observations.sqlite3)]
+        WRK[Worker<br/>worker.py]
+        CON[Consolidator<br/>consolidator.py]
+        SC[session_capture.py]
+    end
 
-~~~text
-Connected AI client
-    |
-    v
-Public MCP tools ---> MemoryManager
-                           |
-                   validate and classify
-                     /             \
-              review proposal    accepted write
-                     |                 |
-              SQLite queue          Markdown
-                     |                 |
-                approval ----------> index update
-                                       |
-                             keyword / optional vector search
-~~~
+    subgraph Intelligence["Intelligence Layer"]
+        CAT[Categorizer<br/>categorizer.py]
+        PR[Project Resolver<br/>project_resolver.py]
+    end
 
-The automatic capture path runs without a resident worker or a host-model tool call:
+    subgraph Core["Core"]
+        MCP[MCP Server<br/>mcp_server.py]
+        MGR[Memory Manager<br/>manager.py]
+        VAULT[(Markdown Vault)]
+        IDX[Index<br/>index.py]
+        EMB[Embeddings<br/>embeddings.py]
+    end
 
-~~~text
-Client lifecycle hook -> generic receiver -> observation SQLite
-                                              |
-                         detached one-shot worker (session-end / stop / compact)
-                                              |
-                         project resolver -> checkpoint + typed categorizer
-                                              |
-                         SessionStart / per-turn context packet -> host additionalContext
-~~~
+    subgraph Interface["User Interface"]
+        DASH[Dashboard<br/>dashboard.py]
+        APP[App / Tray<br/>app.py]
+    end
 
-> [!IMPORTANT]
-> The generic receiver recognizes normalized event names. Claude Code, Codex CLI,
-> Gemini CLI, Qwen Code, Kimi Code and Hermes Agent now have managed lifecycle
-> capture and SessionStart handoff installers; other hosts remain
-> provider/version dependent. See
-> [the continuity design](docs/automatic-session-continuity.md). A successful
-> hook-config write is not an end-to-end capture test.
+    C1 & C2 & C3 & C4 & C5 --> HC
+    C1 & C2 & C3 & C4 & C5 --> HCTX
+    C1 & C2 & C3 & C4 & C5 --> HH
 
-## Storage and recovery
+    HC --> CAP
+    CAP --> OBS
+    OBS --> WRK
+    WRK --> CON
+    CON --> SC
+    SC --> MGR
+    WRK --> CAT
 
-| Data | Location | Recovery meaning |
-| --- | --- | --- |
+    HCTX --> PR
+    HH --> PR
+    HH --> IDX
+
+    MCP --> MGR
+    MGR --> VAULT
+    MGR --> IDX
+    MGR --> EMB
+
+    DASH --> MGR
+    APP --> DASH
+```
+
+---
+
+## Data Flow
+
+### 1. Automatic Capture Flow (Hook Path)
+
+This path runs without a resident worker. It captures raw lifecycle events
+from AI clients and turns them into durable session memories.
+
+```mermaid
+flowchart TD
+    A[AI Client Lifestyle Event] --> B[hook receiver<br/>capture.py]
+    B --> C{Valid payload?}
+    C -->|No| D[Reject with reason]
+    C -->|Yes| E[Sanitize secrets]
+    E --> F[Normalize event name]
+    F --> G[Resolve project identity]
+    G --> H[(observations.sqlite3)]
+    H --> I{Terminal event?}
+    I -->|Yes| J[Spawn detached<br/>worker --session]
+    I -->|No| K[Return accepted]
+    J --> L[worker.py run_once]
+    L --> M[consolidator.py<br/>summarize observations]
+    M --> N[session_capture.py<br/>route to session_write]
+    N --> O[manager.py propose_session]
+    O --> P[(Markdown Vault)]
+    O --> Q[auto-categorize?]
+    Q -->|Yes| R[categorizer.py]
+    R --> O
+```
+
+**What happens:**
+1. An AI client fires a lifecycle hook (e.g., `user-prompt-submit`, `post-tool-use`, `stop`).
+2. The `hook receiver` (`capture.py`) normalizes the event, sanitizes secrets, resolves the project identity, and appends the observation to `observations.sqlite3`.
+3. On terminal events (`stop`, `session-end`, `interrupt`), a detached worker is spawned to consolidate the session immediately.
+4. The worker calls the `consolidator` to summarize observations into the four-section session format (Investigated, Learned, Completed, Next Steps).
+5. `session_capture.py` routes the summary through `MemoryManager.propose_session`, which writes to the Markdown vault.
+6. The `categorizer` optionally extracts durable memories (preferences, decisions, project facts) from the same observations.
+
+### 2. MCP Client Flow (Propose / Read / Search)
+
+Connected AI clients use the MCP boundary to propose, read, or search memories.
+
+```mermaid
+flowchart LR
+    A[MCP Client] --> B[mcp_server.py]
+    B --> C[memory_manager.py]
+    C --> D{Write mode?}
+    D -->|auto| E[Validate & store]
+    D -->|review| F[Queue for approval]
+    E --> G[(Markdown Vault)]
+    F --> H[(review queue)]
+    G --> I[index.py<br/>reindex]
+    H --> J[Dashboard approval]
+    J --> G
+```
+
+### 3. Context Injection Flow (SessionStart / Per-Turn)
+
+On session start or per-turn, a bounded context packet is injected into the AI client.
+
+```mermaid
+flowchart TD
+    A[SessionStart hook] --> B[context_packet.py<br/>build_packet mode=start]
+    B --> C{Local manifest<br/>exists?}
+    C -->|Yes| D[handoff.py<br/>catch_up_pending]
+    C -->|No| E[Read index rows]
+    D --> F[Force-consolidate<br/>pending sessions]
+    F --> G[Read manifest]
+    E --> H[Select relevant groups]
+    G --> H
+    H --> I[Build checkpoint<br/>summary]
+    I --> J[Render for host format]
+    J --> K[Claude/Codex: JSON envelope]
+    J --> L[Kimi: plain text]
+    J --> M[Hermes: JSON context]
+    J --> N[Gemini: JSON envelope]
+    K & L & M & N --> O[Inject into client context]
+```
+
+---
+
+## Module Documentation
+
+### `capture.py` — Generic Observation Receiver
+
+**Purpose:** Receives lifecycle events from AI clients and stores them durably.
+
+**Key responsibilities:**
+- Normalizes diverse event name spellings to a canonical set (kebab-case)
+- Sanitizes secrets from payloads before any persistence
+- Resolves project identity from `cwd`
+- Appends observations to `observations.sqlite3` (idempotent via `observation_id`)
+- On terminal events, spawns a detached consolidation worker
+
+**Key types:**
+- `Observation` — frozen dataclass representing a single lifecycle event
+- `ObservationBuffer` — SQLite-backed queue with claim/mark/prune operations
+
+**Events handled:**
+`session-start`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`,
+`post-tool-use-failure`, `stop`, `stop-failure`, `session-end`, `pre-compact`,
+`post-compaction`, `session-heartbeat`, `subagent-stop`, `interrupt`
+
+---
+
+### `worker.py` — Supervised Checkpoint Worker
+
+**Purpose:** Consolidates buffered observations into session checkpoints.
+
+**Key responsibilities:**
+- Runs as a resident process (`run_forever`) or one-shot (`run_once`)
+- Triggers consolidation based on: token budget, idle time, turn boundaries, finalization events
+- Writes a per-vault health file (`worker-health.json`)
+- Optionally renders transcripts
+
+**Trigger logic:**
+| Condition | Result |
+|-----------|--------|
+| `session-end` event | Final checkpoint (accepted) |
+| `stop-failure` / `interrupt` | Provisional final |
+| Token budget exceeded | Checkpoint (accepted) |
+| Turn event (`stop`, `post-tool-use-failure`) | Checkpoint (provisional/accepted) |
+| Idle timeout (default 300s) | Provisional checkpoint |
+| Flush interval (default 60s) | Accepted checkpoint |
+
+---
+
+### `consolidator.py` — Session Summarizer
+
+**Purpose:** Turns a list of observations into the four-section session contract.
+
+**Two modes:**
+1. **Local LLM** — calls an OpenAI-compatible endpoint with a JSON system prompt
+2. **Fallback** — deterministic, model-free summarization based on evidence fields
+
+**Output format:**
+```json
+{
+  "title": "...",
+  "project": "...",
+  "investigated": ["..."],
+  "learned": ["..."],
+  "completed": ["..."],
+  "next_steps": ["..."]
+}
+```
+
+---
+
+### `context_packet.py` — Bounded Context Packets
+
+**Purpose:** Builds host-neutral context packets for SessionStart and per-turn injection.
+
+**Modes:**
+- `start` — latest checkpoint + project facts + global preferences/profile
+- `turn` — only new memories since last injection + prompt-related facts
+
+**Host rendering:**
+| Host | Start channel | Turn channel |
+|------|--------------|--------------|
+| Claude / Codex / Qwen | `hookSpecificOutput.additionalContext` (SessionStart) | `hookSpecificOutput.additionalContext` (UserPromptSubmit) |
+| Gemini | JSON envelope (SessionStart) | JSON envelope (BeforeAgent) |
+| Kimi | Plain text on stdout | Plain text on stdout |
+| Hermes | `{"context": "..."}` (pre_llm_call) | same |
+
+---
+
+### `categorizer.py` — Model-Free Memory Categorizer
+
+**Purpose:** Extracts typed memory candidates from observations after each checkpoint.
+
+**Rules (conservative, high precision):**
+- **Preferences** — detected from phrases like "always", "never", "prefer", "don't"
+- **Decisions** — detected from "decided", "we'll go with", "chose"
+- **Project facts** — git actions, test results, successful commands
+
+**Key property:** Deterministic and idempotent. Re-running on the same evidence is a no-op due to exact-hash dedup.
+
+---
+
+### `project_resolver.py` — Deterministic Project Identity
+
+**Purpose:** Every stage of the pipeline must agree on which project a piece of evidence belongs to.
+
+**Resolution order (first hit wins):**
+1. `<vault>/.ai-memory-hub/projects.json` — explicit path-to-slug map (longest prefix match)
+2. `.ai-memory-project` file — in-tree pin
+3. Nearest `.git` ancestor — directory name (worktrees share main repo identity)
+4. Nearest build/package marker (e.g., `pyproject.toml`, `package.json`)
+5. `cwd` leaf directory
+
+System directories (home, root, OS) resolve to `unscoped`.
+
+---
+
+### `hooks.py` — Hook Installation
+
+**Purpose:** Manages lifecycle hook installation in AI client config files.
+
+**Supported clients:**
+| Client | Config format |
+|--------|--------------|
+| Claude Code | Nested matcher JSON |
+| Codex CLI | Documented handler JSON |
+| Gemini CLI | Nested JSON |
+| Kimi Code | TOML (`[[hooks]]`) |
+| Qwen Code | Nested JSON |
+| Hermes Agent | YAML (`config.yaml`) |
+
+All installs are marker-fenced, backup existing config, and are idempotent.
+
+---
+
+### `handoff.py` — Startup Handoff
+
+**Purpose:** Provides a model-free startup handoff from the local checkpoint manifest.
+
+**Key responsibilities:**
+- Reads the session manifest (`sessions/session-manifest.json`)
+- Selects relevant session groups by project identity or worktree match
+- Renders bounded checkpoint evidence for the destination client
+- Runs a bounded catch-up pass to consolidate pending sessions before reading
+
+**Wire format:** Wrapped in `<ai-memory-handoff>` tags; rendered per host requirements.
+
+---
+
+### `mcp_server.py` — Public MCP Interface
+
+**Purpose:** The canonical persistent-memory interface for connected AI clients.
+
+**Tools exposed:**
+| Tool | Purpose |
+|------|---------|
+| `memory_policy` | Return retention policy and write mode |
+| `memory_search` | Search the vault (keyword + optional vector) |
+| `memory_context` | Bounded context packet for a new session |
+| `memory_read` | Read one memory Markdown file |
+| `memory_propose` | Validate and store/queue a durable memory |
+| `memory_supersede` | Replace an existing memory |
+| `memory_forget` | Delete one memory by stable ID |
+| `memory_audit` | Integrity check (no writes) |
+| `project_audit` | Report identity collisions |
+| `subject_audit` | Report duplicates and variants |
+| `project_link` | Preview/apply reversible project-file link |
+| `entity_alias_link` | Preview/apply subject alias linking |
+| `memory_reindex` | Rebuild SQLite index from Markdown |
+| `session_write` | Write a four-section session summary |
+| `session_consolidate` | Consolidate hook observations into session_write |
+| `propose_pattern_match` | Propose linked project fact + preference rule |
+
+**Write policy:** `MEMORY_WRITE_MODE` (read at server startup):
+- `auto` — store immediately after validation
+- `review` — queue for dashboard approval
+
+---
+
+### `dashboard.py` — Local HTTP Dashboard
+
+**Purpose:** Shared local HTTP server for browsing memories, approving proposals, and configuring the vault.
+
+**Security:**
+- Binds to loopback only (`127.0.0.1`)
+- Per-launch random token (must be echoed on state-changing requests)
+- Host header validation (DNS rebinding protection)
+- CSP headers, no external resources
+
+**API endpoints:**
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/memories` | List memory rows with search/pagination |
+| `GET /api/memory/{id}` | Memory detail |
+| `GET /api/pending` | Pending review queue |
+| `POST /api/pending/{id}/approve` | Approve a proposal |
+| `POST /api/pending/{id}/reject` | Reject a proposal |
+| `POST /api/memory/{id}/forget` | Delete a memory |
+| `POST /api/memory/{id}/edit` | Edit memory text |
+| `GET /api/conflicts` | Report identity conflicts |
+| `POST /api/conflict/resolve` | Resolve a conflict |
+| `GET /api/audit` | Vault integrity audit |
+| `GET /api/worker-health` | Worker status |
+| `GET /api/config` | Current configuration |
+| `POST /api/config` | Save configuration |
+
+---
+
+## Module Dependency Table
+
+| Module | Depends On |
+|--------|-----------|
+| `capture.py` | `events.py`, `project_resolver.py`, `security.py`, `utils.py`, `app_config.py` |
+| `worker.py` | `capture.py`, `manager.py`, `session_capture.py`, `consolidator.py`, `categorizer.py` |
+| `consolidator.py` | `capture.py`, `utils.py` |
+| `session_capture.py` | `capture.py`, `consolidator.py`, `manager.py` |
+| `context_packet.py` | `project_resolver.py`, `handoff.py`, `utils.py`, `app_config.py` |
+| `categorizer.py` | `models.py`, `security.py`, `utils.py` |
+| `project_resolver.py` | `utils.py` |
+| `hooks.py` | `utils.py` |
+| `handoff.py` | `project_resolver.py`, `manager.py`, `capture.py`, `worker.py` |
+| `mcp_server.py` | `manager.py`, `models.py`, `capture.py`, `session_capture.py`, `history.py` |
+| `dashboard.py` | `manager.py`, `vault.py`, `entities.py`, `dashboard_data.py` |
+| `manager.py` | `index.py`, `embeddings.py`, `models.py`, `vault.py`, `security.py`, `utils.py`, `entities.py`, `patterns.py`, `transcript.py` |
+
+---
+
+## Storage and Recovery
+
+| Data | Location | Recovery Meaning |
+|------|----------|-----------------|
 | Accepted memories | Markdown vault | Canonical durable content; back it up |
-| Dashboard tags and links | Vault dashboard-metadata.md | Canonical ID-based organization; survives reindexing |
+| Dashboard tags and links | Vault `dashboard-metadata.md` | Canonical ID-based organization; survives reindexing |
 | Instruction and index files | Vault `AI_INSTRUCTIONS.md`, `MEMORY.md` | Trusted navigation/guidance, not arbitrary proposal targets |
 | Search rows and vectors | Vault `.memory_index.sqlite3` | Rebuild from accepted Markdown |
 | Pending review payloads | Tables in the same SQLite file | Not reconstructible from accepted Markdown |
-| Unprocessed observations | `MEMORY_CAPTURE_DB` or user-home `.ai-memory-hub/observations.sqlite3` | Durable operational evidence; not a disposable index |
+| Unprocessed observations | `MEMORY_CAPTURE_DB` or `~/.ai-memory-hub/observations.sqlite3` | Durable operational evidence; not a disposable index |
 | Undo history | Optional vault Git repository | Covers committed files, not every queue or process state |
 
-Deleting the entire SQLite index file also discards pending review data. Reindexing
-accepted memories and deleting an operational database are different operations.
+---
 
-### Memory routing
+## Memory Routing
 
-| Kind | Canonical layout |
-| --- | --- |
+| Kind | Canonical Layout |
+|------|-----------------|
 | profile | `/profile.md` |
 | preference | `/preferences.md` |
 | project | `/projects/<subject>.md` |
@@ -113,46 +410,21 @@ accepted memories and deleting an operational database are different operations.
 | session with project | `/sessions/<project>/<writer>.md` |
 | session without project | `/sessions/<writer>.md` |
 
-Ordinary records occupy one tracked line with a stable memory ID and provenance.
-Sessions use a multi-line heading block with a session-ID marker and four sections:
-Investigated, Learned, Completed and Next Steps. Reindexing parses those stored records.
+---
 
-Initialization copies missing template files; it does not upgrade existing instructions
-by replacing the vault's content.
-
-## Interfaces and write policy
+## Interfaces and Write Policy
 
 AI clients and client-facing scripts that propose new memory use the public MCP
-boundary. Internal package code may call the manager. A migration that only relocates
-existing blocks is different from proposing new memory
-([#21](https://github.com/vib28/ai-memory-hub/issues/21)).
+boundary. Internal package code may call the manager directly.
 
-The administrative CLI currently calls manager operations directly. Its proposal,
-supersede and ingestion commands do not inherit MCP review mode. Do not use them
-as review-safe substitutes for MCP tools.
+MCP proposal paths use `MEMORY_WRITE_MODE`, read at server startup. Review queues
+a proposal; auto attempts storage after validation. This does not make destructive
+or explicit maintenance operations approval-queued.
 
-| Interface group | Public MCP tools |
-| --- | --- |
-| Read and orient | `memory_policy`, `memory_search`, `memory_read`, `memory_context` |
-| Propose or replace | `memory_propose`, `memory_supersede` |
-| Sessions | `session_write`, `session_consolidate` |
-| Patterns | `propose_pattern_match` |
-| Audit and identity | `memory_audit`, `project_audit`, `subject_audit`, `project_link`, `entity_alias_link` |
-| Maintenance | `memory_reindex`, `memory_forget` |
-
-MCP proposal paths use `MEMORY_WRITE_MODE`, read at server startup. Review queues a
-proposal; auto attempts storage after validation. This does not make destructive or
-explicit maintenance operations approval-queued.
-
-> [!WARNING]
-> Setup helpers choose review, but the MCP module falls back to auto for an unset or
-> invalid mode. Configure the mode explicitly. No separate session-only auto setting
-> exists yet; that separation is part of the future continuity design.
-
-### Results are part of the contract
+### Results are Part of the Contract
 
 | Result | Meaning |
-| --- | --- |
+|--------|---------|
 | `stored` | New content was written |
 | `stored_without_project_link` | Session exists; its project cross-link was not written |
 | `queued` | Awaiting review, not accepted Markdown |
@@ -161,140 +433,43 @@ explicit maintenance operations approval-queued.
 | `duplicate` | Existing content matched; no new write |
 | `rejected` | Validation or policy rejected the operation |
 
-Read the actual result. A successful transport call alone does not mean a memory was
-saved. Session and pattern tools surface application rejection through MCP
-`ToolError`; tests must cover the registered tool path, not just the Python function.
+Read the actual result. A successful transport call alone does not mean a memory
+was saved.
 
-Pattern writes prevalidate both halves, then perform sequential proposals. This is
-not a crash-atomic transaction across two Markdown files; a later-half failure can
-return partial-work details. Preserve those details.
+---
 
-## Identity and duplicate handling
+## Identity and Duplicate Handling
 
-Project, topic, person and decision files carry entity IDs and aliases in frontmatter.
-Profile and preference subjects share files, so their aliases live in
-`entity-aliases.md`. Writer identity is provenance, not a separate memory namespace.
+Write matching uses normalized hashes and lexical similarity. Current thresholds:
+- **0.985** for duplicate suppression
+- **0.85** for the update-review band
 
-Routing uses explicit identity and recorded aliases, not fuzzy title-prefix merging.
-`project_link` and `entity_alias_link` have preview/apply workflows.
-Audit candidates do not authorize unattended merging or deletion.
-
-Write matching uses normalized hashes and lexical similarity. The current thresholds
-are 0.985 for duplicate suppression and 0.85 for the update-review band. The
-read-only `subject_audit` also reports a separate conservative `lexical_candidates`
-tier for singleton-fact kinds (`preference` and `profile`) whose subjects are not
-prefix-related: at least four shared corpus-salient tokens of length four or more
-and a token Dice score of 0.25. Salience is derived per kind from active-record
-document frequency; tokens present in more than 75% of a corpus of four or more
-records are omitted automatically. Cumulative project/topic/decision/person logs
-are intentionally excluded so normal historical entries are not mislabeled as
-duplicates. This is an audit signal, not a write decision or an automatic link.
 Embeddings remain advisory for search/audit; they do not decide write-time removal.
 
-Session retry detection is scoped to the canonical project session path
-([#55](https://github.com/vib28/ai-memory-hub/issues/55)); identical prose in distinct
-projects remains distinct. Do not infer that identical session prose always represents
-the same session.
+---
 
-## Retrieval and local models
+## Opt-in History
 
-The index supports SQLite FTS keyword search with a LIKE fallback. If an embedding
-provider is configured, search combines lexical and vector ranking. Stored embeddings
-include kind/subject context. A failed embedding request falls back to lexical results.
+With `MEMORY_VAULT_HISTORY=true`, successful MCP consolidation attempts to commit
+the session/project paths it reports to a local Git repository. It refuses to
+mix with already staged changes.
 
-The provider calls a configured HTTP endpoint. Local-first behavior therefore depends
-on choosing a local endpoint; code does not make an arbitrary URL local or private.
-Consolidation can use a local language model or an evidence-only fallback.
-Transcript extraction separately requires a configured model.
+---
 
-`memory_context` currently selects bounded search results on demand. Canonical project
-and session paths, plus separately labeled global preference/profile paths, are
-filtered before lexical or vector ranking; superseded records are excluded. The
-complete serialized `{"memories": [...]}` payload is bounded by `max_chars`, and the
-newest canonical project session is deterministically prepended. The separate local
-handoff reader restores the latest checkpoint at supported SessionStart hooks without
-requiring this retrieval path or an embedding service.
-
-The optional `memory_hub.worker` process is a supervised local consumer of the durable
-capture queue. It uses deterministic evidence-only fallback when no local chat model is
-available, records estimated token provenance, retries failed batches with the queue's
-backoff, and writes a per-vault health file consumed by the dashboard. Capture does not
-wait for the worker, model, or GitHub. A stop/idle checkpoint is provisional; explicit
-session-end evidence is required for a final entry.
-
-Full transcripts are a separate opt-in companion path. `MEMORY_TRANSCRIPT_ENABLED`
-keeps raw provider envelopes out of the bounded observation schema, ordinary memory
-index, embeddings and GitHub outbox. The local transcript store assigns stable IDs,
-transactional monotonic sequences and deterministic Markdown paths. Session blocks
-and the manifest carry the transcript path; the transcript carries links back to all
-known checkpoint/final blocks. Forgetting the last summary in a group removes the
-local companion object.
-
-## Security and consistency boundaries
-
-The [dashboard](docs/DASHBOARD.md) uses one shared server factory for every launch
-path, per-server tokens and request serialization. It rejects non-loopback binding.
-Organization edits use a file lock, atomic replacement and a revision check.
-This metadata is separate from memory classifications and source wiki-links.
-Browser storage holds only appearance preferences, never the memory records.
-The Python assets are packaged directly; the dashboard needs no JavaScript build
-runtime or model service.
+## Security and Consistency Boundaries
 
 - Text checks reject empty/oversized content and recognizable secrets. They are
   defense in depth, not a guarantee that all sensitive data is detected.
 - Candidate target paths cannot plant content in reserved instruction/index files.
-- File locks and atomic replacement protect individual file operations. They do not
-  create a transaction covering Markdown, SQLite, Git and an external service.
-- The dashboard binds locally by default and checks requests. Do not expose it as an
-  internet service or assume local storage is encrypted.
-- The capture queue bounds native evidence, preserves host event identity, filters
-  sensitive paths/text and uses owner/lease claims; the supervised worker consumes it
-  only after explicit setup.
-- Review, rejected and failed states must remain distinguishable from accepted data.
+- File locks and atomic replacement protect individual file operations.
+- The dashboard binds locally by default and checks requests.
+- The capture queue bounds native evidence, preserves host event identity,
+  filters sensitive paths/text, and uses owner/lease claims.
 
-## Opt-in history
+---
 
-`history-init` initializes local Git history when needed and configures a local Git
-identity. A new repository receives a baseline commit and ignore rules for SQLite,
-lock and temporary files. Use a dedicated vault outside another Git worktree:
-the current repository check also recognizes a parent repository.
-
-With `MEMORY_VAULT_HISTORY=true`, successful MCP consolidation attempts to commit
-the session/project paths it reports. It refuses to mix with already staged changes.
-The write occurs before the commit; a Git failure is not a rollback of the memory write.
-Ordinary proposals are not all automatically committed.
-
-## Planned extension
+## Planned Extension
 
 [Roadmap #61](https://github.com/vib28/ai-memory-hub/issues/61) is the continuity
-closeout parent; follow the canonical [issue priority order](docs/issue-priority-order.md):
-local queue/context/metadata/worker, Claude/Codex/Gemini/Qwen/Kimi/Hermes startup
-handoff, sanitized GitHub publication and the no-paid-call replay harness are
-complete; live benchmark certification remains.
-Graph retrieval and embedding upgrades are not prerequisites.
-
-```mermaid
-flowchart TD
-    Client[AI client] --> MCP[MCP server]
-    MCP --> Policy[Validation and write policy]
-    Policy --> Vault[Canonical Markdown vault]
-    Vault --> Index[Rebuildable SQLite index]
-    MCP --> Context[Scoped context selection]
-    Context --> Client
-    Capture[Lifecycle capture] --> Queue[Leased local queue]
-    Queue --> MCP
-    Capture --> Transcript{Raw transcript enabled?}
-    Transcript -->|yes| TranscriptDB[Local transcript store]
-    TranscriptDB --> TranscriptMD[Obsidian transcript object]
-    MCP --> TranscriptMD
-```
-
-See [full-session-transcripts.md](docs/full-session-transcripts.md) for the event
-envelope and privacy boundary. The transcript object is evidence, not a retrieval
-memory; optional `nomic-embed-text` remains an embedding role and does not author the
-verbatim record.
-
-The required [paired benchmark](docs/session-handoff-benchmark.md) measures both token
-overhead and task quality. The versioned [replay report](docs/benchmark-results/handoff-replay-v1.md)
-is regression evidence only; no live implementation or universal savings percentage is
-implied by this architecture document.
+closeout parent. See the [issue priority order](docs/issue-priority-order.md) for
+the canonical sequencing.
