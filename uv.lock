@@ -13,6 +13,7 @@ name = "ai-memory-hub"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "mcp" },
     { name = "pillow" },
     { name = "pystray" },
@@ -27,6 +28,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=41" },
     { name = "mcp", specifier = ">=2,<3" },
     { name = "pillow", specifier = ">=10,<13" },
     { name = "pystray", specifier = ">=0.19,<1" },
