@@ -138,6 +138,8 @@ The connection helper manages each permission independently. Nothing is enabled 
 | Session worker | `-EnableSessionAuto` | Auto-processes captured sessions into checkpoints |
 | Startup handoff | `-InstallHandoff` | Injects context at session start (all 6 hosts) |
 | GitHub export | `-EnableGitHubExport` | Publishes sanitized summaries to a repo |
+| Encryption at rest | `VAULT_ENCRYPTION_KEY` | Encrypts vault files with AES-256-GCM |
+| Manual hooks | `-InstallManualHook <name>` | Adds hooks for unsupported stdio clients |
 
 Each has a matching removal flag (`-RemoveHooks`, `-DisableSessionAuto`, etc.) that does not touch your vault.
 
@@ -155,7 +157,10 @@ Each has a matching removal flag (`-RemoveHooks`, `-DisableSessionAuto`, etc.) t
 | **Project resolver** | ✅ Fully implemented |
 | **Deterministic categorizer** | ✅ Fully implemented |
 | **GitHub export** | ✅ Fully implemented |
-| **Tests** | ✅ **343 passing** |
+| **Encryption at rest** | ✅ AES-256-GCM via `VAULT_ENCRYPTION_KEY` |
+| **Manual hooks** | ✅ Generic hook system for any stdio client |
+| **Capability health dashboard** | ✅ Per-client event support monitoring |
+| **Tests** | ✅ **395+ passing** |
 
 All pipeline features from the v0.2.x roadmap are complete. The live paired benchmark ([#62](https://github.com/vib28/ai-memory-hub/issues/62)) remains an open research question — the no-paid-call replay harness is available but does not claim live token savings.
 
@@ -163,10 +168,8 @@ All pipeline features from the v0.2.x roadmap are complete. The live paired benc
 
 ## What This Project Does Not Promise
 
-- **No encryption** — Local storage is not encrypted. A connected client can read what it retrieves.
-- **No silent merging** — Exact duplicates are handled automatically; similar items stay in your review queue.
-- **No startup hooks for every tool** — Six clients have certified handoff; other stdio clients may have MCP/capture only.
-- **No guaranteed recovery** — Not every AI provider emits every event; the transcript only captures what was emitted.
+- **No silent merging** — Exact duplicates are handled automatically; similar items stay in your review queue. Manual merge is available in the dashboard.
+- **No guaranteed recovery** — Not every AI provider emits every event. The capability health dashboard shows exactly which events each client supports.
 
 ---
 
