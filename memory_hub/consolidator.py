@@ -21,10 +21,12 @@ Return JSON only with this exact shape:
 {"title":"...","project":"... or null","investigated":[],"learned":[],"completed":[],"next_steps":[]}
 
 Rules:
-- Use short factual bullet strings.
+- Use short factual bullet strings (one sentence each).
 - Preserve explicit decisions and unresolved work.
 - Do not invent facts or claim work was completed without evidence.
 - Do not include secrets, credentials, tokens, or raw command output.
+- Do not include raw file content, diffs, code snippets, or full tool outputs in any section.
+- Summarize what was learned in your own words (e.g., "Fixed settings rendering bug" not the actual code).
 - Ignore repetitive reads and temporary noise.
 - Empty sections are allowed, but do not leave all sections empty when observations contain useful work.
 """
@@ -107,8 +109,19 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
 
     prompts = [one_line(row.get("input_summary"), 300) for row in rows
                if row.get("event") == "user-prompt-submit" and one_line(row.get("input_summary"), 300)]
+
+    def _is_raw_content(text: str) -> bool:
+        """Check if text is raw file content, JSON blobs, or tool output rather than a summary."""
+        if not text:
+            return True
+        return (text.startswith("{") or text.startswith('{"filePath"') or
+                '"newString"' in text or '"oldString"' in text or
+                text.startswith('"') or text.startswith("SYNTAX") or
+                "SYNTAX OK" in text or len(text) > 500)
+
     answers = [one_line(row.get("output_summary"), 400) for row in rows
-               if row.get("event") in {"stop", "subagent-stop"} and one_line(row.get("output_summary"), 400)]
+               if row.get("event") in {"stop", "subagent-stop"}
+               and not _is_raw_content(one_line(row.get("output_summary"), 400))]
     git_actions: list[str] = []
     test_results: list[str] = []
     failures: list[str] = []
@@ -153,13 +166,15 @@ def fallback_session(observations: Iterable[Observation | dict[str, Any]]) -> di
     learned.extend(dedupe(failures, 4))
     learned.extend(dedupe(test_results, 4))
     if not learned and not answers:
-        # Legacy rows (pre-#82) only have tool echoes; keep the old behaviour of
-        # surfacing a few outputs rather than an empty section.
+        # Legacy rows (pre-#82) only have tool echoes; surface short human-readable
+        # summaries only — never raw file content, JSON blobs, or tool output.
         for row in rows:
             text = one_line(row.get("output_summary"), 300)
-            if text and text not in learned:
+            if _is_raw_content(text):
+                continue
+            if text not in learned:
                 learned.append(text)
-            if len(learned) >= 6:
+            if len(learned) >= 4:
                 break
     completed: list[str] = []
     completed.extend(f"Assistant reported: {text}" for text in dedupe(answers, 4))
