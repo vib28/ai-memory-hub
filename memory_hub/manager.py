@@ -50,8 +50,8 @@ from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
 from .utils import atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, utc_timestamp, normalize_relative
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
-                    parse_records, dump_frontmatter, ensure_metadata, SESSION_RE,
-                    SESSION_ID_RE, SESSION_META_RE)
+                    parse_records, _parse_records_from_content, dump_frontmatter, ensure_metadata,
+                    SESSION_RE, SESSION_ID_RE, SESSION_META_RE)
 
 # Kinds that route every subject into one shared file, so there is no
 # per-subject file to carry id/aliases frontmatter -- identity for these is
@@ -538,38 +538,31 @@ class MemoryManager:
         relative = self.vault.canonical_path("session", data["model"], project=data.get("project"))
         memory_id = uuid.uuid4().hex[:12]
         slug = slugify(f"{data['model']}-{data['title']}-{data['date'].replace(':', '').replace('T', '-')}")
-        if data.get("transcript_path"):
-            transcript_store = TranscriptStore(vault=self.vault)
-            try:
+        # Single TranscriptStore for all transcript work (#249). Created lazily.
+        transcript_store = None
+        try:
+            if data.get("transcript_path"):
+                transcript_store = TranscriptStore(vault=self.vault)
                 data.update(transcript_store.coverage(data["session_group_id"]))
-            finally:
-                transcript_store.close()
-        metadata = self._checkpoint_metadata(data, memory_id, slug, relative)
-        if metadata and metadata.get("memory_id") != memory_id:
-            existing = self.index.by_id(metadata["memory_id"])
-            if existing is None:
-                self.reindex()
-                existing = self.index.by_id(metadata["memory_id"]) or metadata
-            return {"status": "duplicate", "memory": existing,
-                    "checkpoint_id": metadata.get("checkpoint_id")}
-        if metadata:
-            metadata["final_url"] = (f"[[{relative.lstrip('/')}#{slug}]]"
-                                      if data.get("entry_type") == "final" else metadata.get("final_url"))
-            transcript_store = TranscriptStore(vault=self.vault)
-            try:
-                transcript_store.render(
-                    data["session_group_id"], self.vault,
-                    project=data.get("project"), path=data.get("transcript_path"),
-                    summary_links=[f"[[{relative.lstrip('/')}#{slug}]]"],
-                )
-            finally:
-                transcript_store.close()
-        slug, block = self._session_block(data, memory_id, metadata)
-        self.vault.append_session_block(relative, block, writer=data["model"])
-        if metadata:
-            self._complete_checkpoint_links(metadata, manifest=getattr(self, "_last_manifest", None))
-            transcript_store = TranscriptStore(vault=self.vault)
-            try:
+            metadata = self._checkpoint_metadata(data, memory_id, slug, relative)
+            if metadata and metadata.get("memory_id") != memory_id:
+                existing = self.index.by_id(metadata["memory_id"])
+                if existing is None:
+                    self.reindex()
+                    existing = self.index.by_id(metadata["memory_id"]) or metadata
+                return {"status": "duplicate", "memory": existing,
+                        "checkpoint_id": metadata.get("checkpoint_id")}
+            if metadata:
+                metadata["final_url"] = (f"[[{relative.lstrip('/')}#{slug}]]"
+                                          if data.get("entry_type") == "final" else metadata.get("final_url"))
+            slug, block = self._session_block(data, memory_id, metadata)
+            self.vault.append_session_block(relative, block, writer=data["model"])
+            if metadata:
+                self._complete_checkpoint_links(metadata, manifest=getattr(self, "_last_manifest", None))
+                # Ensure store exists for the authoritative render after manifest updates
+                if transcript_store is None:
+                    transcript_store = TranscriptStore(vault=self.vault)
+                # Single render after all manifest updates; removed redundant pre-append render (#249)
                 target = self.session_transcript_target(data["session_group_id"]) or {}
                 transcript_store.render(
                     data["session_group_id"], self.vault,
@@ -577,7 +570,8 @@ class MemoryManager:
                     path=target.get("path") or data.get("transcript_path"),
                     summary_links=target.get("summary_links") or [],
                 )
-            finally:
+        finally:
+            if transcript_store is not None:
                 transcript_store.close()
         covers = f"Session summaries for {data['model']}"
         if data.get("project"):
@@ -1143,24 +1137,26 @@ class MemoryManager:
             if p.name in {"MEMORY.md", "AI_INSTRUCTIONS.md"}:
                 continue
             relative = "/" + p.relative_to(self.vault.root).as_posix()
-            records = parse_records(p, self.vault.root)
+            content = p.read_text(encoding="utf-8")
+            # Single read: parse records from content, no re-read of file (#250).
+            meta, body = parse_frontmatter(content)
+            kind = str(meta.get("type", "topic"))
+            records = _parse_records_from_content(body, kind, relative, p.stem)
             records_count += len(records)
             for r in records:
                 file_ids.add(r.memory_id)
                 if r.memory_id in seen:
                     duplicate_ids.append(r.memory_id)
                 seen[r.memory_id] = r.path
-            content = p.read_text(encoding="utf-8")
-            # Single file-walker: malformed-line scan and orphan-session detection
-            # both read the file once instead of one re-read per pass (#167, #179).
+            # Malformed-line scan and orphan-session detection both reuse the
+            # already-read content (#167, #179, #250, #253).
             malformed_lines = []
             for i, line in enumerate(content.splitlines(), start=1):
                 if line.startswith("- [") and not ENTRY_RE.match(line):
                     malformed_lines.append({"path": relative, "line": i, "text": line[:200]})
             malformed_files.extend(malformed_lines)
-            meta, _ = parse_frontmatter(content)
-            if str(meta.get("type", "")) == "session":
-                orphan_sessions.extend(self.vault.orphan_session_blocks(relative))
+            if kind == "session":
+                orphan_sessions.extend(self.vault.orphan_session_blocks(relative, content=content))
         indexed_ids = {r["memory_id"] for r in self.index.all_rows()}
         missing_from_index = sorted(file_ids - indexed_ids)
         stale_in_index = sorted(indexed_ids - file_ids)

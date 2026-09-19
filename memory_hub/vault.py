@@ -159,15 +159,11 @@ def ensure_metadata(content: str, *, kind: str, writer: str,
             meta["aliases"] = aliases
     return dump_frontmatter(meta) + body.lstrip("\n")
 
-def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
-    if not path.exists() or path.suffix.lower() != ".md":
-        return []
-    relative = "/" + path.relative_to(vault_root).as_posix()
-    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-    kind = str(meta.get("type", "topic"))
+def _parse_records_from_content(content: str, kind: str, relative: str, fallback_stem: str) -> list[MemoryRecord]:
+    """Parse records from already-read file content (#250)."""
     records = []
     if kind == "session":
-        for block in SESSION_RE.finditer(body):
+        for block in SESSION_RE.finditer(content):
             session_id = SESSION_ID_RE.search(block.group("body"))
             if not session_id:
                 continue
@@ -177,10 +173,10 @@ def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
             records.append(MemoryRecord(
                 memory_id=session_id.group("id"), path=relative, text=digest or block.group("slug"),
                 kind="session", tag="stated", subject=block.group("slug"),
-                writer=path.stem, date=(date_match.group(1) if date_match else today()),
+                writer=fallback_stem, date=(date_match.group(1) if date_match else today()),
             ))
         return records
-    for line in body.splitlines():
+    for line in content.splitlines():
         m = ENTRY_RE.match(line)
         if m:
             records.append(
@@ -190,12 +186,21 @@ def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
                     text=m.group("text"),
                     kind=kind,
                     tag=m.group("tag"),
-                    subject=m.group("subject") or path.stem,
+                    subject=m.group("subject") or fallback_stem,
                     writer=m.group("source"),
                     date=m.group("date"),
                 )
             )
     return records
+
+
+def parse_records(path: Path, vault_root: Path) -> list[MemoryRecord]:
+    if not path.exists() or path.suffix.lower() != ".md":
+        return []
+    relative = "/" + path.relative_to(vault_root).as_posix()
+    meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+    kind = str(meta.get("type", "topic"))
+    return _parse_records_from_content(body, kind, relative, path.stem)
 
 class Vault:
     def __init__(self, root: Path):
@@ -471,16 +476,21 @@ class Vault:
             for match in SESSION_ID_RE.finditer(block.group(0))
         )
 
-    def orphan_session_blocks(self, relative: str) -> list[dict]:
+    def orphan_session_blocks(self, relative: str, *, content: str | None = None) -> list[dict]:
         """Session heading blocks with no parseable `<!-- session:<id> -->` marker.
 
         `parse_records` skips these, so they are unindexed, unsearchable and
         undeletable while still sitting in the vault (#24).
+
+        If ``content`` is provided (the file content already loaded by the caller,
+        e.g. audit()), it is used instead of re-reading the file from disk (#253).
         """
-        p = self.resolve(relative)
-        if not p.exists():
-            return []
-        _, body = parse_frontmatter(p.read_text(encoding="utf-8"))
+        if content is None:
+            p = self.resolve(relative)
+            if not p.exists():
+                return []
+            content = p.read_text(encoding="utf-8")
+        _, body = parse_frontmatter(content)
         return [
             {"path": relative, "heading": block.group("slug")}
             for block in SESSION_RE.finditer(body)

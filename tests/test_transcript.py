@@ -366,10 +366,14 @@ class TranscriptIntegrationTests(unittest.TestCase):
                     with patch.object(manager.vault, "append_session_block", side_effect=RuntimeError("crash")):
                         with self.assertRaises(RuntimeError):
                             manager.propose_session(payload)
+                    # #249: transcript render now happens after append_session_block,
+                    # so a crash before append means the transcript is not yet written.
+                    # The retry writes it on the successful second attempt.
                     transcript = vault / "transcripts" / "demo" / "group-7.md"
-                    self.assertTrue(transcript.exists())
+                    self.assertFalse(transcript.exists())
                     retry = manager.propose_session(payload)
                     self.assertEqual(retry["status"], "stored")
+                    self.assertTrue(transcript.exists())
                     self.assertEqual(transcript.read_text(encoding="utf-8").count("exact event"), 1)
                     self.assertIn("Summaries:", transcript.read_text(encoding="utf-8"))
                     manager.vault.append_session_block = original_append

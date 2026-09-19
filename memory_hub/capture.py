@@ -499,22 +499,19 @@ class ObservationBuffer:
             ids = [row[0] for row in rows]
             if not ids:
                 return []
-            # Atomic UPDATE ... RETURNING in a single round-trip per ID avoids the
-            # post-claim re-read and a race where another worker could observe the
-            # rows between UPDATE and SELECT (#171).
-            claimed = []
-            for observation_id in ids:
-                row = self.conn.execute(
-                    """UPDATE observations SET status='processing', attempts=attempts+1,
+            # Single bulk UPDATE ... RETURNING in one round-trip replaces the N
+            # individual UPDATEs that each read-then-write one row (#252).
+            placeholders = ",".join("?" for _ in ids)
+            claimed_rows = self.conn.execute(
+                f"""UPDATE observations SET status='processing', attempts=attempts+1,
                        claim_token=?, lease_expires_at=?, last_error=NULL,
                        next_attempt_at=NULL
-                       WHERE observation_id=? AND status IN ('pending','failed')
+                       WHERE observation_id IN ({placeholders})
+                       AND status IN ('pending','failed')
                        RETURNING *""",
-                    (owner, expires, observation_id),
-                ).fetchone()
-                if row is not None:
-                    claimed.append(self._row(row))
-        return claimed
+                (owner, expires, *ids),
+            ).fetchall()
+            return [self._row(row) for row in claimed_rows]
 
     def mark_status(self, observation_ids: Iterable[str], status: str, error: str | None = None,
                     owner: str | None = None) -> int:
