@@ -21,7 +21,8 @@ from typing import Any, Iterable
 from .app_config import bootstrap_environment
 from .events import AFTER_AGENT_EVENTS, CONSOLIDATION_EVENTS, FAILURE_EVENTS, HOST_META_FIELDS, PROMPT_EVENTS, PROMPT_FIELDS, ASSISTANT_FIELDS
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import is_truthy, to_kebab, truncated_text
+from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
+            is_truthy, to_kebab, truncated_text
 from .security import SECRET_PATTERNS, check_text
 
 
@@ -193,7 +194,7 @@ class Observation:
             raise ValueError("missing session_id")
         created_at = truncated_text(payload.get("created_at"), 80).strip()
         if not created_at:
-            created_at = datetime.now(timezone.utc).isoformat()
+            created_at = utc_timestamp()
         event = payload.get("event", payload.get("event_name", payload.get("hook_event")))
         event = event or payload.get("hook_event_name")
         event_name = normalize_event(event)

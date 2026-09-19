@@ -46,7 +46,8 @@ from typing import Any
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .project_resolver import UNSCOPED, resolve_project_cached
-from .utils import atomic_write, file_lock, one_line, read_json, slugify
+from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
+            atomic_write, file_lock, one_line, read_json, slugify
 
 log = logging.getLogger("ai_memory_hub.context_packet")
 
@@ -123,7 +124,7 @@ def load_ledger(vault: Path, host: str, session_id: str) -> dict[str, Any]:
 def save_ledger(vault: Path, ledger: dict[str, Any]) -> None:
     path = _ledger_path(vault, str(ledger.get("host", "")), str(ledger.get("session_id", "")))
     path.parent.mkdir(parents=True, exist_ok=True)
-    ledger["updated_at"] = datetime.now(timezone.utc).isoformat()
+    ledger["updated_at"] = utc_timestamp()
     ledger["injected"] = list(dict.fromkeys(str(item) for item in ledger.get("injected", [])))[-2000:]
     with file_lock(path):
         atomic_write(path, json.dumps(ledger, ensure_ascii=False, indent=1) + "\n")

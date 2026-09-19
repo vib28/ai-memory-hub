@@ -48,7 +48,7 @@ from .models import ALLOWED_KINDS, ALLOWED_TAGS, ALLOWED_WRITERS, SINGLETON_KIND
 from .patterns import load_patterns
 from .security import check_text
 from .transcript import TranscriptStore, transcript_enabled, transcript_path_for
-from .utils import atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, utc_timestamp, normalize_relative
+from .utils import utc_timestamp_naive, utc_timestamp, atomic_write, file_lock, is_truthy, normalize_text, one_line, slugify, text_hash, utc_timestamp, normalize_relative
 from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, parse_frontmatter,
                     parse_records, _parse_records_from_content, dump_frontmatter, ensure_metadata,
                     SESSION_RE, SESSION_ID_RE, SESSION_META_RE)
@@ -240,7 +240,7 @@ class MemoryManager:
             raise ValueError("missing session fields: " + ", ".join(missing))
         clean = {key: data[key] for key in required}
         clean["project"] = data.get("project")
-        clean["date"] = data.get("date") or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+        clean["date"] = data.get("date") or utc_timestamp_naive()
         for key in required:
             if key in {"model", "title"}:
                 if not str(clean[key]).strip():
@@ -685,7 +685,7 @@ class MemoryManager:
             self._mark_superseded(old)
 
         memory_id = uuid.uuid4().hex[:12]
-        stamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+        stamp = utc_timestamp_naive()
         line = (
             f"- [{candidate.tag}] {candidate.text} "
             f"<!-- mem:{memory_id} source:{candidate.writer} subject:{candidate.subject} date:{stamp} -->"
@@ -833,12 +833,12 @@ class MemoryManager:
             return {"status": "rejected", "reason": security.reason}
         new_text = one_line(new_text)
         p = self.vault.resolve(old["path"])
-        from .utils import file_lock, atomic_write
+        from .utils import utc_timestamp_naive, utc_timestamp, file_lock, atomic_write
         with file_lock(p):
             content = p.read_text(encoding="utf-8")
             lines = content.splitlines()
             changed = False
-            stamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+            stamp = utc_timestamp_naive()
             subject = slugify(old["subject"])
             for i, line in enumerate(lines):
                 m = ENTRY_RE.match(line)

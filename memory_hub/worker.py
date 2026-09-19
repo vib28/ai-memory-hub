@@ -23,7 +23,8 @@ from .capture import ObservationBuffer
 from .manager import MemoryManager
 from .session_capture import consolidate_buffered_session
 from .transcript import TranscriptStore, transcript_enabled
-from .utils import atomic_write, parse_iso_datetime, read_json
+from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
+            atomic_write, parse_iso_datetime, read_json
 
 
 FINAL_EVENTS = {"session-end"}
@@ -63,7 +64,7 @@ def worker_health_path(vault: Path | str) -> Path:
 
 def legacy_worker_health_path(vault: Path | str) -> Path:
     """Pre-#88 location: one hashed file per vault under the user's home."""
-    identity = hashlib.sha256(str(Path(vault).expanduser().resolve()).encode()).hexdigest()[:16]
+    identity = vault_key(vault, 16)
     return Path.home() / ".ai-memory-hub" / f"worker-health-{identity}.json"
 
 
@@ -407,13 +408,13 @@ class SessionWorker:
                 "elapsed_seconds": round(time.monotonic() - started, 3)}
 
     def run_forever(self) -> None:
-        self._write_health(status="starting", started_at=datetime.now(timezone.utc).isoformat())
+        self._write_health(status="starting", started_at=utc_timestamp())
         try:
             while not self._stop.is_set():
                 self.run_once()
                 self._stop.wait(self.config.interval_seconds)
         finally:
-            self._write_health(status="stopped", stopped_at=datetime.now(timezone.utc).isoformat())
+            self._write_health(status="stopped", stopped_at=utc_timestamp())
 
 
 def main(argv: list[str] | None = None) -> int:

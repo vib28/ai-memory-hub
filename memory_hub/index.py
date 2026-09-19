@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import MemoryRecord
-from .utils import text_hash
+from .utils import utc_timestamp, utc_timestamp_naive, vault_key, read_json, normalize_relative, sanitize_secrets,
+            text_hash
 from .embeddings import LocalEmbeddingProvider, cosine_similarity
 from .vault import session_embedding_chunks
 
@@ -456,7 +457,7 @@ class MemoryIndex:
 
     def enqueue(self, candidate: dict, payload: dict | None = None) -> dict:
         proposal_id = uuid.uuid4().hex[:12]
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = utc_timestamp()
         provenance = None
         if payload and payload.get("evidence_ids"):
             provenance = json.dumps(payload.get("evidence_ids"), ensure_ascii=False)

@@ -311,7 +311,7 @@ def run_benchmark(*, pairs_per_task: int = 5, seed: int = 6201) -> dict[str, Any
     aggregate = _aggregate(cases)
     return {
         "benchmark_version": BENCHMARK_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": utc_timestamp(),
         "mode": "offline-deterministic-replay",
         "live_verification": {
             "status": "not-run",
