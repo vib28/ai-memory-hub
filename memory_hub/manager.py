@@ -58,6 +58,21 @@ from .vault import (Vault, ENTRY_RE, FILE_PER_ENTITY_KINDS, RESERVED_FILENAMES, 
 # resolved through the entity-aliases.md registry instead (#35).
 SHARED_FILE_KINDS = {"preference", "profile"}
 
+# Pre-compiled regex cache for entity_alias_link section matching (#209)
+_entity_alias_section_cache: dict[tuple[str, str], re.Pattern] = {}
+
+def _entity_alias_section_re(kind: str, canonical: str) -> re.Pattern:
+    """Return a cached compiled regex for an entity-alias section (#209)."""
+    key = (kind, canonical)
+    compiled = _entity_alias_section_cache.get(key)
+    if compiled is None:
+        compiled = re.compile(
+            rf"^## {re.escape(kind)}: {re.escape(canonical)}\s*$\n(?:.*?)(?=^## |\Z)",
+            re.M | re.S,
+        )
+        _entity_alias_section_cache[key] = compiled
+    return compiled
+
 logger = logging.getLogger(__name__)
 
 # Session block sections rendered by _session_block and expected by consumers
@@ -108,6 +123,8 @@ class MemoryManager:
         # subject_audit(), dashboard, etc.) don't re-parse the file each time.
         # Writes through entity_alias_link() invalidate the cache (#124).
         self._entity_registry_cache: tuple[tuple[int, float] | None, dict[str, dict[str, str]]] = (None, {})
+        # Cache for normalized text in _best_match to avoid re-normalizing the same rows (#225)
+        self._norm_cache: dict[str, str] = {}
 
     def close(self):
         self.index.close()
@@ -172,7 +189,10 @@ class MemoryManager:
         minimum = max(1, int((threshold * text_length / (2 - threshold)) + 0.999999))
         maximum = int((2 - threshold) * text_length / threshold)
         for row in self.index.candidate_rows(kind, minimum, maximum):
-            existing = normalize_text(row["text"])
+            existing = self._norm_cache.get(row["memory_id"])
+            if existing is None:
+                existing = normalize_text(row["text"])
+                self._norm_cache[row["memory_id"]] = existing
             ratio = SequenceMatcher(None, norm, existing).ratio()
             if ratio > best_ratio:
                 best_row, best_ratio = row, ratio
@@ -991,10 +1011,10 @@ class MemoryManager:
                 return "project-session"
             return "unscoped"
 
-        def packet_size(items: list[dict]) -> int:
-            if not items:
-                return 0
-            return len(json.dumps({"memories": items}, ensure_ascii=False, separators=(",", ":")))
+        running_bytes = 0
+        envelope_overhead = len(json.dumps(
+            {"memories": [], "project": project or None, "query": query or None},
+            ensure_ascii=False, separators=(",", ":")))
 
         for row in rows:
             item = {
@@ -1005,11 +1025,14 @@ class MemoryManager:
                 "text": row["text"],
                 "scope": scope_label(row),
             }
-            if packet_size(selected + [item]) > budget:
+            # Track running byte length instead of re-serializing the full packet each time
+            item_bytes = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+            if running_bytes + item_bytes + envelope_overhead > budget:
                 truncated_reason = "context budget reached"
                 break
             selected.append(item)
-        used = packet_size(selected)
+            running_bytes += item_bytes
+        used = running_bytes + envelope_overhead
         packet_text = ""
         packet_ids: list[str] = []
         injected_by_hook = False
@@ -1264,10 +1287,8 @@ class MemoryManager:
         linked_entities = []
         for kind, subjects in sorted(by_kind_subject.items()):
             ordered = sorted(subjects)
-            for left in ordered:
-                for right in ordered:
-                    if not (left < right and (right.startswith(left + "-") or left.startswith(right + "-"))):
-                        continue
+            # After sorting, only adjacent pairs can be prefix-overlapping (zip optimization)
+            for left, right in zip(ordered, ordered[1:]):
                     if kind in SHARED_FILE_KINDS and registry.get(kind, {}).get(left) is not None \
                             and resolve_subject(registry, kind, left) == resolve_subject(registry, kind, right):
                         linked_entities.append({
@@ -1463,7 +1484,7 @@ class MemoryManager:
                 lines = [line for line in source_body.splitlines() if ENTRY_RE.match(line)
                          and ENTRY_RE.match(line).group("id") not in target_ids]
                 target_meta["aliases"] = aliases
-                target_meta["updated"] = datetime.now().date().isoformat()
+                target_meta["updated"] = datetime.now(timezone.utc).date().isoformat()
                 merged_body = target_body.rstrip()
                 if lines:
                     if merged_body:
@@ -1520,10 +1541,7 @@ class MemoryManager:
         with file_lock(registry_path):
             # Re-read after locking so a concurrent link cannot be silently dropped.
             content = registry_path.read_text(encoding="utf-8") if registry_path.exists() else ""
-            section_re = re.compile(
-                rf"^## {re.escape(kind)}: {re.escape(canonical)}\s*$\n(?:.*?)(?=^## |\Z)",
-                re.M | re.S,
-            )
+            section_re = _entity_alias_section_re(kind, canonical)
             body_lines = "\n".join(f"- {a}" for a in combined_aliases if a != canonical)
             section = f"## {kind}: {canonical}\n" + (body_lines + "\n" if body_lines else "")
             match = section_re.search(content)

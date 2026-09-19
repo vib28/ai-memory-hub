@@ -101,15 +101,16 @@ def _ensure_init() -> None:
     # effective values.  bootstrap_environment uses setdefault semantics, so a
     # real env var still wins over the file.  Skip any value a test has already
     # patched in so the patch survives.
-    if globals()["WRITER"] is None:
-        globals()["WRITER"] = os.environ.get("MEMORY_WRITER", "other").strip().lower()
-    if globals()["WRITE_MODE"] is None:
+    global WRITER, WRITE_MODE, HISTORY_ENABLED
+    if WRITER is None:
+        WRITER = os.environ.get("MEMORY_WRITER", "other").strip().lower()
+    if WRITE_MODE is None:
         mode = os.environ.get("MEMORY_WRITE_MODE", "auto").strip().lower()
         if mode not in {"auto", "review"}:
             mode = "auto"
-        globals()["WRITE_MODE"] = mode
-    if globals()["HISTORY_ENABLED"] is None:
-        globals()["HISTORY_ENABLED"] = is_truthy(os.environ.get("MEMORY_VAULT_HISTORY", "false"))
+        WRITE_MODE = mode
+    if HISTORY_ENABLED is None:
+        HISTORY_ENABLED = is_truthy(os.environ.get("MEMORY_VAULT_HISTORY", "false"))
 
     _state.manager = MemoryManager(VAULT)
 

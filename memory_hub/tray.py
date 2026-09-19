@@ -1,4 +1,6 @@
 """Compatibility entry point; the shared app owns tray and dashboard lifecycle."""
+from __future__ import annotations
+
 from .app import main
 
 def icon_image():

@@ -274,13 +274,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": "An internal error occurred. See logs for details.",
                         "correlation_id": correlation_id}, 500)
 
+class _LocalDashboardHandlerBase(DashboardHandler):
+    """Base class for per-launch dashboard handlers.
+
+    Each call to ``create_server`` creates a fresh *subclass* of this base
+    with its own ``manager`` and ``launch_token`` class attributes. This
+    avoids the ``type()`` anti-pattern (#220) while keeping launches isolated.
+    """
+    manager: MemoryManager | None = None
+    launch_token: str | None = None
+
+    def __init__(self, request, client_address, server):
+        super().__init__(request, client_address, server)
+
+
 def create_server(manager: MemoryManager, host: str | None = None, port: int | None = None):
     """Every launch path receives an isolated token, host guard."""
     host = host if host is not None else default_dashboard_host()
     port = port if port is not None else default_dashboard_port()
     if host not in ('127.0.0.1', 'localhost'):
         raise ValueError('The memory dashboard only supports loopback access.')
-    handler = type('LocalDashboardHandler', (DashboardHandler,), {
+    # Create a fresh subclass per launch so each server has its own token/manager
+    handler = type(f'LocalDashboard{abs(hash(manager)) % 10000:04d}', (_LocalDashboardHandlerBase,), {
         'manager': manager, 'launch_token': secrets.token_urlsafe(24),
     })
     server = ThreadingHTTPServer((host, port), handler)

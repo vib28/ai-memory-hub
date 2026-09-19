@@ -19,12 +19,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+import logging
+
 from ._env import int_env
 from .app_config import bootstrap_environment
 from .handoff import _manifest, _read_block
 from .security import SECRET_PATTERNS, check_text
 from .utils import atomic_write, clean_list, one_line, read_json, safe_join, slugify, vault_key, utc_timestamp
 
+
+logger = logging.getLogger(__name__)
 
 VISIBILITIES = {"public", "private", "internal"}
 DEFAULT_INTERVAL_SECONDS = 30
@@ -86,7 +90,7 @@ def configure(vault: Path | str, *, repo: str | None = None, visibility: str | N
         "approved": bool(enabled),
         "repo": repo,
         "visibility": visibility,
-        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": utc_timestamp(),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
@@ -257,7 +261,7 @@ class ExportOutbox:
         self.conn.close()
 
     def enqueue(self, payload: dict[str, Any]) -> dict[str, Any]:
-        stamp = datetime.now(timezone.utc).isoformat()
+        stamp = utc_timestamp()
         with self.conn:
             self.conn.execute(
                 """INSERT OR IGNORE INTO exports
@@ -269,7 +273,7 @@ class ExportOutbox:
         return dict(row)
 
     def due_groups(self, now: datetime | None = None) -> list[str]:
-        stamp = now.isoformat() if now else datetime.now(timezone.utc).isoformat()
+        stamp = now.isoformat() if now else utc_timestamp()
         rows = self.conn.execute(
             """SELECT DISTINCT session_group_id FROM exports
                WHERE status IN ('pending','failed') AND (next_attempt_at IS NULL OR next_attempt_at<=?)
@@ -320,14 +324,14 @@ class ExportOutbox:
         with self.conn:
             self.conn.execute(
                 "UPDATE exports SET remote_issue_number=?,remote_comment_id=?,remote_comment_url=?,updated_at=? WHERE marker=?",
-                (issue_number, comment_id, comment_url, datetime.now(timezone.utc).isoformat(), marker),
+                (issue_number, comment_id, comment_url, utc_timestamp(), marker),
             )
 
     def mark_sent(self, markers: list[str]) -> None:
         with self.conn:
             self.conn.executemany(
                 "UPDATE exports SET status='sent',lease_owner=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=? WHERE marker=?",
-                [(datetime.now(timezone.utc).isoformat(), marker) for marker in markers],
+                [(utc_timestamp(), marker) for marker in markers],
             )
 
     def mark_failed(self, markers: list[str], error: str) -> None:
@@ -499,9 +503,14 @@ class GitHubPublisher:
         # Verify destination approval before the first write; an outage leaves rows queued.
         try:
             actual_visibility = self.client.repo_visibility()
-        except Exception as exc:
+        except ExportError as exc:
+            logger.warning("GitHub publish skipped: %s", exc)
             return {"status": "degraded", "published": 0, "groups": [],
-                    "errors": [{"reason": str(exc)}]}
+                    "errors": [{"reason": f"visibility check failed: {exc}"}]}
+        except Exception as exc:
+            logger.exception("Unexpected error checking repo visibility")
+            return {"status": "degraded", "published": 0, "groups": [],
+                    "errors": [{"reason": f"unexpected error: {exc}"}]}
         if actual_visibility != visibility:
             return {"status": "degraded", "published": 0, "groups": [],
                     "errors": [{"reason": f"approved visibility is {visibility}, GitHub reports {actual_visibility or 'unknown'}"}]}
@@ -524,7 +533,7 @@ class GitHubPublisher:
 def write_health(vault: Path | str, value: dict[str, Any]) -> None:
     path = health_path(vault)
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(path, json.dumps({**value, "updated_at": datetime.now(timezone.utc).isoformat(), "health_path": str(path)}, indent=2) + "\n")
+    atomic_write(path, json.dumps({**value, "updated_at": utc_timestamp(), "health_path": str(path)}, indent=2) + "\n")
 
 
 def run_once(vault: Path | str, group_id: str | None = None) -> dict[str, Any]:

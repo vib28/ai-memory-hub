@@ -618,6 +618,23 @@ _CLIENT_ALIASES = {
 }
 
 
+def _build_prefix_index() -> dict[str, str]:
+    """Pre-build a first-char index into _CLIENT_ALIASES for prefix matching (#224).
+
+    Many callers pass strings that don't exactly match a key but share a prefix
+    (e.g. "hermes-agent" matches "hermes"). A first-character index avoids
+    scanning every alias on every call.
+    """
+    index: dict[str, str] = {}
+    for key in _CLIENT_ALIASES:
+        if key:
+            index.setdefault(key[0], key)
+    return index
+
+
+_CLIENT_PREFIX_INDEX = _build_prefix_index()
+
+
 def normalize_client(value: Any) -> str:
     """Map a host's self-description or the installer's --client to a writer name."""
     raw = "" if value is None else str(value).strip().lower().replace(" ", "-")
@@ -625,9 +642,13 @@ def normalize_client(value: Any) -> str:
         return ""
     if raw in _CLIENT_ALIASES:
         return _CLIENT_ALIASES[raw]
-    for key, writer in _CLIENT_ALIASES.items():
-        if raw.startswith(key):
-            return writer
+    # Pre-build prefix index: only check keys sharing the first character (#224)
+    first_char = raw[0] if raw else ""
+    if first_char in _CLIENT_PREFIX_INDEX:
+        # Still need to check all keys with same first char (rare), but bounded
+        for key, writer in _CLIENT_ALIASES.items():
+            if key and key[0] == first_char and raw.startswith(key):
+                return writer
     return raw[:100]
 
 

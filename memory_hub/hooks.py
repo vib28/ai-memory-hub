@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .utils import atomic_write, one_line
+from .utils import atomic_write, one_line, utc_timestamp
 
 
 MANAGED_KEY = "ai_memory_hub_managed"
@@ -23,7 +23,7 @@ class HookConfigError(RuntimeError):
 
 
 def _backup(path: Path) -> str:
-    stamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    stamp = utc_timestamp().replace(":", "").replace("-", "")[:22]
     destination = path.with_name(f"{path.name}.bak-{stamp}")
     shutil.copy2(path, destination)
     return str(destination)

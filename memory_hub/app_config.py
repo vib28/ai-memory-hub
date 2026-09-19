@@ -145,7 +145,7 @@ def bootstrap_environment(vault: Path | str | None) -> None:
     except OSError as exc:
         logger.warning("vault config file unreadable at %s: %s", path, exc)
         return
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         logger.warning("vault config load failed at %s: %s", path, exc)
         return
     for key, value in stored.items():

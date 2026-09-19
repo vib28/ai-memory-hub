@@ -40,6 +40,7 @@ import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from functools import lru_cache
 from typing import Any
 
 from ._env import int_env
@@ -146,12 +147,13 @@ def prune_ledgers(vault: Path, *, max_age_days: int = 14) -> int:
 
 # ------------------------------------------------------------------- selection
 
-def _tokens(text: str) -> set[str]:
+@lru_cache(maxsize=512)
+def _tokens(text: str) -> frozenset[str]:
     raw = {token for token in _WORD_RE.findall(text.lower()) if token not in _STOPWORDS}
     # Drop short generic tokens (3-5 chars) that aren't domain-specific.
     # "run", "server", "install", "check" etc. are already in _STOPWORDS;
     # this catches variants and short verbs that slip through.
-    return {token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN}
+    return frozenset(token for token in raw if len(token) >= _MIN_CONTENT_TOKEN_LEN)
 
 
 def _project_rows(index_rows: list[dict[str, Any]], project: str | None) -> list[dict[str, Any]]:

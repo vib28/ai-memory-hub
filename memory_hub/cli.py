@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     hi.add_argument("--settings", required=True)
     hi.add_argument("--event", default="PostToolUse")
     hi.add_argument("--command", dest="hook_command", default="ai-memory-hook")
-    hi.add_argument("--arg", action="append", default=[])
+    hi.add_argument("--arg", action="append", default=None)
     hi.add_argument("--format", choices=("claude", "nested", "kimi-toml", "codex", "hermes-yaml"),
                     default="claude")
     hi.add_argument("--matcher", default="*")
@@ -133,7 +133,7 @@ def main():
         if args.command == "hooks-install":
             # Nested/TOML/YAML hosts take one command string, not argv; fold --arg
             # values in so `--client claude` reaches the receiver everywhere (#86).
-            joined = " ".join([_quote_for_shell(args.hook_command), *map(_quote_for_shell, args.arg)])
+            joined = " ".join([_quote_for_shell(args.hook_command), *map(_quote_for_shell, args.arg or [])])
             if args.format == "nested":
                 jprint(install_nested_hook(args.settings, event=args.event,
                                            command=joined, matcher=args.matcher))

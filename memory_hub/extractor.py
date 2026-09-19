@@ -43,7 +43,7 @@ class ExtractionError(RuntimeError):
 def _extract_json_text(payload: dict[str, Any]) -> str:
     try:
         return payload["choices"][0]["message"]["content"]
-    except Exception as exc:
+    except (KeyError, IndexError, TypeError) as exc:
         raise ExtractionError(f"unexpected chat-completions response: {payload}") from exc
 
 def extract_from_transcript(transcript: str) -> list[dict]:

@@ -224,5 +224,5 @@ def consolidate_session(
         if content.startswith("```"):
             content = content.strip("`").removeprefix("json").strip()
         return _validate_payload(json.loads(content), fallback_project=rows[0].get("project"))
-    except Exception as exc:
+    except (json.JSONDecodeError, KeyError, urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ConsolidationError(f"local consolidation failed: {exc}") from exc
